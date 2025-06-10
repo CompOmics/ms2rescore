@@ -132,9 +132,9 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
             for run, psms in runs.items():
                 peptide_rt_diff_dict = defaultdict(
                     lambda: {
-                        "observed_retention_time_best": np.Inf,
-                        "predicted_retention_time_best": np.Inf,
-                        "rt_diff_best": np.Inf,
+                        "observed_retention_time_best": np.inf,
+                        "predicted_retention_time_best": np.inf,
+                        "rt_diff_best": np.inf,
                     }
                 )
                 logger.info(

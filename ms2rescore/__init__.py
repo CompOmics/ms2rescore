@@ -1,6 +1,10 @@
-"""MS²Rescore: Sensitive PSM rescoring with predicted MS² peak intensities and RTs."""
+"""Modular and user-friendly platform for AI-assisted rescoring of peptide identifications ."""
 
-__version__ = "3.1.2"
+__version__ = "3.2.0.dev2"
+__all__ = [
+    "parse_configurations",
+    "rescore",
+]
 
 from warnings import filterwarnings
 
@@ -12,5 +16,5 @@ filterwarnings(
     module="psims.mzmlb",
 )
 
-from ms2rescore.config_parser import parse_configurations  # noqa: F401 E402
-from ms2rescore.core import rescore  # noqa: F401 E402
+from ms2rescore.config_parser import parse_configurations  # noqa: E402
+from ms2rescore.core import rescore  # noqa: E402

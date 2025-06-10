@@ -25,6 +25,7 @@ If you use MS²PIP through MS²Rescore, please cite:
 
 import logging
 import multiprocessing
+import os
 import warnings
 from itertools import chain
 from typing import List, Optional, Union
@@ -194,6 +195,7 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
                 spectrum_filename = infer_spectrum_path(self.spectrum_path, run)
                 logger.debug(f"Using spectrum file `{spectrum_filename}`")
                 try:
+                    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
                     ms2pip_results = correlate(
                         psms=psm_list_run,
                         spectrum_file=str(spectrum_filename),

@@ -34,7 +34,7 @@ jobs:
           ms2rescore --help
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: python-package
           path: dist/*
@@ -71,7 +71,7 @@ jobs:
         run: ISCC.exe ./ms2rescore_innosetup.iss /DAppVersion=${{  github.ref_name }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/*.exe

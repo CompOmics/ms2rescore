@@ -1,6 +1,6 @@
 [project]
 name = "ms2rescore"
-description = "MS²Rescore: Sensitive PSM rescoring with predicted MS² peak intensities and retention times."
+description = " Modular and user-friendly platform for AI-assisted rescoring of peptide identifications."
 readme = "README.md"
 license = { file = "LICENSE" }
 keywords = [
@@ -37,10 +37,10 @@ dependencies = [
     "customtkinter>=5,<6",
     "deeplc>=3.0,<3.1",
     "deeplcretrainer",
-    "im2deep>=0.3.0",
+    "im2deep>=0.3.1",
     "jinja2>=3",
     "lxml>=4.5",
-    "mokapot>=0.10",
+    "mokapot==0.10",  # 0.11.0 will introduce API changes
     "ms2pip>=4.0.0",
     "ms2rescore_rs>=0.4.0",
     "numpy>=1.25",
@@ -90,11 +90,11 @@ profile = "black"
 
 [tool.black]
 line-length = 99
-target-version = ['py38']
+target-version = ['py39']
 
 [tool.ruff]
 line-length = 99
-target-version = 'py38'
+target-version = 'py39'
 
 [tool.ruff.lint]
 extend-select = ["T201", "T203"]

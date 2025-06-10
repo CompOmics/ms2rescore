@@ -51,6 +51,10 @@ CITATIONS = [
         "https://doi.org/10.1093/nar/gkad335",
     ),
     (
+        "IM2Deep: Declercq, Devreese et al. JPR (2025)",
+        "https://doi.org/10.1021/acs.jproteome.4c00609",
+    ),
+    (
         "DeepLC: Bouwmeester et al. Nat Methods (2021)",
         "https://doi.org/10.1038/s41592-021-01301-5",
     ),
