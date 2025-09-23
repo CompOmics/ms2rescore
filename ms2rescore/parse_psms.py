@@ -94,19 +94,9 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
     # Addition of Modifications for mass shifts in the PSMs with Mumble
     if "mumble" in config["psm_generator"]:
         logger.debug("Applying modifications for mass shifts using Mumble...")
-
         # set inlcude original psm to True and include decoy psm to true
-        if (
-            "include_original_psm" not in config["psm_generator"]["mumble"]
-            or not config["psm_generator"]["mumble"]
-        ):
-            config["psm_generator"]["mumble"]["include_original_psm"] = True
-        if (
-            "include_decoy_psm" not in config["psm_generator"]["mumble"]
-            or not config["psm_generator"]["mumble"]
-        ):
-            config["psm_generator"]["mumble"]["include_decoy_psm"] = True
-
+        config["psm_generator"]["mumble"]["include_original_psm"] = True
+        config["psm_generator"]["mumble"]["include_decoy_psm"] = True
         mumble_config = config["psm_generator"]["mumble"]
 
         # Check if psm_list[0].rescoring_features is empty or not
