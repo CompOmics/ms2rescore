@@ -54,6 +54,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ionmob = ["ionmob>=0.2", "tensorflow"]
+mumble = ["rustyms>=0.8.3", "mumble>=0.2.0"]
 dev = ["ruff", "black", "pytest", "pytest-cov", "pre-commit"]
 docs = [
     "sphinx",
