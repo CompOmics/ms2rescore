@@ -17,6 +17,7 @@ from ms2rescore import __version__, package_data
 from ms2rescore.config_parser import parse_configurations
 from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
+from ms2rescore.utils import check_for_update
 
 try:
     import matplotlib.pyplot as plt
@@ -227,6 +228,17 @@ def main(tims=False):
         config["ms2rescore"]["log_level"], config["ms2rescore"]["output_path"] + ".log.txt"
     )
 
+    # check for software updates
+    info = check_for_update(__version__, repo="CompOmics/ms2rescore")
+    if info["is_update"]:
+        LOGGER.info(
+            f"New version of MS²Rescore available: {info['latest_version']} "
+            f"(you are using {__version__})"
+        )
+        LOGGER.info(f"Download the latest version at: {info['html_url']}")
+    else:
+        LOGGER.debug("You are using the latest version of MS²Rescore.")
+    exit()
     # Run MS²Rescore
     try:
         if cli_args.profile:
