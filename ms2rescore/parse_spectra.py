@@ -30,7 +30,10 @@ class MSDataType(str, Enum):
 
 
 def add_precursor_values(
-    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: Optional[str] = None
+    psm_list: PSMList,
+    spectrum_path: str,
+    spectrum_id_pattern: Optional[str] = None,
+    required_ms_data: Optional[Set[MSDataType]] = None,
 ) -> Set[MSDataType]:
     """
     Add precursor m/z, retention time, and ion mobility values to a PSM list.
@@ -45,6 +48,9 @@ def add_precursor_values(
         Regular expression pattern to extract spectrum IDs from file names. If provided, the
         pattern must contain a single capturing group that matches the spectrum ID. Default is
         None.
+    required_ms_data
+        Set of MS data types required for feature generation. If provided, only the missing
+        precursor values will be added to the PSM list. Default is None.
 
     Returns
     -------
@@ -53,38 +59,65 @@ def add_precursor_values(
 
     """
     # Check if precursor values are missing in PSM list
+    missing_ms_data = {}
+
     rt_missing = any(v is None or v == 0 or np.isnan(v) for v in psm_list["retention_time"])
     im_missing = any(v is None or v == 0 or np.isnan(v) for v in psm_list["ion_mobility"])
     mz_missing = any(v is None or v == 0 or np.isnan(v) for v in psm_list["precursor_mz"])
 
-    # Get precursor values from spectrum files
-    LOGGER.info("Parsing precursor info from spectrum files...")
-    mz, rt, im = _get_precursor_values(psm_list, spectrum_path, spectrum_id_pattern)
-    mz_found, rt_found, im_found = np.all(mz != 0.0), np.all(rt != 0.0), np.all(im != 0.0)
-    # ms2rescore_rs always returns 0.0 for missing values
-
-    # Update PSM list with missing precursor values
-    if rt_missing and rt_found:
-        LOGGER.debug("Missing retention time values in PSM list. Updating from spectrum files.")
-        psm_list["retention_time"] = rt
-    if im_missing and im_found:
-        LOGGER.debug("Missing ion mobility values in PSM list. Updating from spectrum files.")
-        psm_list["ion_mobility"] = im
-    if mz_missing and mz_found:
-        LOGGER.debug("Missing precursor m/z values in PSM list. Updating from spectrum files.")
-        psm_list["precursor_mz"] = mz
+    if required_ms_data:
+        if MSDataType.retention_time in required_ms_data:
+            missing_ms_data[MSDataType.retention_time] = rt_missing
+        if MSDataType.ion_mobility in required_ms_data:
+            missing_ms_data[MSDataType.ion_mobility] = im_missing
+        if MSDataType.precursor_mz in required_ms_data:
+            missing_ms_data[MSDataType.precursor_mz] = mz_missing
     else:
-        # Check if precursor m/z values are consistent between PSMs and spectrum files
-        mz_diff = np.abs(psm_list["precursor_mz"] - mz)
-        if np.mean(mz_diff) > 1e-2:
-            LOGGER.warning(
-                "Mismatch between precursor m/z values in PSM list and spectrum files (mean "
-                "difference exceeds 0.01 Da). Please ensure that the correct spectrum files are "
-                "provided and that the `spectrum_id_pattern` and `psm_id_pattern` options are "
-                "configured correctly. See "
-                "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
-                "for more information."
+        missing_ms_data = {
+            MSDataType.retention_time: rt_missing,
+            MSDataType.ion_mobility: im_missing,
+            MSDataType.precursor_mz: mz_missing,
+        }
+    if not any(missing_ms_data.values()):
+        # No missing precursor values
+        LOGGER.debug("No missing precursor values in PSM list.")
+        return {
+            MSDataType.ms2_spectra,  # Assume MS2 spectra are always present
+            MSDataType.retention_time,
+            MSDataType.ion_mobility,
+            MSDataType.precursor_mz,
+        }
+    else:
+        # Get precursor values from spectrum files
+        LOGGER.info("Parsing precursor info from spectrum files...")
+        mz, rt, im = _get_precursor_values(psm_list, spectrum_path, spectrum_id_pattern)
+        mz_found, rt_found, im_found = np.all(mz != 0.0), np.all(rt != 0.0), np.all(im != 0.0)
+        # ms2rescore_rs always returns 0.0 for missing values
+
+        # Update PSM list with missing precursor values
+        if rt_missing and rt_found:
+            LOGGER.debug(
+                "Missing retention time values in PSM list. Updating from spectrum files."
             )
+            psm_list["retention_time"] = rt
+        if im_missing and im_found:
+            LOGGER.debug("Missing ion mobility values in PSM list. Updating from spectrum files.")
+            psm_list["ion_mobility"] = im
+        if mz_missing and mz_found:
+            LOGGER.debug("Missing precursor m/z values in PSM list. Updating from spectrum files.")
+            psm_list["precursor_mz"] = mz
+        else:
+            # Check if precursor m/z values are consistent between PSMs and spectrum files
+            mz_diff = np.abs(psm_list["precursor_mz"] - mz)
+            if np.mean(mz_diff) > 1e-2:
+                LOGGER.warning(
+                    "Mismatch between precursor m/z values in PSM list and spectrum files (mean "
+                    "difference exceeds 0.01 Da). Please ensure that the correct spectrum files are "
+                    "provided and that the `spectrum_id_pattern` and `psm_id_pattern` options are "
+                    "configured correctly. See "
+                    "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
+                    "for more information."
+                )
 
     # Return available MS data types
     available_ms_data = {
