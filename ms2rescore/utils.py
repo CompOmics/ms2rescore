@@ -186,7 +186,6 @@ def check_for_update(
     )
 
     try:
-        # Short, explicit timeout; also keep socket default sane under PyInstaller
         with urlopen(req, timeout=timeout_seconds) as resp:
             raw = resp.read()
         data = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
@@ -197,7 +196,7 @@ def check_for_update(
 
         if not latest:
             result["error"] = "Latest release tag not found in API response."
-            return result  # ok stays False; is_update False
+            return result
 
         result["latest_version"] = latest
         result["html_url"] = html_url
@@ -208,16 +207,15 @@ def check_for_update(
         return result
 
     except HTTPError as e:
-        # Handle common GitHub responses (403 rate-limit, 404 no releases, etc.)
         result["error"] = f"HTTPError {e.code}"
         return result
-    except (URLError, socket.timeout) as e:
+    except (URLError, socket.timeout):
         result["error"] = "Network unavailable or timed out"
         return result
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError):
         result["error"] = "Failed to parse API response"
         return result
-    except Exception as e:
+    except Exception:
         # Final safety net; do not raise
         result["error"] = "Unexpected error"
         return result
