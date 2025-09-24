@@ -148,11 +148,15 @@ def _argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--write-report",
+        action="store_true",
+        default=None,
         dest="write_report",
         help="boolean whether to write an HTML report (default: True)",
     )
     parser.add_argument(
         "--profile",
+        action="store_true",
+        default=None,
         dest="profile",
         help="boolean to enable profiling with cProfile",
     )

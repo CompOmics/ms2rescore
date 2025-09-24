@@ -176,13 +176,11 @@
                 },
                 "write_report": {
                     "description": "Write an HTML report with various QC metrics and charts",
-                    "type": "boolean",
-                    "default": false
+                    "oneOf": [{ "type": "boolean" }, { "type": "null" }]
                 },
                 "profile": {
                     "description": "Write a txt report using cProfile for profiling",
-                    "type": "boolean",
-                    "default": false
+                    "oneOf": [{ "type": "boolean" }, { "type": "null" }]
                 }
             }
         }
