@@ -23,12 +23,20 @@ from ms2rescore.config_parser import parse_configurations
 from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
 from ms2rescore.gui.function2ctk import Function2CTk
+from ms2rescore.utils import check_for_update
 
 with importlib.resources.path(pkg_data_img, "config_icon.png") as resource:
     _IMG_DIR = Path(resource).parent
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+UPDATE_CHECK_TIMEOUT = 0.8  # seconds; keep small to avoid noticeable blocking
+UPDATE_CHECK_ENABLED = os.environ.get("MS2RESCORE_SKIP_UPDATE_CHECK", "0") not in (
+    "1",
+    "true",
+    "True",
+)
 
 try:
     import matplotlib.pyplot as plt
@@ -807,6 +815,62 @@ class PercolatorRescoringConfiguration(ctk.CTkFrame):
         return config
 
 
+class UpdateDialog(ctk.CTkToplevel):
+    def __init__(self, master, current: str, latest: str, url: str):
+        super().__init__(master)
+        self.title("Update available")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        msg = (
+            f"A new version of MS²Rescore is available.\n\n"
+            f"Current version: {current}\n"
+            f"Latest version:  {latest}"
+        )
+
+        ctk.CTkLabel(self, text=msg, justify="left").pack(padx=16, pady=(16, 8), anchor="w")
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(padx=16, pady=(0, 12), fill="x")
+
+        def open_release():
+            if url:
+                webbrowser.open_new_tab(url)
+            self.destroy()
+
+        ctk.CTkButton(btn_frame, text="Open release page", command=open_release).pack(side="left")
+        ctk.CTkButton(btn_frame, text="Close", command=self.destroy).pack(side="right")
+
+        self.update_idletasks()
+        w = self.winfo_width() or 360
+        h = self.winfo_height() or 150
+        px = master.winfo_rootx() + (master.winfo_width() - w) // 2
+        py = master.winfo_rooty() + (master.winfo_height() - h) // 2
+        self.geometry(f"{w}x{h}+{max(px, 0)}+{max(py, 0)}")
+
+
+def _check_updates_sync(root):
+    """Run the update check synchronously with a very short timeout."""
+    if not UPDATE_CHECK_ENABLED:
+        return
+    try:
+        info = check_for_update(
+            ms2rescore_version,
+            repo="CompOmics/ms2rescore",
+            timeout_seconds=UPDATE_CHECK_TIMEOUT,
+            user_agent="ms2rescore-update-checker",
+        )
+        if info.get("is_update"):
+            latest = info.get("latest_version") or "unknown"
+            url = info.get("html_url") or "https://github.com/CompOmics/ms2rescore/releases/latest"
+            UpdateDialog(root, ms2rescore_version, latest, url)
+        # If not ok / offline / rate-limited, we do nothing (no errors to user).
+    except Exception:
+        # Fully silent on any unexpected issue.
+        pass
+
+
 def function(config):
     """Function to be executed in a separate process."""
     config = config.copy()
@@ -834,5 +898,8 @@ def app():
     root.title("MS²Rescore")
     if platform.system() != "Linux":
         root.wm_iconbitmap(os.path.join(str(_IMG_DIR), "program_icon.ico"))
+
+    # Schedule a synchronous, fast update check shortly after the window paints.
+    root.after(150, lambda: _check_updates_sync(root))
 
     root.mainloop()
