@@ -1,6 +1,6 @@
 """Modular and user-friendly platform for AI-assisted rescoring of peptide identifications ."""
 
-__version__ = "3.2.0.dev2"
+__version__ = "3.2.0"
 __all__ = [
     "parse_configurations",
     "rescore",

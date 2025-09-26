@@ -42,7 +42,7 @@ dependencies = [
     "lxml>=4.5",
     "mokapot==0.10",  # 0.11.0 will introduce API changes
     "ms2pip>=4.0.0",
-    "ms2rescore_rs>=0.4.0",
+    "ms2rescore_rs>=0.4.3",
     "numpy>=1.25",
     "pandas>=1",
     "plotly>=5",

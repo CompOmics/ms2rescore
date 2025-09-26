@@ -238,7 +238,7 @@ def main(tims=False):
         LOGGER.info(f"Download the latest version at: {info['html_url']}")
     else:
         LOGGER.debug("You are using the latest version of MS²Rescore.")
-    exit()
+
     # Run MS²Rescore
     try:
         if cli_args.profile:
