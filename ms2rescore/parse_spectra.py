@@ -40,7 +40,7 @@ ALL_MS_DATA_TYPES: Set[MSDataType] = {
 def add_precursor_values(
     psm_list: PSMList,
     required_data_types: Set[MSDataType],
-    spectrum_path: str | None = None,
+    spectrum_path: Optional[str] = None,
     spectrum_id_pattern: Optional[str] = None,
 ) -> Set[MSDataType]:
     """
@@ -150,7 +150,7 @@ def add_precursor_values(
 
 
 def _get_precursor_values(
-    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: str | None = None
+    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: Optional[str] = None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Get precursor m/z, RT, and IM from spectrum files."""
     # Iterate over different runs in PSM list
