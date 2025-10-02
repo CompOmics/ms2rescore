@@ -171,16 +171,18 @@
                 },
                 "write_flashlfq": {
                     "description": "Write results to a FlashLFQ-compatible file",
-                    "type": "boolean",
+                    "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": false
                 },
                 "write_report": {
                     "description": "Write an HTML report with various QC metrics and charts",
-                    "oneOf": [{ "type": "boolean" }, { "type": "null" }]
+                    "oneOf": [{ "type": "boolean" }, { "type": "null" }],
+                    "default": true
                 },
                 "profile": {
                     "description": "Write a txt report using cProfile for profiling",
-                    "oneOf": [{ "type": "boolean" }, { "type": "null" }]
+                    "oneOf": [{ "type": "boolean" }, { "type": "null" }],
+                    "default": false
                 }
             }
         }

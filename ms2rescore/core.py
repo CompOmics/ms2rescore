@@ -67,7 +67,10 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         for ms_data in FEATURE_GENERATORS[fgen_name].required_ms_data
     }
     available_ms_data = add_precursor_values(
-        psm_list, config["spectrum_path"], config["spectrum_id_pattern"], required_ms_data
+        psm_list,
+        required_ms_data,
+        spectrum_path=config["spectrum_path"],
+        spectrum_id_pattern=config["spectrum_id_pattern"],
     )
 
     # Add rescoring features
