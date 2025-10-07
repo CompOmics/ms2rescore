@@ -1,37 +1,35 @@
 name: Publish
 
 on:
-  release:
-    types: [created]
-  workflow_dispatch:
+  # release:
+  #   types: [created]
+  # workflow_dispatch:
+  pull_request:
 
 jobs:
   python-package:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv and set the Python version
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
+          enable-cache: true
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade build pytest
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
 
       - name: Build source and wheel
-        run: |
-          python -m build --sdist --wheel --outdir dist/
+        run: uv build --sdist --wheel --out-dir dist/
 
       - name: Test built package
         run: |
-          pip install --only-binary :all: dist/ms2rescore-*.whl
-          # pytest
-          ms2rescore --help
+          uv run pip install --only-binary :all: dist/ms2rescore-*.whl
+          uv run ms2rescore --help
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -39,7 +37,7 @@ jobs:
           name: python-package
           path: dist/*
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # - uses: pypa/gh-action-pypi-publish@release/v1
 
   windows-installer:
     runs-on: windows-latest
@@ -47,14 +45,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install uv and set the Python version
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
+          enable-cache: true
 
-      - name: Install package and dependencies
+      - name: Install package, dependencies, and pyinstaller
         run: |
-          python -m pip install --upgrade pip
-          pip install --only-binary :all: .[ionmob] pyinstaller
+          uv sync --locked --all-extras
+          uv run pip install --only-binary :all: pyinstaller
 
       - name: Install Inno Setup
         uses: crazy-max/ghaction-chocolatey@v3
@@ -76,13 +76,13 @@ jobs:
           name: dist
           path: dist/*.exe
 
-      - name: Upload installer to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref }}
-          file_glob: true
-          file: dist/*.exe
+      # - name: Upload installer to release
+      #   uses: svenstaro/upload-release-action@v2
+      #   with:
+      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
+      #     tag: ${{ github.ref }}
+      #     file_glob: true
+      #     file: dist/*.exe
 
   docker-image:
     runs-on: ubuntu-latest

@@ -8,18 +8,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-python-package:
+  check-python-package:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11"]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -29,33 +26,47 @@ jobs:
       - name: Run Ruff
         run: ruff check --output-format=github .
 
-      - name: Build and install ms2rescore package
-        run: |
-          pip install --only-binary :all: .[dev]
+  test-python-package:
+    needs: check-python-package
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Test with pytest
-        run: |
-          pytest
+      - name: Install uv and set the Python version
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run tests
+        run: uv run pytest
 
       - name: Test installation
-        run: |
-          ms2rescore --help
+        run: uv run ms2rescore --help
 
   test-windows-installer:
     # Only run on push to main (e.g., after PR merge)
-    if: ${{ github.ref == 'refs/heads/main' }}
+    # if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install uv and set the Python version
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
+          enable-cache: true
 
       - name: Install package and dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install --only-binary :all: .[ionmob] pyinstaller
+          uv sync --locked --all-extras
+          uv run pip install --only-binary :all: pyinstaller
 
       - name: Install Inno Setup
         uses: crazy-max/ghaction-chocolatey@v1
