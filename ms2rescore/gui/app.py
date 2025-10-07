@@ -8,7 +8,7 @@ import platform
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import customtkinter as ctk
 from joblib import parallel_backend
@@ -19,11 +19,11 @@ from psm_utils.io import FILETYPES
 import ms2rescore.gui.widgets as widgets
 import ms2rescore.package_data.img as pkg_data_img
 from ms2rescore import __version__ as ms2rescore_version
+from ms2rescore._version import check_for_update
 from ms2rescore.config_parser import parse_configurations
 from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
-from ms2rescore.gui.function2ctk import Function2CTk
-from ms2rescore.utils import check_for_update
+from ms2rescore.gui.function2ctk import Function2CTk, PopupWindow
 
 with importlib.resources.path(pkg_data_img, "config_icon.png") as resource:
     _IMG_DIR = Path(resource).parent
@@ -675,7 +675,7 @@ class IonmobConfiguration(ctk.CTkFrame):
         )
         self.model.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> Tuple[bool, Dict[str, Any]]:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
         config = {"ionmob_model": self.model.get()}
@@ -696,10 +696,10 @@ class Im2DeepConfiguration(ctk.CTkFrame):
         self.enabled = widgets.LabeledSwitch(self, label="Enable im2deep", default=False)
         self.enabled.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> Tuple[bool, Dict[str, Any]]:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
-        config = {}
+        config: Dict[str, Any] = {}
         return enabled, config
 
 
@@ -731,6 +731,10 @@ class RescoringEngineConfig(ctk.CTkFrame):
             return {self.radio_button.get().lower(): self.mokapot_config.get()}
         elif self.radio_button.get().lower() == "percolator":
             return {self.radio_button.get().lower(): self.percolator_config.get()}
+        else:
+            raise MS2RescoreConfigurationError(
+                f"Unknown rescoring engine: {self.radio_button.get().lower()}"
+            )
 
 
 class MokapotRescoringConfiguration(ctk.CTkFrame):
@@ -815,39 +819,23 @@ class PercolatorRescoringConfiguration(ctk.CTkFrame):
         return config
 
 
-class UpdateDialog(ctk.CTkToplevel):
+class UpdateDialog(PopupWindow):
     def __init__(self, master, current: str, latest: str, url: str):
-        super().__init__(master)
-        self.title("Update available")
-        self.resizable(False, False)
-        self.transient(master)
-        self.grab_set()
-
         msg = (
             f"A new version of MS²Rescore is available.\n\n"
             f"Current version: {current}\n"
             f"Latest version:  {latest}"
         )
+        super().__init__(master, "Update available", msg, action_button=True)
 
-        ctk.CTkLabel(self, text=msg, justify="left").pack(padx=16, pady=(16, 8), anchor="w")
-
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(padx=16, pady=(0, 12), fill="x")
-
+        # Add an "Open release page" button alongside the existing close button.
         def open_release():
             if url:
                 webbrowser.open_new_tab(url)
             self.destroy()
 
-        ctk.CTkButton(btn_frame, text="Open release page", command=open_release).pack(side="left")
-        ctk.CTkButton(btn_frame, text="Close", command=self.destroy).pack(side="right")
-
-        self.update_idletasks()
-        w = self.winfo_width() or 360
-        h = self.winfo_height() or 150
-        px = master.winfo_rootx() + (master.winfo_width() - w) // 2
-        py = master.winfo_rooty() + (master.winfo_height() - h) // 2
-        self.geometry(f"{w}x{h}+{max(px, 0)}+{max(py, 0)}")
+        self.action_button.configure(text="Open download page", command=open_release)
+        self.close_button.configure(text="Ignore")
 
 
 def _check_updates_sync(root):
@@ -855,19 +843,19 @@ def _check_updates_sync(root):
     if not UPDATE_CHECK_ENABLED:
         return
     try:
-        info = check_for_update(
-            ms2rescore_version,
-            repo="CompOmics/ms2rescore",
+        update_info = check_for_update(
             timeout_seconds=UPDATE_CHECK_TIMEOUT,
-            user_agent="ms2rescore-update-checker",
         )
-        if info.get("is_update"):
-            latest = info.get("latest_version") or "unknown"
-            url = info.get("html_url") or "https://github.com/CompOmics/ms2rescore/releases/latest"
+        if update_info.get("update_available", False):
+            latest = update_info.get("latest_version") or "unknown"
+            url = (
+                update_info.get("html_url")
+                or "https://github.com/CompOmics/ms2rescore/releases/latest"
+            )
             UpdateDialog(root, ms2rescore_version, latest, url)
-        # If not ok / offline / rate-limited, we do nothing (no errors to user).
+        # If not ok / offline / rate-limited, we do nothing (no errors to user)
     except Exception:
-        # Fully silent on any unexpected issue.
+        # Fully silent on any unexpected issue
         pass
 
 

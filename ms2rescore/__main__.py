@@ -14,10 +14,10 @@ from rich.logging import RichHandler
 from rich.text import Text
 
 from ms2rescore import __version__, package_data
+from ms2rescore._version import check_for_update
 from ms2rescore.config_parser import parse_configurations
 from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
-from ms2rescore.utils import check_for_update
 
 try:
     import matplotlib.pyplot as plt
@@ -155,11 +155,18 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="boolean whether to write an HTML report (default: True)",
     )
     parser.add_argument(
+        "--disable-update-check",
+        action="store_true",
+        default=None,
+        dest="disable_update_check",
+        help="Disable automatic check for software updates (default: False)",
+    )
+    parser.add_argument(
         "--profile",
         action="store_true",
         default=None,
         dest="profile",
-        help="boolean to enable profiling with cProfile",
+        help="Enable profiling with cProfile",
     )
 
     return parser
@@ -228,16 +235,15 @@ def main(tims=False):
         config["ms2rescore"]["log_level"], config["ms2rescore"]["output_path"] + ".log.txt"
     )
 
-    # check for software updates
-    info = check_for_update(__version__, repo="CompOmics/ms2rescore")
-    if info["is_update"]:
-        LOGGER.info(
-            f"New version of MS²Rescore available: {info['latest_version']} "
-            f"(you are using {__version__})"
-        )
-        LOGGER.info(f"Download the latest version at: {info['html_url']}")
-    else:
-        LOGGER.debug("You are using the latest version of MS²Rescore.")
+    # Check for updates
+    if config["ms2rescore"]["disable_update_check"] is False:
+        update_info = check_for_update()
+        if update_info["update_available"]:
+            LOGGER.info(
+                f"New version of MS²Rescore available: {update_info['latest_version']} "
+                f"(you are using {update_info['current_version']})"
+            )
+            LOGGER.info(f"Download the latest version at: {update_info['html_url']}")
 
     # Run MS²Rescore
     try:

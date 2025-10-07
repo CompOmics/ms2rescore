@@ -179,6 +179,11 @@
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": true
                 },
+                "disable_update_check": {
+                    "description": "Disable the automatic update check",
+                    "oneOf": [{ "type": "boolean" }, { "type": "null" }],
+                    "default": false
+                },
                 "profile": {
                     "description": "Write a txt report using cProfile for profiling",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],

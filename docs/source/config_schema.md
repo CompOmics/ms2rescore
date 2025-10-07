@@ -75,6 +75,10 @@
     - **One of**
       - *boolean*
       - *null*
+  - **`disable_update_check`**: Disable the automatic update check. Default: `false`.
+    - **One of**
+      - *boolean*
+      - *null*
   - **`profile`**: Write a txt report using cProfile for profiling. Default: `false`.
     - **One of**
       - *boolean*
