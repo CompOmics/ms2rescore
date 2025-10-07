@@ -21,7 +21,7 @@ jobs:
           enable-cache: true
 
       - name: Install the project
-        run: uv sync --locked --all-extras --dev
+        run: uv sync --all-extras --dev
 
       - name: Build source and wheel
         run: uv build --sdist --wheel --out-dir dist/
@@ -62,7 +62,7 @@ jobs:
           args: install innosetup -y --allow-unofficial --force
 
       - name: Run pyinstaller
-        run: pyinstaller ./ms2rescore.spec --clean --noconfirm
+        run: uv run pyinstaller ./ms2rescore.spec --clean --noconfirm
 
       - name: Test built exe
         run: dist/ms2rescore/ms2rescore.exe
