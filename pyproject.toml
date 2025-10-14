@@ -40,7 +40,7 @@ dependencies = [
     "im2deep>=0.3.1",
     "jinja2>=3",
     "lxml>=4.5",
-    "mokapot==0.10",  # 0.11.0 will introduce API changes
+    "mokapot==0.10",                     # 0.11.0 will introduce API changes
     "ms2pip>=4.0.0",
     "ms2rescore_rs>=0.4.3",
     "numpy>=1.25",
@@ -53,8 +53,10 @@ dependencies = [
     "tomli>=2; python_version < '3.11'",
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
 ionmob = ["ionmob>=0.2", "tensorflow"]
+
+[dependency-groups]
 dev = ["ruff", "black", "pytest>=8.4.2", "pytest-cov", "pre-commit>=4.3.0"]
 docs = [
     "sphinx",
