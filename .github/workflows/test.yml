@@ -50,16 +50,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv and set the Python version
-        uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          enable-cache: true
 
       - name: Install package and dependencies
         run: |
-          uv sync --locked --all-extras
-          uv run pip install --only-binary :all: pyinstaller
+          # Using pip to ensure proper environment discovery by PyInstaller
+          python -m pip install --upgrade pip
+          pip install --only-binary :all: .[ionmob] pyinstaller
+
+      - name: Install Inno Setup
+        uses: crazy-max/ghaction-chocolatey@v3
+        with:
+          args: install innosetup -y --allow-unofficial --force
+
+      - name: Run pyinstaller
+        run: pyinstaller ./ms2rescore.spec --clean --noconfirm
 
       - name: Install Inno Setup
         uses: crazy-max/ghaction-chocolatey@v1
