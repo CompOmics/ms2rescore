@@ -2398,7 +2398,7 @@ wheels = [
 
 [[package]]
 name = "ms2rescore"
-version = "2.1.0"
+version = "3.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "cascade-config" },
@@ -2422,6 +2422,13 @@ dependencies = [
     { name = "pyteomics" },
     { name = "rich" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
+]
+
+[package.optional-dependencies]
+ionmob = [
+    { name = "ionmob" },
+    { name = "tensorflow", version = "2.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
 ]
 
 [package.dev-dependencies]
@@ -2448,11 +2455,6 @@ docs = [
     { name = "sphinx-rtd-theme" },
     { name = "toml" },
 ]
-ionmob = [
-    { name = "ionmob" },
-    { name = "tensorflow", version = "2.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
-    { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
-]
 
 [package.metadata]
 requires-dist = [
@@ -2462,6 +2464,7 @@ requires-dist = [
     { name = "deeplc", specifier = ">=3.0,<3.1" },
     { name = "deeplcretrainer" },
     { name = "im2deep", specifier = ">=0.3.1" },
+    { name = "ionmob", marker = "extra == 'ionmob'", specifier = ">=0.2" },
     { name = "jinja2", specifier = ">=3" },
     { name = "lxml", specifier = ">=4.5" },
     { name = "mokapot", specifier = "==0.10" },
@@ -2474,8 +2477,10 @@ requires-dist = [
     { name = "psm-utils", specifier = ">=1.1" },
     { name = "pyteomics", specifier = ">=4.7.2" },
     { name = "rich", specifier = ">=12" },
+    { name = "tensorflow", marker = "extra == 'ionmob'" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
 ]
+provides-extras = ["ionmob"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2496,10 +2501,6 @@ docs = [
     { name = "sphinx-inline-tabs" },
     { name = "sphinx-rtd-theme" },
     { name = "toml" },
-]
-ionmob = [
-    { name = "ionmob", specifier = ">=0.2" },
-    { name = "tensorflow" },
 ]
 
 [[package]]
