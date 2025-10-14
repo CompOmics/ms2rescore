@@ -45,7 +45,7 @@ jobs:
 
   test-windows-installer:
     # Only run on push to main (e.g., after PR merge)
-    # if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,10 +1,9 @@
 name: Publish
 
 on:
-  # release:
-  #   types: [created]
-  # workflow_dispatch:
-  pull_request:
+  release:
+    types: [created]
+  workflow_dispatch:
 
 jobs:
   python-package:
@@ -37,7 +36,7 @@ jobs:
           name: python-package
           path: dist/*
 
-      # - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@release/v1
 
   windows-installer:
     runs-on: windows-latest
@@ -74,13 +73,13 @@ jobs:
           name: dist
           path: dist/*.exe
 
-      # - name: Upload installer to release
-      #   uses: svenstaro/upload-release-action@v2
-      #   with:
-      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-      #     tag: ${{ github.ref }}
-      #     file_glob: true
-      #     file: dist/*.exe
+      - name: Upload installer to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref }}
+          file_glob: true
+          file: dist/*.exe
 
   docker-image:
     runs-on: ubuntu-latest
