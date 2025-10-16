@@ -35,6 +35,14 @@ ms2rescore.feature_generators.deeplc
 
 
 
+ms2rescore.feature_generators.im2deep
+####################################
+
+.. automodule:: ms2rescore.feature_generators.im2deep
+   :members:
+
+
+
 ms2rescore.feature_generators.ionmob
 ####################################
 
