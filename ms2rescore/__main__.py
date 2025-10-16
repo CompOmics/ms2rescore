@@ -247,7 +247,7 @@ def main(tims=False):
 
     # Run MS²Rescore
     try:
-        if cli_args.profile:
+        if config["ms2rescore"]["profile"]:
             profiled_rescore = profile(rescore, config["ms2rescore"]["output_path"])
             profiled_rescore(configuration=config)
         else:
