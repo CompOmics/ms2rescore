@@ -29,8 +29,19 @@ class MSDataType(str, Enum):
         return self.value
 
 
+ALL_MS_DATA_TYPES: Set[MSDataType] = {
+    MSDataType.retention_time,
+    MSDataType.ion_mobility,
+    MSDataType.precursor_mz,
+    MSDataType.ms2_spectra,
+}
+
+
 def add_precursor_values(
-    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: Optional[str] = None
+    psm_list: PSMList,
+    required_data_types: Set[MSDataType],
+    spectrum_path: Optional[str] = None,
+    spectrum_id_pattern: Optional[str] = None,
 ) -> Set[MSDataType]:
     """
     Add precursor m/z, retention time, and ion mobility values to a PSM list.
@@ -39,8 +50,11 @@ def add_precursor_values(
     ----------
     psm_list
         PSM list to add precursor values to.
+    required_data_types
+        Set of MS data types required for feature generation. Only the missing precursor values
+        will be added to the PSM list.
     spectrum_path
-        Path to the spectrum files.
+        Path to the spectrum files. Default is None.
     spectrum_id_pattern
         Regular expression pattern to extract spectrum IDs from file names. If provided, the
         pattern must contain a single capturing group that matches the spectrum ID. Default is
@@ -48,32 +62,76 @@ def add_precursor_values(
 
     Returns
     -------
-    available_ms_data
+    available_data_types
         Set of available MS data types in the PSM list.
 
     """
-    # Check if precursor values are missing in PSM list
-    rt_missing = any(v is None or v == 0 or np.isnan(v) for v in psm_list["retention_time"])
-    im_missing = any(v is None or v == 0 or np.isnan(v) for v in psm_list["ion_mobility"])
-    mz_missing = any(v is None or v == 0 or np.isnan(v) for v in psm_list["precursor_mz"])
+    # Check which data types are missing
+    # Missing if: all values are 0, OR any values are None/NaN
+    missing_data_types = set()
+    if spectrum_path is None:
+        missing_data_types.add(MSDataType.ms2_spectra)
+
+    rt_values = np.asarray(psm_list["retention_time"])
+    if np.any(np.isnan(rt_values)) or np.all(rt_values == 0):
+        missing_data_types.add(MSDataType.retention_time)
+
+    im_values = np.asarray(psm_list["ion_mobility"])
+    if np.any(np.isnan(im_values)) or np.all(im_values == 0):
+        missing_data_types.add(MSDataType.ion_mobility)
+
+    mz_values = np.asarray(psm_list["precursor_mz"])
+    if np.any(np.isnan(mz_values)) or np.all(mz_values == 0):
+        missing_data_types.add(MSDataType.precursor_mz)
+
+    # Find data types that are both missing and required
+    data_types_to_parse = missing_data_types & required_data_types
+
+    # If no data types need to be parsed, return available data types
+    if not data_types_to_parse:
+        LOGGER.debug("All required data types are already available.")
+        # Use same logic as final return: available = all - missing + found (found is empty here)
+        found_data_types: set[MSDataType] = set()  # No spectrum file processing done
+        available_data_types = ALL_MS_DATA_TYPES - missing_data_types | found_data_types
+        return available_data_types
+
+    # If no spectrum path is provided, cannot parse missing precursor values
+    elif spectrum_path is None:
+        raise SpectrumParsingError(
+            "Spectrum path must be provided to parse precursor values that are not present in the"
+            " PSM list."
+        )
 
     # Get precursor values from spectrum files
     LOGGER.info("Parsing precursor info from spectrum files...")
     mz, rt, im = _get_precursor_values(psm_list, spectrum_path, spectrum_id_pattern)
-    mz_found, rt_found, im_found = np.all(mz != 0.0), np.all(rt != 0.0), np.all(im != 0.0)
-    # ms2rescore_rs always returns 0.0 for missing values
 
-    # Update PSM list with missing precursor values
-    if rt_missing and rt_found:
+    # Determine which data types were successfully found in spectrum files
+    # ms2rescore_rs always returns 0.0 for missing values
+    found_data_types = {MSDataType.ms2_spectra}  # MS2 spectra available when processing files
+    if np.all(rt != 0.0):
+        found_data_types.add(MSDataType.retention_time)
+    if np.all(im != 0.0):
+        found_data_types.add(MSDataType.ion_mobility)
+    if np.all(mz != 0.0):
+        found_data_types.add(MSDataType.precursor_mz)
+
+    # Update PSM list with missing precursor values that were found
+    update_types = data_types_to_parse & found_data_types
+
+    if MSDataType.retention_time in update_types:
         LOGGER.debug("Missing retention time values in PSM list. Updating from spectrum files.")
         psm_list["retention_time"] = rt
-    if im_missing and im_found:
+    if MSDataType.ion_mobility in update_types:
         LOGGER.debug("Missing ion mobility values in PSM list. Updating from spectrum files.")
         psm_list["ion_mobility"] = im
-    if mz_missing and mz_found:
+    if MSDataType.precursor_mz in update_types:
         LOGGER.debug("Missing precursor m/z values in PSM list. Updating from spectrum files.")
         psm_list["precursor_mz"] = mz
-    else:
+    elif (
+        MSDataType.precursor_mz not in missing_data_types
+        and MSDataType.precursor_mz in found_data_types
+    ):
         # Check if precursor m/z values are consistent between PSMs and spectrum files
         mz_diff = np.abs(psm_list["precursor_mz"] - mz)
         if np.mean(mz_diff) > 1e-2:
@@ -86,20 +144,13 @@ def add_precursor_values(
                 "for more information."
             )
 
-    # Return available MS data types
-    available_ms_data = {
-        MSDataType.ms2_spectra,  # Assume MS2 spectra are always present
-        MSDataType.retention_time if not rt_missing or rt_found else None,
-        MSDataType.ion_mobility if not im_missing or im_found else None,
-        MSDataType.precursor_mz if not mz_missing or mz_found else None,
-    }
-    available_ms_data.discard(None)
-
-    return available_ms_data
+    # Return available data types: (all types - missing types) + found types
+    available_data_types = ALL_MS_DATA_TYPES - missing_data_types | found_data_types
+    return available_data_types
 
 
 def _get_precursor_values(
-    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: str
+    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: Optional[str] = None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Get precursor m/z, RT, and IM from spectrum files."""
     # Iterate over different runs in PSM list
@@ -117,8 +168,9 @@ def _get_precursor_values(
             if spectrum_id_pattern:
                 compiled_pattern = re.compile(spectrum_id_pattern)
                 precursors = {
-                    compiled_pattern.search(spectrum_id).group(1): precursor
+                    match.group(1): precursor
                     for spectrum_id, precursor in precursors.items()
+                    if (match := compiled_pattern.search(spectrum_id)) is not None
                 }
 
             # Ensure all PSMs have a precursor values

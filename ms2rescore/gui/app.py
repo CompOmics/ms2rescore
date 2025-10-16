@@ -8,7 +8,7 @@ import platform
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import customtkinter as ctk
 from joblib import parallel_backend
@@ -19,16 +19,24 @@ from psm_utils.io import FILETYPES
 import ms2rescore.gui.widgets as widgets
 import ms2rescore.package_data.img as pkg_data_img
 from ms2rescore import __version__ as ms2rescore_version
+from ms2rescore._version import check_for_update
 from ms2rescore.config_parser import parse_configurations
 from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
-from ms2rescore.gui.function2ctk import Function2CTk
+from ms2rescore.gui.function2ctk import Function2CTk, PopupWindow
 
 with importlib.resources.path(pkg_data_img, "config_icon.png") as resource:
     _IMG_DIR = Path(resource).parent
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+UPDATE_CHECK_TIMEOUT = 0.8  # seconds; keep small to avoid noticeable blocking
+UPDATE_CHECK_ENABLED = os.environ.get("MS2RESCORE_SKIP_UPDATE_CHECK", "0") not in (
+    "1",
+    "true",
+    "True",
+)
 
 try:
     import matplotlib.pyplot as plt
@@ -667,7 +675,7 @@ class IonmobConfiguration(ctk.CTkFrame):
         )
         self.model.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> Tuple[bool, Dict[str, Any]]:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
         config = {"ionmob_model": self.model.get()}
@@ -688,10 +696,10 @@ class Im2DeepConfiguration(ctk.CTkFrame):
         self.enabled = widgets.LabeledSwitch(self, label="Enable im2deep", default=False)
         self.enabled.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> Tuple[bool, Dict[str, Any]]:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
-        config = {}
+        config: Dict[str, Any] = {}
         return enabled, config
 
 
@@ -723,6 +731,10 @@ class RescoringEngineConfig(ctk.CTkFrame):
             return {self.radio_button.get().lower(): self.mokapot_config.get()}
         elif self.radio_button.get().lower() == "percolator":
             return {self.radio_button.get().lower(): self.percolator_config.get()}
+        else:
+            raise MS2RescoreConfigurationError(
+                f"Unknown rescoring engine: {self.radio_button.get().lower()}"
+            )
 
 
 class MokapotRescoringConfiguration(ctk.CTkFrame):
@@ -807,6 +819,46 @@ class PercolatorRescoringConfiguration(ctk.CTkFrame):
         return config
 
 
+class UpdateDialog(PopupWindow):
+    def __init__(self, master, current: str, latest: str, url: str):
+        msg = (
+            f"A new version of MS²Rescore is available.\n\n"
+            f"Current version: {current}\n"
+            f"Latest version:  {latest}"
+        )
+        super().__init__(master, "Update available", msg, action_button=True)
+
+        # Add an "Open release page" button alongside the existing close button.
+        def open_release():
+            if url:
+                webbrowser.open_new_tab(url)
+            self.destroy()
+
+        self.action_button.configure(text="Open download page", command=open_release)
+        self.close_button.configure(text="Ignore")
+
+
+def _check_updates_sync(root):
+    """Run the update check synchronously with a very short timeout."""
+    if not UPDATE_CHECK_ENABLED:
+        return
+    try:
+        update_info = check_for_update(
+            timeout_seconds=UPDATE_CHECK_TIMEOUT,
+        )
+        if update_info.get("update_available", False):
+            latest = update_info.get("latest_version") or "unknown"
+            url = (
+                update_info.get("html_url")
+                or "https://github.com/CompOmics/ms2rescore/releases/latest"
+            )
+            UpdateDialog(root, ms2rescore_version, latest, url)
+        # If not ok / offline / rate-limited, we do nothing (no errors to user)
+    except Exception:
+        # Fully silent on any unexpected issue
+        pass
+
+
 def function(config):
     """Function to be executed in a separate process."""
     config = config.copy()
@@ -834,5 +886,8 @@ def app():
     root.title("MS²Rescore")
     if platform.system() != "Linux":
         root.wm_iconbitmap(os.path.join(str(_IMG_DIR), "program_icon.ico"))
+
+    # Schedule a synchronous, fast update check shortly after the window paints.
+    root.after(150, lambda: _check_updates_sync(root))
 
     root.mainloop()

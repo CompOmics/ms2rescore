@@ -142,9 +142,11 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
                 # Disable wild logging to stdout by Tensorflow, unless in debug mode
 
-                with contextlib.redirect_stdout(
-                    open(os.devnull, "w", encoding="utf-8")
-                ) if not self._verbose else contextlib.nullcontext():
+                with (
+                    contextlib.redirect_stdout(open(os.devnull, "w", encoding="utf-8"))
+                    if not self._verbose
+                    else contextlib.nullcontext()
+                ):
                     # Make new PSM list for this run (chain PSMs per spectrum to flat list)
                     psm_list_run = PSMList(psm_list=list(chain.from_iterable(psms.values())))
 

@@ -67,9 +67,22 @@
     - **One of**
       - *string*
       - *null*
-  - **`write_flashlfq`** *(boolean)*: Write results to a FlashLFQ-compatible file. Default: `false`.
-  - **`write_report`** *(boolean)*: Write an HTML report with various QC metrics and charts. Default: `false`.
-  - **`profile`** *(boolean)*: Write a txt report using cProfile for profiling. Default: `false`.
+  - **`write_flashlfq`**: Write results to a FlashLFQ-compatible file. Default: `false`.
+    - **One of**
+      - *boolean*
+      - *null*
+  - **`write_report`**: Write an HTML report with various QC metrics and charts. Default: `true`.
+    - **One of**
+      - *boolean*
+      - *null*
+  - **`disable_update_check`**: Disable the automatic update check. Default: `false`.
+    - **One of**
+      - *boolean*
+      - *null*
+  - **`profile`**: Write a txt report using cProfile for profiling. Default: `false`.
+    - **One of**
+      - *boolean*
+      - *null*
 ## Definitions
 
 - <a id="definitions/feature_generator"></a>**`feature_generator`** *(object)*: Feature generator configuration. Can contain additional properties.

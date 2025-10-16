@@ -14,6 +14,7 @@ from rich.logging import RichHandler
 from rich.text import Text
 
 from ms2rescore import __version__, package_data
+from ms2rescore._version import check_for_update
 from ms2rescore.config_parser import parse_configurations
 from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
@@ -148,18 +149,24 @@ def _argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--write-report",
-        # metavar="BOOL",
         action="store_true",
+        default=None,
         dest="write_report",
-        help="boolean to enable profiling with cProfile",
+        help="boolean whether to write an HTML report (default: True)",
+    )
+    parser.add_argument(
+        "--disable-update-check",
+        action="store_true",
+        default=None,
+        dest="disable_update_check",
+        help="Disable automatic check for software updates (default: False)",
     )
     parser.add_argument(
         "--profile",
-        # metavar="BOOL",
         action="store_true",
-        # type=bool,
-        # dest="profile",
-        help="boolean to enable profiling with cProfile",
+        default=None,
+        dest="profile",
+        help="Enable profiling with cProfile",
     )
 
     return parser
@@ -227,6 +234,16 @@ def main(tims=False):
     _setup_logging(
         config["ms2rescore"]["log_level"], config["ms2rescore"]["output_path"] + ".log.txt"
     )
+
+    # Check for updates
+    if config["ms2rescore"]["disable_update_check"] is False:
+        update_info = check_for_update()
+        if update_info["update_available"]:
+            LOGGER.info(
+                f"New version of MS²Rescore available: {update_info['latest_version']} "
+                f"(you are using {update_info['current_version']})"
+            )
+            LOGGER.info(f"Download the latest version at: {update_info['html_url']}")
 
     # Run MS²Rescore
     try:

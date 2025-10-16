@@ -47,7 +47,7 @@ TEXTS = tomllib.loads(importlib.resources.read_text(templates, "texts.toml"))
 def generate_report(
     output_path_prefix: str,
     psm_list: Optional[psm_utils.PSMList] = None,
-    feature_names: Optional[Dict[str, list]] = None,
+    feature_names: Optional[Dict[str, set]] = None,
     use_txt_log: bool = False,
 ):
     """
@@ -251,11 +251,11 @@ def _get_target_decoy_context(psm_list) -> dict:
 def _get_features_context(
     psm_list: PSMList,
     files: Dict[str, Path],
-    feature_names: Optional[Dict[str, list]] = None,
+    feature_names: Optional[Dict[str, set]] = None,
 ) -> dict:
     """Return context for features tab."""
     logger.debug("Generating feature-related charts...")
-    context = {"charts": []}
+    context: dict[str, list] = {"charts": []}
 
     # Get feature names, mapping with generator, and flat list
     if not feature_names:
@@ -410,6 +410,8 @@ def _get_log_context(files: Dict[str, Path]) -> dict:
 
     if files["log"].suffix == ".txt":
         return {"log": "<pre><code>" + files["log"].read_text(encoding="utf-8") + "</code></pre>"}
+
+    return {"log": "<i>Log file format not recognized.</i>"}
 
 
 def _render_and_write(output_path_prefix: str, **context):

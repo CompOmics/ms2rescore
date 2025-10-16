@@ -4,8 +4,9 @@ from glob import glob
 from pathlib import Path
 from typing import Optional, Union
 
-from ms2rescore.exceptions import MS2RescoreConfigurationError
 from ms2rescore_rs import is_supported_file_type
+
+from ms2rescore.exceptions import MS2RescoreConfigurationError
 
 logger = logging.getLogger(__name__)
 
