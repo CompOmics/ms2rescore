@@ -61,14 +61,6 @@ jobs:
           pip install --only-binary :all: .[ionmob] pyinstaller
 
       - name: Install Inno Setup
-        uses: crazy-max/ghaction-chocolatey@v3
-        with:
-          args: install innosetup -y --allow-unofficial --force
-
-      - name: Run pyinstaller
-        run: pyinstaller ./ms2rescore.spec --clean --noconfirm
-
-      - name: Install Inno Setup
         uses: crazy-max/ghaction-chocolatey@v1
         with:
           args: install innosetup -y --allow-unofficial --force

@@ -61,6 +61,7 @@ jobs:
 
       - name: Run pyinstaller
         run: pyinstaller ./ms2rescore.spec --clean --noconfirm
+
       - name: Test built exe
         run: dist/ms2rescore/ms2rescore.exe
 
