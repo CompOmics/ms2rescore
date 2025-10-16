@@ -837,23 +837,47 @@ wheels = [
 
 [[package]]
 name = "deeplc"
-version = "3.0.8"
+version = "3.1.3"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "deeplcretrainer" },
-    { name = "h5py" },
-    { name = "hdf5plugin" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "psm-utils" },
-    { name = "pygam" },
-    { name = "scipy" },
-    { name = "tensorflow", version = "2.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
-    { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+resolution-markers = [
+    "python_full_version == '3.10.*'",
+    "python_full_version < '3.10'",
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/1f/e26f750e073d27c34f89ac31e862fc830ab3971c33522fd47658cb6d2f89/deeplc-3.0.8.tar.gz", hash = "sha256:49f579fd96d937f7c62b99044b8bf12085ccc9b6d123b93ab2c4417189106ca0", size = 33111976, upload-time = "2024-08-25T10:17:41.992Z" }
+dependencies = [
+    { name = "deeplcretrainer", marker = "python_full_version < '3.11'" },
+    { name = "numpy", marker = "python_full_version < '3.11'" },
+    { name = "pandas", marker = "python_full_version < '3.11'" },
+    { name = "psm-utils", marker = "python_full_version < '3.11'" },
+    { name = "scikit-learn", version = "1.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/df/33/bedc0ff605519653fc7add1b111742549f728382f56abbb63f70182d0278/deeplc-3.1.3.tar.gz", hash = "sha256:b6c4fa5202dcc71825cb6466f9f622bde379d0484231c71379ba6e4f10078ef7", size = 33112388, upload-time = "2024-11-22T08:19:05.206Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/72/a9736142498b9e577f1d8406920bd585f71bc3f9b30bdda6c01ea14f5c49/deeplc-3.0.8-py3-none-any.whl", hash = "sha256:c011f9339749d50ef2b9de01bc6cdf157a6f25f926b9fbc686120ee057c7b1cc", size = 33104391, upload-time = "2024-08-25T10:17:38.192Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/6f/684b94f82d1a5ee6c534d577154517f8905cd3800b5a0314b5e4c52ea5b2/deeplc-3.1.3-py3-none-any.whl", hash = "sha256:18791e3408dc4f01636eb5c9ec17575d106d8cc627ed388273ec21b23140d1c4", size = 33104941, upload-time = "2024-11-22T08:19:01.095Z" },
+]
+
+[[package]]
+name = "deeplc"
+version = "3.1.13"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
+    "python_full_version == '3.11.*'",
+]
+dependencies = [
+    { name = "deeplcretrainer", marker = "python_full_version >= '3.11'" },
+    { name = "numpy", marker = "python_full_version >= '3.11'" },
+    { name = "pandas", marker = "python_full_version >= '3.11'" },
+    { name = "psm-utils", marker = "python_full_version >= '3.11'" },
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "tensorflow", version = "2.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' and python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/0d/a715d246c9b2e14c4d7185968757168af81a302db7db3b178008bda79762/deeplc-3.1.13.tar.gz", hash = "sha256:582a221774a8470f59792f53d3495a21b368b982595ce26958686b836968da1a", size = 33094421, upload-time = "2025-09-01T12:46:26.533Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/e2/b44472b2b4b6ac5af6b790652935fea84ab4ea6493eeaea0f3100807eef7/deeplc-3.1.13-py3-none-any.whl", hash = "sha256:bbebd800fe41c4e60a78b47d7356e2ed6ee792f05eb69431a6aa1ab037830d07", size = 33087523, upload-time = "2025-09-01T12:46:23.425Z" },
 ]
 
 [[package]]
@@ -1202,22 +1226,6 @@ wheels = [
 ]
 
 [[package]]
-name = "hdf5plugin"
-version = "5.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "h5py" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/77/136d49eff653001caf08fbb43cf90b9985f2126f257dd89fc4a768f1ac9f/hdf5plugin-5.1.0.tar.gz", hash = "sha256:cf78f1426b5868128b9ec6c498b70d6734e1dc8007a8ed1e7282954ab421b3fa", size = 65674335, upload-time = "2025-03-31T09:12:25.469Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/c2/2ea8edb2b69b3aee3ba7021744f9b6ad93cd89b4bbaae4e4aac41fb75318/hdf5plugin-5.1.0-py3-none-macosx_10_13_universal2.whl", hash = "sha256:6f88bdc3ebf1d7393557d6c70811552f76f8fdd275988a7d2c904633f1a21a1d", size = 13335707, upload-time = "2025-03-31T09:12:05.785Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/66/9abd90121e29ecee137a7d31c92aea33736278a72a6d1f61009c8cc7dcc9/hdf5plugin-5.1.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0151f844e5f7de0e26cc2de275a339f6936c825fee915cbd54318e22a913c00a", size = 43842855, upload-time = "2025-03-31T09:12:09.243Z" },
-    { url = "https://files.pythonhosted.org/packages/f6/7b/5f0c587d0c0fa6e42468eb5196927be7f91d91ee781a7a654d4204fe7716/hdf5plugin-5.1.0-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:b613e16d376d3b37fd2d76893e356c402100bd68a02abbe960a98e8257ca8758", size = 46010074, upload-time = "2025-03-31T09:12:14.364Z" },
-    { url = "https://files.pythonhosted.org/packages/ba/db/8d85bd3f5b9ee894518f9d9ed1019fd8b7014340beca512dfb76d5632ec9/hdf5plugin-5.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6da81b0b168f271b0cf995a12c28cf01b381587fed21f25fd91b2c90d5108425", size = 45876035, upload-time = "2025-03-31T09:12:18.479Z" },
-    { url = "https://files.pythonhosted.org/packages/43/fb/7f85e84f35792e9ee20c557bf5fe2ac180cca73beae411a1d91898fcc4b5/hdf5plugin-5.1.0-py3-none-win_amd64.whl", hash = "sha256:6be3409554bde676db0f1ab46a27e87ea73d7974f359f354a738c812618261d1", size = 3359510, upload-time = "2025-03-31T09:12:21.988Z" },
-]
-
-[[package]]
 name = "identify"
 version = "2.6.14"
 source = { registry = "https://pypi.org/simple" }
@@ -1244,7 +1252,7 @@ resolution-markers = [
 ]
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "deeplc", marker = "python_full_version < '3.10'" },
+    { name = "deeplc", version = "3.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "numpy", marker = "python_full_version < '3.10'" },
     { name = "pandas", marker = "python_full_version < '3.10'" },
     { name = "psm-utils", marker = "python_full_version < '3.10'" },
@@ -1267,7 +1275,8 @@ resolution-markers = [
 ]
 dependencies = [
     { name = "click", version = "8.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "deeplc", marker = "python_full_version >= '3.10'" },
+    { name = "deeplc", version = "3.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "deeplc", version = "3.1.13", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "numpy", marker = "python_full_version >= '3.10'" },
     { name = "pandas", marker = "python_full_version >= '3.10'" },
     { name = "psm-utils", marker = "python_full_version >= '3.10'" },
@@ -2405,7 +2414,8 @@ dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "click", version = "8.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "customtkinter" },
-    { name = "deeplc" },
+    { name = "deeplc", version = "3.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "deeplc", version = "3.1.13", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "deeplcretrainer" },
     { name = "im2deep", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "im2deep", version = "1.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -2425,6 +2435,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+idxml = [
+    { name = "pyopenms" },
+]
 ionmob = [
     { name = "ionmob" },
     { name = "tensorflow", version = "2.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
@@ -2461,7 +2474,7 @@ requires-dist = [
     { name = "cascade-config", specifier = ">=0.4.0" },
     { name = "click", specifier = ">=7" },
     { name = "customtkinter", specifier = ">=5,<6" },
-    { name = "deeplc", specifier = ">=3.0,<3.1" },
+    { name = "deeplc", specifier = ">=3.1" },
     { name = "deeplcretrainer" },
     { name = "im2deep", specifier = ">=0.3.1" },
     { name = "ionmob", marker = "extra == 'ionmob'", specifier = ">=0.2" },
@@ -2475,12 +2488,13 @@ requires-dist = [
     { name = "pandas", specifier = ">=1" },
     { name = "plotly", specifier = ">=5" },
     { name = "psm-utils", specifier = ">=1.1" },
+    { name = "pyopenms", marker = "extra == 'idxml'", specifier = ">=3.3" },
     { name = "pyteomics", specifier = ">=4.7.2" },
     { name = "rich", specifier = ">=12" },
     { name = "tensorflow", marker = "extra == 'ionmob'" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
 ]
-provides-extras = ["ionmob"]
+provides-extras = ["ionmob", "idxml"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3194,18 +3208,6 @@ wheels = [
 ]
 
 [[package]]
-name = "progressbar2"
-version = "4.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "python-utils" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/19/24/3587e795fc590611434e4bcb9fbe0c3dddb5754ce1a20edfd86c587c0004/progressbar2-4.5.0.tar.gz", hash = "sha256:6662cb624886ed31eb94daf61e27583b5144ebc7383a17bae076f8f4f59088fb", size = 101449, upload-time = "2024-08-28T22:50:12.391Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/94/448f037fb0ffd0e8a63b625cf9f5b13494b88d15573a987be8aaa735579d/progressbar2-4.5.0-py3-none-any.whl", hash = "sha256:625c94a54e63915b3959355e6d4aacd63a00219e5f3e2b12181b76867bf6f628", size = 57132, upload-time = "2024-08-28T22:50:10.264Z" },
-]
-
-[[package]]
 name = "protobuf"
 version = "5.29.5"
 source = { registry = "https://pypi.org/simple" }
@@ -3442,20 +3444,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pygam"
-version = "0.10.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "progressbar2" },
-    { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/11/62/ef01ba5f1ad7225b47565e06dc52d46901812ce92fd6400a68ced17dd0b2/pygam-0.10.1.tar.gz", hash = "sha256:0d7c0ba235919dfadfe2347ca89c4fed5879acd428a944633959a8e0cc3e0311", size = 78244, upload-time = "2025-07-26T17:31:26.019Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/a7/751c4919d7acb68abae27929a9489d52526f791ae9e3d5e32990377cd619/pygam-0.10.1-py3-none-any.whl", hash = "sha256:9c87f644e43b9a4fa5eacddeb8a0579d35208ddf3442c23d30433b67c4f22864", size = 80202, upload-time = "2025-07-26T17:31:24.526Z" },
-]
-
-[[package]]
 name = "pygments"
 version = "2.19.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3558,18 +3546,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
-]
-
-[[package]]
-name = "python-utils"
-version = "3.9.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/13/4c/ef8b7b1046d65c1f18ca31e5235c7d6627ca2b3f389ab1d44a74d22f5cc9/python_utils-3.9.1.tar.gz", hash = "sha256:eb574b4292415eb230f094cbf50ab5ef36e3579b8f09e9f2ba74af70891449a0", size = 35403, upload-time = "2024-11-26T00:38:58.736Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/69/31c82567719b34d8f6b41077732589104883771d182a9f4ff3e71430999a/python_utils-3.9.1-py2.py3-none-any.whl", hash = "sha256:0273d7363c7ad4b70999b2791d5ba6b55333d6f7a4e4c8b6b39fb82b5fab4613", size = 32078, upload-time = "2024-11-26T00:38:57.488Z" },
 ]
 
 [[package]]

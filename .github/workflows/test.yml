@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -52,13 +52,13 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install package and dependencies
         run: |
           # Using pip to ensure proper environment discovery by PyInstaller
           python -m pip install --upgrade pip
-          pip install --only-binary :all: .[ionmob] pyinstaller
+          pip install --only-binary :all: .[ionmob,idxml] pyinstaller
 
       - name: Install Inno Setup
         uses: crazy-max/ghaction-chocolatey@v1

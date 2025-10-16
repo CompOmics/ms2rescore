@@ -35,7 +35,7 @@ dependencies = [
     "cascade-config>=0.4.0",
     "click>=7",
     "customtkinter>=5,<6",
-    "deeplc>=3.0,<3.1",
+    "deeplc>=3.1",
     "deeplcretrainer",
     "im2deep>=0.3.1",
     "jinja2>=3",
@@ -55,6 +55,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ionmob = ["ionmob>=0.2", "tensorflow"]
+idxml = ["pyopenms>=3.3"]
 
 [dependency-groups]
 dev = ["ruff", "black", "pytest>=8.4.2", "pytest-cov", "pre-commit>=4.3.0"]
