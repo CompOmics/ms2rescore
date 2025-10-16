@@ -31,7 +31,7 @@ ADD ms2rescore /ms2rescore/ms2rescore
 
 # Install the project and its dependencies using the lockfile and settings
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
+    uv sync --no-dev --all-extras
 
 # Place executables in the environment at the front of the path
 ENV PATH="/ms2rescore/.venv/bin:$PATH"

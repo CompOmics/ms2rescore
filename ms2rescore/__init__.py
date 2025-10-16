@@ -19,6 +19,14 @@ filterwarnings(
     module="psims.mzmlb",
 )
 
+# Attempt to suppress pyopenms warning about OPENMS_DATA_PATH already set
+filterwarnings(
+    "ignore",
+    message="Warning: OPENMS_DATA_PATH environment variable already exists.*",
+    category=UserWarning,
+    module="pyopenms",
+)
+
 from ms2rescore._version import get_version  # noqa: E402
 from ms2rescore.config_parser import parse_configurations  # noqa: E402
 from ms2rescore.core import rescore  # noqa: E402
