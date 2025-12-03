@@ -11,7 +11,7 @@ from typing import List, Optional
 
 import numpy as np
 from psm_utils import PSMList
-from rustyms import FragmentationModel, LinearPeptide, MassMode, RawSpectrum
+from rustyms import FragmentationModel, CompoundPeptidoformIon, MassMode, RawSpectrum
 from ms2rescore_rs import get_ms2_spectra
 
 from ms2rescore.exceptions import ParseSpectrumError
@@ -214,7 +214,7 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
             intensity_array=spectrum.intensity,
         )
         try:
-            linear_peptide = LinearPeptide(psm.peptidoform.proforma.split("/")[0])
+            linear_peptide = CompoundPeptidoformIon(psm.peptidoform.proforma.split("/")[0])
             annotated_spectrum = spectrum.annotate(
                 peptide=linear_peptide,
                 model=self.fragmentation_model,
