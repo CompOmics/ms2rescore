@@ -16,19 +16,19 @@ repos:
         args: ["--output-format", "json"]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
+    rev: v4.6.0
     hooks:
       - id: check-yaml
       - id: trailing-whitespace
       # - id: end-of-file-fixer
 
   # - repo: https://github.com/pycqa/isort
-  #   rev: 5.11.2
+  #   rev: 5.13.2
   #   hooks:
   #     - id: isort
   #       name: isort (python)
 
   - repo: https://github.com/psf/black
-    rev: 22.10.0
+    rev: 24.8.0
     hooks:
       - id: black

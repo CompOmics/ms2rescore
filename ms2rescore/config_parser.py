@@ -3,6 +3,7 @@
 import importlib.resources
 import json
 import multiprocessing as mp
+import re
 from argparse import Namespace
 from pathlib import Path
 from typing import Dict, List, Union
@@ -10,7 +11,7 @@ from typing import Dict, List, Union
 try:
     import tomllib
 except ImportError:
-    import tomli as tomllib
+    import tomli as tomllib  # type: ignore
 
 from cascade_config import CascadeConfig
 
@@ -86,6 +87,36 @@ def _validate_processes(config: Dict) -> Dict:
     return config
 
 
+def _validate_regular_expressions(config: Dict) -> Dict:
+    """Validate regular expressions in configuration."""
+    for field in [
+        "psm_id_pattern",
+        "spectrum_id_pattern",
+        "psm_id_rt_pattern",
+        "psm_id_im_pattern",
+    ]:
+        if config["ms2rescore"][field]:
+
+            # Check if valid regex
+            try:
+                pattern = re.compile(config["ms2rescore"][field])
+            except re.error as e:
+                raise MS2RescoreConfigurationError(
+                    f"Invalid regular expression provided for '{field}': {e}"
+                ) from e
+
+            # Check if regex has exactly one capturing group
+            if pattern.groups != 1:
+                raise MS2RescoreConfigurationError(
+                    f"Regular expression for '{field}' should contain exactly one "
+                    "capturing group. Please check and try again. "
+                    "See https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
+                    "for more information."
+                )
+
+    return config
+
+
 def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]) -> Dict:
     """
     Parse and validate MS²Rescore configuration files and CLI arguments.
@@ -142,6 +173,7 @@ def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]
     # Validate and infer filenames and number of parallel processes
     config = _validate_filenames(config)
     config = _validate_processes(config)
+    config = _validate_regular_expressions(config)
 
     # Convert feature_generators and rescoring_engine names to lowercase
     config["ms2rescore"]["feature_generators"] = {

@@ -1,5 +1,6 @@
 [project]
 name = "ms2rescore"
+version = "3.2.0.post1"
 description = " Modular and user-friendly platform for AI-assisted rescoring of peptide identifications."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -18,6 +19,7 @@ authors = [
     { name = "Ralf Gabriels", email = "ralf@gabriels.dev" },
     { name = "Arthur Declercq", email = "arthur.declercq@ugent.be" },
     { name = "Ana Sílvia C. Silva" },
+    { name = "Robbe Devreese" },
     { name = "Robbin Bouwmeester" },
     { name = "Louise Buur" },
 ]
@@ -29,21 +31,21 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Development Status :: 5 - Production/Stable",
 ]
-dynamic = ["version"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "cascade-config>=0.4.0",
     "click>=7",
     "customtkinter>=5,<6",
-    "deeplc>=3.0,<3.1",
+    "deeplc>=3.1",
     "deeplcretrainer",
-    "im2deep>=0.3.1",
+    "im2deep>=1.1",
     "jinja2>=3",
     "lxml>=4.5",
-    "mokapot==0.10",  # 0.11.0 will introduce API changes
+    "mokapot==0.10",                     # 0.11.0 will introduce API changes
     "ms2pip>=4.0.0",
-    "ms2rescore_rs>=0.4.0",
+    "ms2rescore_rs>=0.4",
     "numpy>=1.25",
+    "packaging>=25.0",
     "pandas>=1",
     "plotly>=5",
     "psm_utils>=1.1",
@@ -55,7 +57,10 @@ dependencies = [
 [project.optional-dependencies]
 ionmob = ["ionmob>=0.2", "tensorflow"]
 mumble = ["rustyms>=0.8.3", "mumble>=0.2.0"]
-dev = ["ruff", "black", "pytest", "pytest-cov", "pre-commit"]
+idxml = ["pyopenms>=3.3"]
+
+[dependency-groups]
+dev = ["ruff", "black", "pytest>=8.4.2", "pytest-cov", "pre-commit>=4.3.0"]
 docs = [
     "sphinx",
     "myst-parser",
@@ -67,6 +72,14 @@ docs = [
     "sphinx-argparse",
     "sphinx-autobuild",
     "toml",
+]
+installer = [
+    # Pinned dependencies for reproducible Windows installer builds
+    "pyinstaller",
+    "pyopenms==3.3",
+    "ionmob>=0.2",
+    "tensorflow",
+    "im2deep==1.1.1",
 ]
 
 [project.urls]
@@ -82,8 +95,12 @@ ms2rescore-report = "ms2rescore.report.__main__:main"
 tims2rescore = "ms2rescore.__main__:main_tims"
 
 [build-system]
-requires = ["flit_core >=3.2,<4"]
-build-backend = "flit_core.buildapi"
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "ms2rescore"
+module-root = ""
 
 [tool.isort]
 profile = "black"

@@ -21,7 +21,7 @@ class FeatureGeneratorBase(ABC):
         pass
 
     @abstractmethod
-    def add_features(psm_list: PSMList):
+    def add_features(self, psm_list: PSMList):
         pass
 
 

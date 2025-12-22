@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.express as px
 import psm_utils.io
 from jinja2 import Environment, FileSystemLoader
+from plotly.offline import get_plotlyjs_version
 from psm_utils.psm_list import PSMList
 
 try:
@@ -47,7 +48,7 @@ TEXTS = tomllib.loads(importlib.resources.read_text(templates, "texts.toml"))
 def generate_report(
     output_path_prefix: str,
     psm_list: Optional[psm_utils.PSMList] = None,
-    feature_names: Optional[Dict[str, list]] = None,
+    feature_names: Optional[Dict[str, set]] = None,
     use_txt_log: bool = False,
 ):
     """
@@ -93,6 +94,7 @@ def generate_report(
     log_context = _get_log_context(files)
 
     context = {
+        "plotlyjs_version": get_plotlyjs_version(),
         "metadata": {
             "generated_on": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "ms2rescore_version": ms2rescore.__version__,  # TODO: Write during run?
@@ -251,11 +253,11 @@ def _get_target_decoy_context(psm_list) -> dict:
 def _get_features_context(
     psm_list: PSMList,
     files: Dict[str, Path],
-    feature_names: Optional[Dict[str, list]] = None,
+    feature_names: Optional[Dict[str, set]] = None,
 ) -> dict:
     """Return context for features tab."""
     logger.debug("Generating feature-related charts...")
-    context = {"charts": []}
+    context: dict[str, list] = {"charts": []}
 
     # Get feature names, mapping with generator, and flat list
     if not feature_names:
@@ -411,13 +413,17 @@ def _get_log_context(files: Dict[str, Path]) -> dict:
     if files["log"].suffix == ".txt":
         return {"log": "<pre><code>" + files["log"].read_text(encoding="utf-8") + "</code></pre>"}
 
+    return {"log": "<i>Log file format not recognized.</i>"}
+
 
 def _render_and_write(output_path_prefix: str, **context):
     """Render template with context and write to HTML file."""
     report_path = Path(output_path_prefix + ".report.html").resolve()
     logger.info("Writing report to %s", report_path.as_posix())
-    template_dir = Path(__file__).parent / "templates"
-    env = Environment(loader=FileSystemLoader(template_dir, encoding="utf-8"))
+
+    # Use importlib.resources for PyInstaller compatibility
+    template_dir = importlib.resources.files(templates)
+    env = Environment(loader=FileSystemLoader(str(template_dir), encoding="utf-8"))
     template = env.get_template("base.html")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(template.render(**context))

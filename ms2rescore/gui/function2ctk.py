@@ -119,7 +119,7 @@ class Function2CTk(ctk.CTk):
             fn_args, fn_kwargs = self.config_frame.get()
         except Exception as e:
             self.progress_control.reset()
-            PopupWindow("Error", f"Error occurred while parsing configuration:\n{e}")
+            PopupWindow(self, "Error", f"Error occurred while parsing configuration:\n{e}")
         else:
             self.process = _Process(
                 self.function, fn_args, fn_kwargs, self.queue, self.logging_level_selection.get()
@@ -140,6 +140,7 @@ class Function2CTk(ctk.CTk):
         # Process stopped with error
         elif self.process.exception is not None or self.process.exitcode != 0:
             PopupWindow(
+                self,
                 "Error",
                 "Error occurred:\n"
                 + str(
@@ -151,7 +152,7 @@ class Function2CTk(ctk.CTk):
             )
         # Process finished successfully
         else:
-            PopupWindow("Finished", "Program finished successfully!")
+            PopupWindow(self, "Finished", "Program finished successfully!")
 
         self.progress_control.reset()
 
@@ -312,23 +313,55 @@ class _Process(multiprocessing.Process):
 
 
 class PopupWindow(ctk.CTkToplevel):
-    def __init__(self, title, txt, width=275, height=150, *args, **kwargs):
+    def __init__(
+        self,
+        master: tk.Frame,
+        title,
+        txt,
+        action_button=False,
+        width=350,
+        height=150,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
+        self._set_window_behavior(master)
 
-        x = int(int(self.winfo_screenwidth() / 2) + width)
-        y = int(int(self.winfo_screenheight() / 2) + height)
-        self.geometry(f"{width}x{height}+{x}+{y}")
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
+
         self.title(title)
 
         self.textbox = ctk.CTkTextbox(self, state="normal", wrap="word")
-        self.textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.textbox.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
         self.textbox.insert("0.0", txt)
         self.textbox.configure(state="disabled")
 
         self.close_button = ctk.CTkButton(self, text="Close", command=self.destroy)
-        self.close_button.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="sw")
+        self.close_button.grid(row=1, column=1, padx=10, pady=(0, 10), sticky="nse")
 
+        if action_button:
+            self.action_button = ctk.CTkButton(self, text="Action", command=None)
+            self.action_button.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsw")
+
+        self._center_over_master(master, width, height)
+
+    def _set_window_behavior(self, master):
+        """Set window behavior: Not resizable, transient, grab set, focus."""
+        self.resizable(False, False)
+        self.transient(master)
         self.grab_set()  # Override main window until popup is closed
         self.focus()
+
+    def _center_over_master(self, master, width, height):
+        """Center this window over the master window."""
+        self.update_idletasks()
+
+        self.minsize(width, height)
+
+        w = self.winfo_width() or self.winfo_reqwidth() or width
+        h = self.winfo_height() or self.winfo_reqheight() or height
+        px = master.winfo_rootx() + (master.winfo_width() - w) // 2
+        py = master.winfo_rooty() + (master.winfo_height() - h) // 2
+        self.geometry(f"{w}x{h}+{max(px, 0)}+{max(py, 0)}")

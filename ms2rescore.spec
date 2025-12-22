@@ -45,8 +45,16 @@ while requirements:
     checked.add(requirement)
     module_version = importlib.metadata.version(re.match(r"^[\w\-]+", requirement)[0])
     try:
-        datas_, binaries_, hidden_imports_ = collect_all(requirement, include_py_files=True)
-    except ImportError:
+        # Use filter to exclude problematic xgboost.testing module
+        filter_func = lambda name: not name.startswith("xgboost.testing") if requirement == "xgboost" else True
+        datas_, binaries_, hidden_imports_ = collect_all(
+            requirement,
+            include_py_files=True,
+            filter_submodules=filter_func
+        )
+    except (ImportError, RuntimeError) as e:
+        # Skip packages that fail to collect (e.g., xgboost.testing requires hypothesis)
+        print(f"Warning: Failed to collect {requirement}: {e}")
         continue
     datas += datas_
     hidden_imports_ = set(hidden_imports_)
@@ -59,6 +67,18 @@ while requirements:
 
 hidden_imports = sorted([h for h in hidden_imports if "tests" not in h.split(".")])
 hidden_imports = [h for h in hidden_imports if "__pycache__" not in h]
+
+# Add hdf5plugin imports to fix runtime import issues
+hidden_imports.extend([
+    "hdf5plugin.plugins.bshuf",
+    "hdf5plugin.plugins.blosc",
+    "hdf5plugin.plugins.blosc2",
+    "hdf5plugin.plugins.lz4",
+    "hdf5plugin.plugins.fcidecomp",
+    "hdf5plugin.plugins.zfp",
+    "hdf5plugin.plugins.zstd",
+])
+
 datas = [
     d
     for d in datas

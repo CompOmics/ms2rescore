@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Optional, Union
 import numpy as np
 
-from ms2rescore.exceptions import MS2RescoreConfigurationError
 from ms2rescore_rs import is_supported_file_type
 from psm_utils import PSMList
+
+from ms2rescore.exceptions import MS2RescoreConfigurationError
 
 logger = logging.getLogger(__name__)
 

@@ -150,7 +150,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
             DataFrame with PSMs.
         threshold
             Percentage of highest scoring identified target PSMs to use for calibration,
-            default 0.95.
+            default 0.25.
 
         Returns
         -------

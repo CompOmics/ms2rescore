@@ -46,11 +46,38 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
     psm_list = _remove_invalid_aa(psm_list)
     _find_decoys(psm_list, config["id_decoy_pattern"])
     _calculate_qvalues(psm_list, config["lower_score_is_better"])
+
+    # Parse retention time and/or ion mobility from spectrum_id if patterns provided
     if config["psm_id_rt_pattern"] or config["psm_id_im_pattern"]:
         logger.debug("Parsing retention time and/or ion mobility from PSM identifier...")
         _parse_values_from_spectrum_id(
             psm_list, config["psm_id_rt_pattern"], config["psm_id_im_pattern"]
         )
+
+    # Apply psm_id_pattern if provided
+    if config["psm_id_pattern"]:
+        pattern = re.compile(config["psm_id_pattern"])
+        logger.debug("Applying 'psm_id_pattern'...")
+        logger.debug(
+            f"Parsing '{psm_list[0].spectrum_id}' to '{_match_psm_ids(psm_list[0].spectrum_id, pattern)}'"
+        )
+        new_ids = [_match_psm_ids(old_id, pattern) for old_id in psm_list["spectrum_id"]]
+
+        # Validate that the number of unique IDs remains the same
+        if len(set(new_ids)) != len(set(psm_list["spectrum_id"])):
+            example_old_id = psm_list["spectrum_id"][0]
+            example_new_id = new_ids[0]
+            raise MS2RescoreConfigurationError(
+                "'psm_id_pattern' resulted in a different number of unique PSM IDs. "
+                "This might indicate issues with the regex pattern. Please check and try again. "
+                f"Example old ID: '{example_old_id}' -> new ID: '{example_new_id}'. "
+                " See "
+                "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
+                "for more information."
+            )
+
+        # Assign new IDs
+        psm_list["spectrum_id"] = new_ids
 
     # Store scoring values for comparison later
     for psm in psm_list:
@@ -63,6 +90,7 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
             }
         )
 
+    # Rename and add modifications
     logger.debug("Parsing modifications...")
     modifications_found = set(
         [
