@@ -83,6 +83,9 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
             "matched_y_ions_pct",
             "matched_ions_pct",
             "hyperscore",
+            "mean_error_top7",
+            "sq_mean_error_top7",
+            "stdev_error_top7",
         ]
 
     def add_features(self, psm_list: PSMList) -> None:
@@ -146,6 +149,47 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
 
         return max_sequence
 
+    @staticmethod
+    def _calculate_top7_peak_features(annotated_spectrum):
+        """
+        Calculate "top 7 peak"-related features using mass errors.
+        The following features are calculated:
+        - mean_error_top7: Mean of mass errors of the seven fragment ion peaks with the
+          highest intensities
+        - sq_mean_error_top7: Squared MeanErrorTop7
+        - stdev_error_top7: Standard deviation of mass errors of the seven fragment ion
+          peaks with the highest intensities
+        """
+        if not annotated_spectrum:
+            return 0.0, 0.0, 0.0
+
+        # Collect peaks with annotations (matched peaks) and their mass errors
+        peak_data = []
+        for peak in annotated_spectrum:
+            if peak.annotation:
+                for matched_ion in peak.annotation:
+                    # Calculate mass error (ppm) between observed and theoretical m/z
+                    theoretical_mz = matched_ion.mz
+                    observed_mz = peak.mz
+                    mass_error = ((observed_mz - theoretical_mz) / theoretical_mz) * 1e6
+                    peak_data.append((peak.intensity, mass_error))
+
+        if len(peak_data) == 0:
+            return 0.0, 0.0, 0.0
+
+        # Sort by intensity and get top 7
+        peak_data.sort(key=lambda x: x[0], reverse=True)
+        top7_errors = [error for _, error in peak_data[:7]]
+
+        if len(top7_errors) == 0:
+            return 0.0, 0.0, 0.0
+
+        mean_error_top7 = np.mean(top7_errors)
+        sq_mean_error_top7 = mean_error_top7**2
+        stdev_error_top7 = np.std(top7_errors) if len(top7_errors) > 1 else 0.0
+
+        return mean_error_top7, sq_mean_error_top7, stdev_error_top7
+
     def _calculate_spectrum_features(self, psm, annotated_spectrum):
 
         if not annotated_spectrum:
@@ -180,6 +224,11 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         b_ion_matched_sum = np.sum(features["b_ion_matched"])
         y_ion_matched_sum = np.sum(features["y_ion_matched"])
 
+        # Calculate top 7 peak features (MaxQuant-derived)
+        mean_error_top7, sq_mean_error_top7, stdev_error_top7 = self._calculate_top7_peak_features(
+            annotated_spectrum
+        )
+
         return {
             "ln_explained_intensity": np.log(matched_intensity_sum + pseudo_count),
             "ln_total_intensity": np.log(total_intensity_sum + pseudo_count),
@@ -200,6 +249,9 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
             "matched_y_ions_pct": sum(y_ions_matched) / len(y_ions_matched),
             "matched_ions_pct": (sum(b_ions_matched) + sum(y_ions_matched))
             / (len(b_ions_matched) + len(y_ions_matched)),
+            "mean_error_top7": mean_error_top7,
+            "sq_mean_error_top7": sq_mean_error_top7,
+            "stdev_error_top7": stdev_error_top7,
         }
 
     def _annotate_spectrum(self, psm, spectrum):
