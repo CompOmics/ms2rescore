@@ -8,23 +8,22 @@ acid residues in the peptide. See
 
 """
 
-import contextlib
 import logging
 import os
 from inspect import getfullargspec
-from itertools import chain
 from typing import List
 
 import numpy as np
 import pandas as pd
 from im2deep.utils import im2ccs
-from im2deep.im2deep import predict_ccs
-from psm_utils import PSMList
+from im2deep.im2deep import predict_ccs, REFERENCE_DATASET_PATH
+from im2deep.calibrate import calculate_ccs_shift
+from psm_utils import PSMList, Peptidoform
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 logger = logging.getLogger(__name__)
 
 
@@ -75,69 +74,77 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         """Add IM2Deep-derived features to PSMs"""
         logger.info("Adding IM2Deep-derived features to PSMs")
 
-        # Get easy-access nested version of PSMlist
-        psm_dict = psm_list.get_psm_dict()
+        # Convert ion mobility to CCS
+        psm_list_df = psm_list.to_dataframe()
+        # Remove unnecessary columns to save memory #TODO: optimize further?
+        psm_list_df = psm_list_df[
+            [
+                "peptidoform",
+                "ion_mobility",
+                "precursor_mz",
+                "run",
+                "qvalue",
+                "is_decoy",
+                "metadata",
+            ]
+        ]
 
-        # Run IM2Deep for each spectrum file
-        current_run = 1
-        total_runs = sum(len(runs) for runs in psm_dict.values())
+        psm_list_df["charge"] = [pep.precursor_charge for pep in psm_list_df["peptidoform"]]
+        psm_list_df["sequence"] = psm_list_df["peptidoform"].apply(
+            lambda x: x.proforma.split("/")[0]
+        )
+        psm_list_df["ccs_observed"] = im2ccs(
+            psm_list_df["ion_mobility"],
+            psm_list_df["precursor_mz"],
+            psm_list_df["charge"],
+        )
 
-        for runs in psm_dict.values():
-            # Reset IM2Deep predictor for each collection of runs
-            for run, psms in runs.items():
-                logger.info(
-                    f"Running IM2Deep for PSMs from run ({current_run}/{total_runs}): `{run}`..."
-                )
+        # Make predictions with IM2Deep
+        logger.debug("Predicting CCS values...")
+        predictions = predict_ccs(psm_list, write_output=False, **self.im2deep_kwargs)
+        psm_list_df["ccs_predicted"] = predictions
 
-                # Disable wild logging to stdout by TensorFlow, unless in debug mode
-                with (
-                    contextlib.redirect_stdout(open(os.devnull, "w", encoding="utf-8"))
-                    if not self._verbose
-                    else contextlib.nullcontext()
-                ):
-                    # Make new PSM list for this run (chain PSMs per spectrum to flat list)
-                    psm_list_run = PSMList(psm_list=list(chain.from_iterable(psms.values())))
+        # Create dataframe with high confidence hits for calibration
+        logger.debug("Calibrating IM2Deep...")
+        reference_dataset = pd.read_csv(REFERENCE_DATASET_PATH)
+        reference_dataset["charge"] = reference_dataset["peptidoform"].apply(
+            lambda x: int(x.split("/")[1]) if isinstance(x, str) else x.precursor_charge
+        )
+        logger.debug(f"Loaded reference dataset with {len(reference_dataset)} entries")
 
-                    logger.debug("Calibrating IM2Deep...")
+        run_shift_dict = {}
+        for run in psm_list_df["run"].unique():
+            cal_run_psm_df = self.make_calibration_df(psm_list_df[psm_list_df["run"] == run])
+            # Extract sequence from peptidoform for calculate_ccs_shift
+            shift = calculate_ccs_shift(
+                cal_df=cal_run_psm_df, reference_dataset=reference_dataset, per_charge=True
+            )
+            run_shift_dict[run] = shift
+        shift_df = pd.DataFrame.from_dict(run_shift_dict, orient="index").stack().reset_index()
+        shift_df.columns = ["run", "charge", "ccs_shift"]
 
-                    # Convert ion mobility to CCS and calibrate CCS values
-                    psm_list_run_df = psm_list_run.to_dataframe()
-                    psm_list_run_df["charge"] = [
-                        pep.precursor_charge for pep in psm_list_run_df["peptidoform"]
-                    ]
-                    psm_list_run_df["ccs_observed"] = im2ccs(
-                        psm_list_run_df["ion_mobility"],
-                        psm_list_run_df["precursor_mz"],
-                        psm_list_run_df["charge"],
-                    )
+        # Apply calibration shifts
+        psm_list_df = psm_list_df.merge(shift_df, on=["run", "charge"], how="left")
+        psm_list_df["ccs_shift"] = psm_list_df["ccs_shift"].fillna(
+            0
+        )  # Fill missing shifts with 0 (no calibration for that run/charge) #TODO check with ROBBE
+        psm_list_df["ccs_predicted_im2deep"] = (
+            psm_list_df["ccs_predicted"] + psm_list_df["ccs_shift"]
+        )
+        psm_list_df.rename(columns={"ccs_predicted": "ccs_predicted_im2deep"}, inplace=True)
+        psm_list_df["ccs_error_im2deep"] = (
+            psm_list_df["ccs_predicted_im2deep"] - psm_list_df["ccs_observed"]
+        )
+        psm_list_df["abs_ccs_error_im2deep"] = np.abs(psm_list_df["ccs_error_im2deep"])
+        psm_list_df["perc_ccs_error_im2deep"] = (
+            np.abs(psm_list_df["ccs_error_im2deep"]) / psm_list_df["ccs_observed"] * 100
+        )
 
-                    # Create dataframe with high confidence hits for calibration
-                    cal_psm_df = self.make_calibration_df(psm_list_run_df)
-
-                    # Make predictions with IM2Deep
-                    logger.debug("Predicting CCS values...")
-                    predictions = predict_ccs(
-                        psm_list_run, cal_psm_df, write_output=False, **self.im2deep_kwargs
-                    )
-
-                    # Add features to PSMs
-                    logger.debug("Adding features to PSMs...")
-                    observations = psm_list_run_df["ccs_observed"]
-                    ccs_diffs_run = np.abs(predictions - observations)
-                    for i, psm in enumerate(psm_list_run):
-                        psm["rescoring_features"].update(
-                            {
-                                "ccs_observed_im2deep": observations[i],
-                                "ccs_predicted_im2deep": predictions[i],
-                                "ccs_error_im2deep": ccs_diffs_run[i],
-                                "abs_ccs_error_im2deep": np.abs(ccs_diffs_run[i]),
-                                "perc_ccs_error_im2deep": np.abs(ccs_diffs_run[i])
-                                / observations[i]
-                                * 100,
-                            }
-                        )
-
-                current_run += 1
+        psm_list_feature_dicts = psm_list_df[self.feature_names].to_dict(orient="records")
+        # Add features to PSMs
+        logger.debug("Adding features to PSMs...")
+        for psm, features in zip(psm_list, psm_list_feature_dicts):
+            psm.rescoring_features.update(features)
 
     @staticmethod
     def make_calibration_df(psm_list_df: pd.DataFrame, threshold: float = 0.25) -> pd.DataFrame:
@@ -167,6 +174,10 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         calibration_psms = identified_psms[
             identified_psms["qvalue"] < identified_psms["qvalue"].quantile(1 - threshold)
         ]
+        if isinstance(calibration_psms["peptidoform"].iloc[0], Peptidoform):
+            calibration_psms["peptidoform"] = calibration_psms["peptidoform"].apply(
+                lambda x: x.proforma
+            )
         logger.debug(
             f"Number of high confidence hits for calculating shift: {len(calibration_psms)}"
         )
