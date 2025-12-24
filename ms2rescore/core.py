@@ -121,8 +121,6 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     if "mumble" in config["psm_generator"]:
         # Remove PSMs where matched_ions_pct drops 25% below the original hit
         psm_list = filter_mumble_psms(psm_list, threshold=0.75)
-        # Currently replace the score with the hyperscore for Mumble
-        # psm_list["score"] = [ft["hyperscore"] for ft in psm_list["rescoring_features"]] # TODO: This is a temporary fix
 
     # Write feature names to file
     _write_feature_names(feature_names, output_file_root)
