@@ -25,22 +25,20 @@ If you use MS²PIP through MS²Rescore, please cite:
 
 import logging
 import multiprocessing
-import os
 import warnings
-from itertools import chain
 from typing import List, Optional, Union
 
 import numpy as np
 import pandas as pd
-from ms2pip import correlate
+from ms2pip import process_MS2_spectra
 from ms2pip.exceptions import NoMatchingSpectraFound
 from ms2pip.result import ProcessingResult
+
 from psm_utils import PSMList
 from rich.progress import track
 
-from ms2rescore.feature_generators.base import FeatureGeneratorBase, FeatureGeneratorException
+from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
-from ms2rescore.utils import infer_spectrum_path
 
 logger = logging.getLogger(__name__)
 
@@ -182,40 +180,14 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
 
         """
         logger.info("Adding MS²PIP-derived features to PSMs.")
-        psm_dict = psm_list.get_psm_dict()
-        current_run = 1
-        total_runs = sum(len(runs) for runs in psm_dict.values())
-
-        for runs in psm_dict.values():
-            for run, psms in runs.items():
-                logger.info(
-                    f"Running MS²PIP for PSMs from run ({current_run}/{total_runs}) `{run}`..."
-                )
-                psm_list_run = PSMList(psm_list=list(chain.from_iterable(psms.values())))
-                spectrum_filename = infer_spectrum_path(self.spectrum_path, run)
-                logger.debug(f"Using spectrum file `{spectrum_filename}`")
-                try:
-                    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
-                    ms2pip_results = correlate(
-                        psms=psm_list_run,
-                        spectrum_file=str(spectrum_filename),
-                        spectrum_id_pattern=self.spectrum_id_pattern,
-                        model=self.model,
-                        ms2_tolerance=self.ms2_tolerance,
-                        compute_correlations=False,
-                        model_dir=self.model_dir,
-                        processes=self.processes,
-                    )
-                except NoMatchingSpectraFound as e:
-                    raise FeatureGeneratorException(
-                        f"Could not find any matching spectra for PSMs from run `{run}`. "
-                        "Please check that the `spectrum_id_pattern` and `psm_id_pattern` "
-                        "options are configured correctly. See "
-                        "https://ms2rescore.readthedocs.io/en/latest/userguide/configuration/#mapping-psms-to-spectra"
-                        " for more information."
-                    ) from e
-                self._calculate_features(psm_list_run, ms2pip_results)
-                current_run += 1
+        # temporarily remove spectrum from psm_utils before multiprocessing
+        ms2pip_results = process_MS2_spectra(
+            psms=psm_list,
+            model=self.model,
+            model_dir=self.model_dir,
+            processes=self.processes,
+        )
+        self._calculate_features(psm_list, ms2pip_results)
 
     def _calculate_features(
         self, psm_list: PSMList, ms2pip_results: List[ProcessingResult]
