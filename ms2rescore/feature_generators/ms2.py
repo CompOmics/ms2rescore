@@ -6,17 +6,13 @@ MS2-based feature generator.
 import logging
 import re
 from collections import defaultdict
-from itertools import chain
 from typing import List, Optional
 
 import numpy as np
 from psm_utils import PSMList
-from rustyms import FragmentationModel, CompoundPeptidoformIon, MassMode, RawSpectrum
-from ms2rescore_rs import get_ms2_spectra
+from rustyms import FragmentationModel, LinearPeptide, MassMode, RawSpectrum
 
-from ms2rescore.exceptions import ParseSpectrumError
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
-from ms2rescore.utils import infer_spectrum_path
 
 logger = logging.getLogger(__name__)
 
@@ -83,49 +79,17 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
             "matched_y_ions_pct",
             "matched_ions_pct",
             "hyperscore",
-            "mean_error_top7",
-            "sq_mean_error_top7",
-            "stdev_error_top7",
+            # "mean_error_top7",
+            # "sq_mean_error_top7",
+            # "stdev_error_top7",
         ]
 
     def add_features(self, psm_list: PSMList) -> None:
         """Add MS2-derived features to PSMs."""
 
         logger.info("Adding MS2-derived features to PSMs.")
-        psm_dict = psm_list.get_psm_dict()
-        current_run = 1
-        total_runs = sum(len(runs) for runs in psm_dict.values())
-
-        for runs in psm_dict.values():
-            for run, psms in runs.items():
-                logger.info(
-                    f"Running MS2 for PSMs from run ({current_run}/{total_runs}) `{run}`..."
-                )
-                psm_list_run = PSMList(psm_list=list(chain.from_iterable(psms.values())))
-                spectrum_filename = infer_spectrum_path(self.spectrum_path, run)
-
-                self._calculate_features(psm_list_run, spectrum_filename)
-                current_run += 1
-
-    def _calculate_features(self, psm_list: PSMList, spectrum_file: str) -> List:
-        """Retrieve annotated spectra for all psms."""
-
-        spectra = get_ms2_spectra(str(spectrum_file))
-        spectrum_id_pattern = re.compile(
-            self.spectrum_id_pattern if self.spectrum_id_pattern else r"(.*)"
-        )
-        try:
-            spectra_dict = {
-                spectrum_id_pattern.search(spectrum.identifier).group(1): spectrum
-                for spectrum in spectra
-            }
-        except AttributeError:
-            raise ParseSpectrumError(
-                "Could not parse spectrum IDs using ´spectrum_id_pattern´. Please make sure that there is a capturing in the pattern."
-            )
-
         for psm in psm_list:
-            annotated_spectrum = self._annotate_spectrum(psm, spectra_dict[psm.spectrum_id])
+            annotated_spectrum = self._annotate_spectrum(psm)
             psm.rescoring_features.update(
                 self._calculate_spectrum_features(psm, annotated_spectrum)
             )
@@ -149,46 +113,46 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
 
         return max_sequence
 
-    @staticmethod
-    def _calculate_top7_peak_features(annotated_spectrum):
-        """
-        Calculate "top 7 peak"-related features using mass errors.
-        The following features are calculated:
-        - mean_error_top7: Mean of mass errors of the seven fragment ion peaks with the
-          highest intensities
-        - sq_mean_error_top7: Squared MeanErrorTop7
-        - stdev_error_top7: Standard deviation of mass errors of the seven fragment ion
-          peaks with the highest intensities
-        """
-        if not annotated_spectrum:
-            return 0.0, 0.0, 0.0
+    # @staticmethod
+    # def _calculate_top7_peak_features(annotated_spectrum):
+    #     """
+    #     Calculate "top 7 peak"-related features using mass errors.
+    #     The following features are calculated:
+    #     - mean_error_top7: Mean of mass errors of the seven fragment ion peaks with the
+    #       highest intensities
+    #     - sq_mean_error_top7: Squared MeanErrorTop7
+    #     - stdev_error_top7: Standard deviation of mass errors of the seven fragment ion
+    #       peaks with the highest intensities
+    #     """
+    #     if not annotated_spectrum:
+    #         return 0.0, 0.0, 0.0
 
-        # Collect peaks with annotations (matched peaks) and their mass errors
-        peak_data = []
-        for peak in annotated_spectrum:
-            if peak.annotation:
-                for matched_ion in peak.annotation:
-                    # Calculate mass error (ppm) between observed and theoretical m/z
-                    theoretical_mz = matched_ion.mz
-                    observed_mz = peak.mz
-                    mass_error = ((observed_mz - theoretical_mz) / theoretical_mz) * 1e6
-                    peak_data.append((peak.intensity, mass_error))
+    #     # Collect peaks with annotations (matched peaks) and their mass errors
+    #     peak_data = []
+    #     for peak in annotated_spectrum:
+    #         if peak.annotation:
+    #             for matched_ion in peak.annotation:
+    #                 # Calculate mass error (ppm) between observed and theoretical m/z
+    #                 theoretical_mz = matched_ion.mz
+    #                 observed_mz = peak.mz
+    #                 mass_error = ((observed_mz - theoretical_mz) / theoretical_mz) * 1e6
+    #                 peak_data.append((peak.intensity, mass_error))
 
-        if len(peak_data) == 0:
-            return 0.0, 0.0, 0.0
+    #     if len(peak_data) == 0:
+    #         return 0.0, 0.0, 0.0
 
-        # Sort by intensity and get top 7
-        peak_data.sort(key=lambda x: x[0], reverse=True)
-        top7_errors = [error for _, error in peak_data[:7]]
+    #     # Sort by intensity and get top 7
+    #     peak_data.sort(key=lambda x: x[0], reverse=True)
+    #     top7_errors = [error for _, error in peak_data[:7]]
 
-        if len(top7_errors) == 0:
-            return 0.0, 0.0, 0.0
+    #     if len(top7_errors) == 0:
+    #         return 0.0, 0.0, 0.0
 
-        mean_error_top7 = np.mean(top7_errors)
-        sq_mean_error_top7 = mean_error_top7**2
-        stdev_error_top7 = np.std(top7_errors) if len(top7_errors) > 1 else 0.0
+    #     mean_error_top7 = np.mean(top7_errors)
+    #     sq_mean_error_top7 = mean_error_top7**2
+    #     stdev_error_top7 = np.std(top7_errors) if len(top7_errors) > 1 else 0.0
 
-        return mean_error_top7, sq_mean_error_top7, stdev_error_top7
+    #     return mean_error_top7, sq_mean_error_top7, stdev_error_top7
 
     def _calculate_spectrum_features(self, psm, annotated_spectrum):
 
@@ -225,9 +189,9 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         y_ion_matched_sum = np.sum(features["y_ion_matched"])
 
         # Calculate top 7 peak features (MaxQuant-derived)
-        mean_error_top7, sq_mean_error_top7, stdev_error_top7 = self._calculate_top7_peak_features(
-            annotated_spectrum
-        )
+        # mean_error_top7, sq_mean_error_top7, stdev_error_top7 = self._calculate_top7_peak_features(
+        #     annotated_spectrum
+        # )
 
         return {
             "ln_explained_intensity": np.log(matched_intensity_sum + pseudo_count),
@@ -249,24 +213,24 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
             "matched_y_ions_pct": sum(y_ions_matched) / len(y_ions_matched),
             "matched_ions_pct": (sum(b_ions_matched) + sum(y_ions_matched))
             / (len(b_ions_matched) + len(y_ions_matched)),
-            "mean_error_top7": mean_error_top7,
-            "sq_mean_error_top7": sq_mean_error_top7,
-            "stdev_error_top7": stdev_error_top7,
+            # "mean_error_top7": mean_error_top7,
+            # "sq_mean_error_top7": sq_mean_error_top7,
+            # "stdev_error_top7": stdev_error_top7,
         }
 
-    def _annotate_spectrum(self, psm, spectrum):
+    def _annotate_spectrum(self, psm):
 
         spectrum = RawSpectrum(
             title=psm.spectrum_id,
             num_scans=1,
             rt=psm.retention_time,
             precursor_charge=psm.get_precursor_charge(),
-            precursor_mass=spectrum.precursor.mz,
-            mz_array=spectrum.mz,
-            intensity_array=spectrum.intensity,
+            precursor_mass=psm.spectrum.precursor.mz,
+            mz_array=psm.spectrum.mz,
+            intensity_array=psm.spectrum.intensity,
         )
         try:
-            linear_peptide = CompoundPeptidoformIon(psm.peptidoform.proforma.split("/")[0])
+            linear_peptide = LinearPeptide(psm.peptidoform.proforma.split("/")[0])
             annotated_spectrum = spectrum.annotate(
                 peptide=linear_peptide,
                 model=self.fragmentation_model,
