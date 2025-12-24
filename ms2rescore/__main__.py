@@ -6,6 +6,7 @@ import importlib.resources
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Union
 
@@ -196,7 +197,13 @@ def profile(fnc, filepath):
     def inner(*args, **kwargs):
         with cProfile.Profile() as profiler:
             return_value = fnc(*args, **kwargs)
-        profiler.dump_stats(filepath + ".profile.prof")
+
+        # Add timestamp to profiler output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        profile_filename = f"{filepath}.profile_{timestamp}.prof"
+        profiler.dump_stats(profile_filename)
+        LOGGER.info(f"Profile data written to: {profile_filename}")
+
         return return_value
 
     return inner
@@ -248,6 +255,7 @@ def main(tims=False):
     # Run MS²Rescore
     try:
         if config["ms2rescore"]["profile"]:
+            LOGGER.info("Profiling enabled")
             profiled_rescore = profile(rescore, config["ms2rescore"]["output_path"])
             profiled_rescore(configuration=config)
         else:
