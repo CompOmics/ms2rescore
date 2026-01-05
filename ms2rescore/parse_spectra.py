@@ -180,12 +180,13 @@ def _acquire_observed_spectra_dict(
     """Apply spectrum ID pattern to precursor IDs."""
     # Map precursor IDs using regex pattern
     compiled_pattern = re.compile(pattern)
+    spectrum_ids_set = set(spectrum_ids)  # For faster lookup
 
     ms2_observed_spectra_mapping = {
         match.group(1): ms2_spectrum
         for ms2_spectrum in ms2
         if (match := compiled_pattern.search(str(ms2_spectrum.identifier))) is not None
-        and match.group(1) in spectrum_ids
+        and match.group(1) in spectrum_ids_set
     }
 
     # Validate that any IDs were matched
