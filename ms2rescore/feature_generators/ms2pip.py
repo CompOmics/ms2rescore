@@ -194,13 +194,16 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
     ) -> None:
         """Calculate features from all MS²PIP results and add to PSMs."""
         logger.debug("Calculating features from predicted spectra")
-        with multiprocessing.Pool(int(self.processes)) as pool:
+        # Use spawn context to avoid fork memory duplication issues
+        # maxtasksperchild recycles workers to free accumulated memory
+        ctx = multiprocessing.get_context("spawn")
+        with ctx.Pool(int(self.processes), maxtasksperchild=500) as pool:
             # Use imap, so we can use a progress bar
             counts_failed = 0
             for result, features in zip(
                 ms2pip_results,
                 track(
-                    pool.imap(self._calculate_features_single, ms2pip_results, chunksize=1000),
+                    pool.imap(self._calculate_features_single, ms2pip_results, chunksize=250),
                     total=len(ms2pip_results),
                     description="Calculating features...",
                     transient=True,
