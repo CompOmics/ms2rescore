@@ -90,10 +90,8 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         ]
 
         psm_list_df["charge"] = [pep.precursor_charge for pep in psm_list_df["peptidoform"]]
-        psm_list_df["sequence"] = psm_list_df["peptidoform"].apply(
-            lambda x: x.proforma.split("/")[0]
-        )
-        psm_list_df["ccs_observed"] = im2ccs(
+        psm_list_df["sequence"] = psm_list_df["peptidoform"].apply(lambda x: x.proforma)
+        psm_list_df["ccs_observed_im2deep"] = im2ccs(
             psm_list_df["ion_mobility"],
             psm_list_df["precursor_mz"],
             psm_list_df["charge"],
@@ -115,7 +113,10 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         run_shift_dict = {}
         for run in psm_list_df["run"].unique():
             cal_run_psm_df = self.make_calibration_df(psm_list_df[psm_list_df["run"] == run])
-            # Extract sequence from peptidoform for calculate_ccs_shift
+            # Rename for calculate_ccs_shift compatibility
+            cal_run_psm_df = cal_run_psm_df.rename(
+                columns={"ccs_observed_im2deep": "ccs_observed"}
+            )
             shift = calculate_ccs_shift(
                 cal_df=cal_run_psm_df, reference_dataset=reference_dataset, per_charge=True
             )
@@ -131,13 +132,12 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         psm_list_df["ccs_predicted_im2deep"] = (
             psm_list_df["ccs_predicted"] + psm_list_df["ccs_shift"]
         )
-        psm_list_df.rename(columns={"ccs_predicted": "ccs_predicted_im2deep"}, inplace=True)
         psm_list_df["ccs_error_im2deep"] = (
-            psm_list_df["ccs_predicted_im2deep"] - psm_list_df["ccs_observed"]
+            psm_list_df["ccs_predicted_im2deep"] - psm_list_df["ccs_observed_im2deep"]
         )
         psm_list_df["abs_ccs_error_im2deep"] = np.abs(psm_list_df["ccs_error_im2deep"])
         psm_list_df["perc_ccs_error_im2deep"] = (
-            np.abs(psm_list_df["ccs_error_im2deep"]) / psm_list_df["ccs_observed"] * 100
+            np.abs(psm_list_df["ccs_error_im2deep"]) / psm_list_df["ccs_observed_im2deep"] * 100
         )
 
         psm_list_feature_dicts = psm_list_df[self.feature_names].to_dict(orient="records")
