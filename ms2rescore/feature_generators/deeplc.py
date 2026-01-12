@@ -23,7 +23,6 @@ from psm_utils import PSMList
 from deeplc.core import predict, finetune
 from deeplc.calibration import SplineTransformerCalibration
 
-
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
 
@@ -157,12 +156,13 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
             )
 
         # Predict retention times for all PSMs
-        logger.debug("Predicting retention times with DeepLC...")
+        logger.info("Predicting retention times with DeepLC...")
         psm_list_df["predicted_retention_time"] = predict(
             psm_list, model=self.model, predict_kwargs=self.predict_kwargs
         )
 
         # Calibrate predictions per run
+        logger.info("Calibrating predicted retention times per run...")
         for run in psm_list_df["run"].unique():
             run_df = psm_list_df[psm_list_df["run"] == run].copy()
 
@@ -228,6 +228,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         """
         # Filter to target PSMs only
         target_df = run_df[~run_df["is_decoy"]].copy()
+        target_df = target_df.sort_values("qvalue", ascending=True)
 
         # Determine number of calibration PSMs
         if isinstance(self.calibration_set_size, float):
