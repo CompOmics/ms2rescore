@@ -3,12 +3,11 @@
 import logging
 import re
 from enum import Enum
-from itertools import chain
-from typing import Optional, Set, Tuple
+from typing import Optional, Set
 
 import numpy as np
 from ms2rescore_rs import Precursor, get_ms2_spectra, MS2Spectrum
-from ms2pip.spectrum import ObservedSpectrum
+
 from psm_utils import PSMList
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError, MS2RescoreError
