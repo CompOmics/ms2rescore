@@ -24,18 +24,13 @@ If you use MS²PIP through MS²Rescore, please cite:
 """
 
 import logging
-import multiprocessing
-import warnings
 from typing import List, Optional, Union
-
 import numpy as np
-import pandas as pd
+
 from ms2pip import process_MS2_spectra
-from ms2pip.exceptions import NoMatchingSpectraFound
-from ms2pip.result import ProcessingResult
+from ms2rescore_rs import batch_ms2pip_features_numpy
 
 from psm_utils import PSMList
-from rich.progress import track
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
@@ -180,7 +175,6 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
 
         """
         logger.info("Adding MS²PIP-derived features to PSMs.")
-        # temporarily remove spectrum from psm_utils before multiprocessing
         ms2pip_results = process_MS2_spectra(
             psms=psm_list,
             model=self.model,
@@ -189,181 +183,29 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
         )
         self._calculate_features(psm_list, ms2pip_results)
 
-    def _calculate_features(
-        self, psm_list: PSMList, ms2pip_results: List[ProcessingResult]
-    ) -> None:
-        """Calculate features from all MS²PIP results and add to PSMs."""
-        logger.debug("Calculating features from predicted spectra")
-        # Use spawn context to avoid fork memory duplication issues
-        # maxtasksperchild recycles workers to free accumulated memory
-        ctx = multiprocessing.get_context("spawn")
-        with ctx.Pool(int(self.processes), maxtasksperchild=500) as pool:
-            # Use imap, so we can use a progress bar
-            counts_failed = 0
-            for result, features in zip(
-                ms2pip_results,
-                track(
-                    pool.imap(self._calculate_features_single, ms2pip_results, chunksize=250),
-                    total=len(ms2pip_results),
-                    description="Calculating features...",
-                    transient=True,
-                ),
-            ):
-                if features:
-                    # Cannot use result.psm directly, as it is a copy from MS²PIP multiprocessing
-                    try:
-                        psm_list[result.psm_index]["rescoring_features"].update(features)
-                    except (AttributeError, TypeError):
-                        psm_list[result.psm_index]["rescoring_features"] = features
-                else:
-                    counts_failed += 1
+    def _calculate_features(self, psm_list, ms2pip_results):
+        idx = []
+        pred_b = []
+        pred_y = []
+        obs_b  = []
+        obs_y  = []
 
-        if counts_failed > 0:
-            logger.warning(f"Failed to calculate features for {counts_failed} PSMs")
-
-    def _calculate_features_single(self, processing_result: ProcessingResult) -> Union[dict, None]:
-        """Calculate MS²PIP-based features for single PSM."""
-        if (
-            processing_result.observed_intensity is None
-            or processing_result.predicted_intensity is None
-        ):
-            return None
-
-        # Suppress RuntimeWarnings about invalid values
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-
-            # Convert intensities to arrays
-            target_b = processing_result.predicted_intensity["b"].clip(np.log2(0.001))
-            target_y = processing_result.predicted_intensity["y"].clip(np.log2(0.001))
-            target_all = np.concatenate([target_b, target_y])
-            prediction_b = processing_result.observed_intensity["b"].clip(np.log2(0.001))
-            prediction_y = processing_result.observed_intensity["y"].clip(np.log2(0.001))
-            prediction_all = np.concatenate([prediction_b, prediction_y])
-
-            # Prepare 'unlogged' intensity arrays
-            target_b_unlog = 2**target_b - 0.001
-            target_y_unlog = 2**target_y - 0.001
-            target_all_unlog = 2**target_all - 0.001
-            prediction_b_unlog = 2**prediction_b - 0.001
-            prediction_y_unlog = 2**prediction_y - 0.001
-            prediction_all_unlog = 2**prediction_all - 0.001
-
-            # Calculate absolute differences
-            abs_diff_b = np.abs(target_b - prediction_b)
-            abs_diff_y = np.abs(target_y - prediction_y)
-            abs_diff_all = np.abs(target_all - prediction_all)
-            abs_diff_b_unlog = np.abs(target_b_unlog - prediction_b_unlog)
-            abs_diff_y_unlog = np.abs(target_y_unlog - prediction_y_unlog)
-            abs_diff_all_unlog = np.abs(target_all_unlog - prediction_all_unlog)
-
-            # Compute features
-            feature_values = [
-                # Features between spectra in log space
-                np.corrcoef(target_all, prediction_all)[0][1],  # Pearson all ions
-                np.corrcoef(target_b, prediction_b)[0][1],  # Pearson b ions
-                np.corrcoef(target_y, prediction_y)[0][1],  # Pearson y ions
-                _mse(target_all, prediction_all),  # MSE all ions
-                _mse(target_b, prediction_b),  # MSE b ions
-                _mse(target_y, prediction_y),  # MSE y ions
-                np.min(abs_diff_all),  # min_abs_diff_norm
-                np.max(abs_diff_all),  # max_abs_diff_norm
-                np.quantile(abs_diff_all, 0.25),  # abs_diff_Q1_norm
-                np.quantile(abs_diff_all, 0.5),  # abs_diff_Q2_norm
-                np.quantile(abs_diff_all, 0.75),  # abs_diff_Q3_norm
-                np.mean(abs_diff_all),  # mean_abs_diff_norm
-                np.std(abs_diff_all),  # std_abs_diff_norm
-                np.min(abs_diff_b),  # ionb_min_abs_diff_norm
-                np.max(abs_diff_b),  # ionb_max_abs_diff_norm
-                np.quantile(abs_diff_b, 0.25),  # ionb_abs_diff_Q1_norm
-                np.quantile(abs_diff_b, 0.5),  # ionb_abs_diff_Q2_norm
-                np.quantile(abs_diff_b, 0.75),  # ionb_abs_diff_Q3_norm
-                np.mean(abs_diff_b),  # ionb_mean_abs_diff_norm
-                np.std(abs_diff_b),  # ionb_std_abs_diff_norm
-                np.min(abs_diff_y),  # iony_min_abs_diff_norm
-                np.max(abs_diff_y),  # iony_max_abs_diff_norm
-                np.quantile(abs_diff_y, 0.25),  # iony_abs_diff_Q1_norm
-                np.quantile(abs_diff_y, 0.5),  # iony_abs_diff_Q2_norm
-                np.quantile(abs_diff_y, 0.75),  # iony_abs_diff_Q3_norm
-                np.mean(abs_diff_y),  # iony_mean_abs_diff_norm
-                np.std(abs_diff_y),  # iony_std_abs_diff_norm
-                np.dot(target_all, prediction_all),  # Dot product all ions
-                np.dot(target_b, prediction_b),  # Dot product b ions
-                np.dot(target_y, prediction_y),  # Dot product y ions
-                _cosine_similarity(target_all, prediction_all),  # Cos similarity all ions
-                _cosine_similarity(target_b, prediction_b),  # Cos similarity b ions
-                _cosine_similarity(target_y, prediction_y),  # Cos similarity y ions
-                # Same features in normal space
-                np.corrcoef(target_all_unlog, prediction_all_unlog)[0][1],  # Pearson all
-                np.corrcoef(target_b_unlog, prediction_b_unlog)[0][1],  # Pearson b
-                np.corrcoef(target_y_unlog, prediction_y_unlog)[0][1],  # Pearson y
-                _spearman(target_all_unlog, prediction_all_unlog),  # Spearman all ions
-                _spearman(target_b_unlog, prediction_b_unlog),  # Spearman b ions
-                _spearman(target_y_unlog, prediction_y_unlog),  # Spearman y ions
-                _mse(target_all_unlog, prediction_all_unlog),  # MSE all ions
-                _mse(target_b_unlog, prediction_b_unlog),  # MSE b ions
-                _mse(target_y_unlog, prediction_y_unlog),  # MSE y ions,
-                # Ion type with min absolute difference
-                0 if np.min(abs_diff_b_unlog) <= np.min(abs_diff_y_unlog) else 1,
-                # Ion type with max absolute difference
-                0 if np.max(abs_diff_b_unlog) >= np.max(abs_diff_y_unlog) else 1,
-                np.min(abs_diff_all_unlog),  # min_abs_diff
-                np.max(abs_diff_all_unlog),  # max_abs_diff
-                np.quantile(abs_diff_all_unlog, 0.25),  # abs_diff_Q1
-                np.quantile(abs_diff_all_unlog, 0.5),  # abs_diff_Q2
-                np.quantile(abs_diff_all_unlog, 0.75),  # abs_diff_Q3
-                np.mean(abs_diff_all_unlog),  # mean_abs_diff
-                np.std(abs_diff_all_unlog),  # std_abs_diff
-                np.min(abs_diff_b_unlog),  # ionb_min_abs_diff
-                np.max(abs_diff_b_unlog),  # ionb_max_abs_diff_norm
-                np.quantile(abs_diff_b_unlog, 0.25),  # ionb_abs_diff_Q1
-                np.quantile(abs_diff_b_unlog, 0.5),  # ionb_abs_diff_Q2
-                np.quantile(abs_diff_b_unlog, 0.75),  # ionb_abs_diff_Q3
-                np.mean(abs_diff_b_unlog),  # ionb_mean_abs_diff
-                np.std(abs_diff_b_unlog),  # ionb_std_abs_diff
-                np.min(abs_diff_y_unlog),  # iony_min_abs_diff
-                np.max(abs_diff_y_unlog),  # iony_max_abs_diff
-                np.quantile(abs_diff_y_unlog, 0.25),  # iony_abs_diff_Q1
-                np.quantile(abs_diff_y_unlog, 0.5),  # iony_abs_diff_Q2
-                np.quantile(abs_diff_y_unlog, 0.75),  # iony_abs_diff_Q3
-                np.mean(abs_diff_y_unlog),  # iony_mean_abs_diff
-                np.std(abs_diff_y_unlog),  # iony_std_abs_diff
-                np.dot(target_all_unlog, prediction_all_unlog),  # Dot product all ions
-                np.dot(target_b_unlog, prediction_b_unlog),  # Dot product b ions
-                np.dot(target_y_unlog, prediction_y_unlog),  # Dot product y ions
-                _cosine_similarity(target_all_unlog, prediction_all_unlog),  # Cos similarity all
-                _cosine_similarity(target_b_unlog, prediction_b_unlog),  # Cos similarity b ions
-                _cosine_similarity(target_y_unlog, prediction_y_unlog),  # Cos similarity y ions
-            ]
-
-        features = dict(
-            zip(
-                self.feature_names,
-                [0.0 if np.isnan(ft) else ft for ft in feature_values],
-            )
+        for r in ms2pip_results:
+            if r.observed_intensity is None or r.predicted_intensity is None:
+                continue
+            idx.append(r.psm_index)
+            pred_b.append(r.predicted_intensity["b"])
+            pred_y.append(r.predicted_intensity["y"])
+            obs_b.append(r.observed_intensity["b"])
+            obs_y.append(r.observed_intensity["y"])
+        
+        results = batch_ms2pip_features_numpy(
+            idx, pred_b, pred_y, obs_b, obs_y
         )
 
-        return features
-
-
-def _spearman(x: np.ndarray, y: np.ndarray) -> float:
-    """Spearman rank correlation."""
-    x = np.array(x)
-    y = np.array(y)
-    x_rank = pd.Series(x).rank()
-    y_rank = pd.Series(y).rank()
-    return np.corrcoef(x_rank, y_rank)[0][1]
-
-
-def _mse(x: np.ndarray, y: np.ndarray) -> float:
-    """Mean squared error"""
-    x = np.array(x)
-    y = np.array(y)
-    return np.mean((x - y) ** 2)
-
-
-def _cosine_similarity(x: np.ndarray, y: np.ndarray) -> float:
-    """Cosine similarity"""
-    x = np.array(x)
-    y = np.array(y)
-    return np.dot(x, y) / (np.linalg.norm(x, 2) * np.linalg.norm(y, 2))
+        for psm_index, feats in results:
+            if feats:
+                try:
+                    psm_list[psm_index]["rescoring_features"].update(feats)
+                except (AttributeError, TypeError):
+                    psm_list[psm_index]["rescoring_features"] = feats
