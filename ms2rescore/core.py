@@ -63,6 +63,19 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     logger.debug(
         f"PSMs already contain the following rescoring features: {psm_list_feature_names}"
     )
+    # ckeck if all features are already present
+    for fgen_name, fgen_config in list(config["feature_generators"].items()):
+        # conf = config.copy()
+        # conf.update(fgen_config)
+        fgen_features = FEATURE_GENERATORS[fgen_name]().feature_names
+        if set(fgen_features).issubset(psm_list_feature_names):
+            logger.debug(
+                f"Skipping feature generator {fgen_name} because all features are already "
+                "present in the PSM file."
+            )
+            feature_names[fgen_name] = set(fgen_features)
+            feature_names["psm_file"] = psm_list_feature_names - set(fgen_features)
+            del config["feature_generators"][fgen_name]
 
     # Add missing precursor info from spectrum file if needed
     required_ms_data = {
@@ -93,9 +106,17 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
                 "files or disable the feature generator."
             )
             continue
-
-        # Add features
-        fgen.add_features(psm_list)
+        try:
+            fgen.add_features(psm_list)
+        except (Exception, KeyboardInterrupt) as e:
+            logger.error(
+                f"Error while adding features from {fgen_name}: {e}, writing intermediary output..."
+            )
+            # Write intermediate TSV
+            psm_utils.io.write_file(
+                psm_list, output_file_root + ".intermediate.psms.tsv", filetype="tsv"
+            )
+            raise e
         logger.debug(f"Adding features from {fgen_name}: {set(fgen.feature_names)}")
         feature_names[fgen_name] = set(fgen.feature_names)
 
@@ -168,10 +189,12 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
                 protein_kwargs=protein_kwargs,
                 **config["rescoring_engine"]["mokapot"],
             )
-    except exceptions.RescoringError as e:
+    except (Exception, KeyboardInterrupt) as e:
         # Write output
-        logger.info(f"Writing intermediary output to {output_file_root}.psms.tsv...")
-        psm_utils.io.write_file(psm_list, output_file_root + ".psms.tsv", filetype="tsv")
+        logger.info(f"Writing intermediary output to {output_file_root}.intermediate.psms.tsv...")
+        psm_utils.io.write_file(
+            psm_list, output_file_root + ".intermediate.psms.tsv", filetype="tsv"
+        )
 
         # Reraise exception
         raise e

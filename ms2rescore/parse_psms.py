@@ -85,7 +85,7 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
             {
                 "before_rescoring_score": psm.score,
                 "before_rescoring_qvalue": psm.qvalue,
-                "before_rescoring_pep": psm.pep,
+                "before_rescoring_pep": psm.pep if psm.pep is not None else float("nan"),
                 "before_rescoring_rank": psm.rank,
             }
         )
