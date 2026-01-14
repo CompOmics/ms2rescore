@@ -17,7 +17,6 @@ from ms2rescore.rescoring_engines.mokapot import (
     add_peptide_confidence,
     add_psm_confidence,
 )
-from ms2rescore.utils import filter_mumble_psms
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +139,8 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     psm_list = psm_list[psms_with_features]
 
     if "mumble" in config["psm_generator"]:
+        from ms2rescore.utils import filter_mumble_psms
+
         # Remove PSMs where matched_ions_pct drops 25% below the original hit
         psm_list = filter_mumble_psms(psm_list, threshold=0.75)
 

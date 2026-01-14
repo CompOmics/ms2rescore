@@ -272,6 +272,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         - If no run shares anything (all scores == 0): warn and return the first run (by first appearance).
         - If multiple runs are tied for best score: return the first among them (by first appearance).
         """
+        logger.debug("Determining best run for transfer learning based on shared proteoforms.")
         runs = np.asarray(runs)
         proteoforms = np.asarray(proteoforms)
         if runs.shape[0] != proteoforms.shape[0]:

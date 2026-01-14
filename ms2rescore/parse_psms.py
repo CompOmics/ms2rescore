@@ -4,7 +4,6 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import psm_utils.io
-from mumble import PSMHandler
 from psm_utils import PSMList
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError
@@ -121,6 +120,12 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
 
     # Addition of Modifications for mass shifts in the PSMs with Mumble
     if "mumble" in config["psm_generator"]:
+        try:
+            from mumble import PSMHandler
+        except ImportError:
+            raise MS2RescoreConfigurationError(
+                "mumble is not installed. Please install it with: pip install ms2rescore[mumble]"
+            )
         logger.debug("Applying modifications for mass shifts using Mumble...")
         # set inlcude original psm to True and include decoy psm to true
         config["psm_generator"]["mumble"]["include_original_psm"] = True
@@ -150,7 +155,7 @@ def _read_psms(config, psm_list):
         psm_list = []
         for current_file, psm_file in enumerate(config["psm_file"]):
             logger.info(
-                f"Reading PSMs from PSM file ({current_file+1}/{total_files}): '{psm_file}'..."
+                f"Reading PSMs from PSM file ({current_file + 1}/{total_files}): '{psm_file}'..."
             )
             psm_list.extend(
                 psm_utils.io.read_file(
@@ -216,7 +221,7 @@ def _parse_values_from_spectrum_id(
         ["retention_time", "ion_mobility"],
     ):
         if pattern:
-            logger.debug(f"Parsing {label} from spectrum_id with regex pattern " f"{pattern}")
+            logger.debug(f"Parsing {label} from spectrum_id with regex pattern {pattern}")
             try:
                 pattern = re.compile(pattern)
                 psm_list[key] = [
