@@ -7,6 +7,7 @@ from typing import Optional, Set
 
 import numpy as np
 from ms2rescore_rs import Precursor, get_ms2_spectra, MS2Spectrum
+from rich.progress import track
 
 from psm_utils import PSMList
 
@@ -208,7 +209,7 @@ def _add_precursor_values(
     if spectrum_id_pattern is None:
         spectrum_id_pattern = r"^(.*)$"  # Match entire identifier if no pattern provided
 
-    for run_name in set(psm_list["run"]):
+    for run_name in track(set(psm_list["run"])):
         run_mask = psm_list["run"] == run_name
         psm_list_run = psm_list[run_mask]
         spectrum_file = infer_spectrum_path(spectrum_path, run_name)
