@@ -24,8 +24,7 @@ If you use MS²PIP through MS²Rescore, please cite:
 """
 
 import logging
-from typing import List, Optional, Union
-import numpy as np
+from typing import Optional
 
 from ms2pip import process_MS2_spectra
 from ms2rescore_rs import batch_ms2pip_features_numpy
@@ -51,7 +50,7 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
         spectrum_path: Optional[str] = None,
         spectrum_id_pattern: str = "(.*)",
         model_dir: Optional[str] = None,
-        processes: 1,
+        processes: int = 1,
         **kwargs,
     ) -> None:
         """
@@ -187,8 +186,8 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
         idx = []
         pred_b = []
         pred_y = []
-        obs_b  = []
-        obs_y  = []
+        obs_b = []
+        obs_y = []
 
         for r in ms2pip_results:
             if r.observed_intensity is None or r.predicted_intensity is None:
@@ -198,10 +197,8 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
             pred_y.append(r.predicted_intensity["y"])
             obs_b.append(r.observed_intensity["b"])
             obs_y.append(r.observed_intensity["y"])
-        
-        results = batch_ms2pip_features_numpy(
-            idx, pred_b, pred_y, obs_b, obs_y
-        )
+
+        results = batch_ms2pip_features_numpy(idx, pred_b, pred_y, obs_b, obs_y)
 
         for psm_index, feats in results:
             if feats:
