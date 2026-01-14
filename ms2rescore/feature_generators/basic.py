@@ -31,13 +31,24 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
 
         """
         super().__init__(*args, **kwargs)
-        self._feature_names = None
 
     @property
     def feature_names(self) -> List[str]:
-        if self._feature_names is None:
-            raise ValueError("Feature names have not been set yet. First run `add_features`.")
-        return self._feature_names
+        return [
+            "charge_n",
+            "charge_1",
+            "charge_2",
+            "charge_3",
+            "charge_4",
+            "charge_5",
+            "charge_6",
+            "abs_ms1_error_ppm",
+            "search_engine_score",
+            "theoretical_mass",
+            "experimental_mass",
+            "mass_error",
+            "pep_len",
+        ]
 
     def add_features(self, psm_list: PSMList) -> None:
         """
@@ -51,8 +62,6 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
         """
         logger.info("Adding basic features to PSMs.")
 
-        self._feature_names = []  # Reset feature names
-
         charge_states = np.array([psm.peptidoform.precursor_charge for psm in psm_list])
         precursor_mzs = psm_list["precursor_mz"]
         scores = psm_list["score"]
@@ -64,24 +73,16 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
 
         if has_charge:
             charge_n = charge_states
-            charge_one_hot, one_hot_names = _one_hot_encode_charge(charge_states)
-            self._feature_names.extend(["charge_n"] + one_hot_names)
+            charge_one_hot, _ = _one_hot_encode_charge(charge_states)
 
         if has_mz:  # Charge also required for theoretical m/z
             theo_mz = np.array([psm.peptidoform.theoretical_mz for psm in psm_list])
             abs_ms1_error_ppm = np.abs((precursor_mzs - theo_mz) / theo_mz * 10**6)
-            self._feature_names.append("abs_ms1_error_ppm")
-
-        if has_score:
-            self._feature_names.append("search_engine_score")
 
         if has_mz and has_charge:
             experimental_mass = (precursor_mzs * charge_n) - (charge_n * 1.007276466812)
             theoretical_mass = (theo_mz * charge_n) - (charge_n * 1.007276466812)
             mass_error = experimental_mass - theoretical_mass
-            self._feature_names.extend(["theoretical_mass", "experimental_mass", "mass_error"])
-
-        self._feature_names.append("pep_len")
 
         for i, psm in enumerate(psm_list):
             psm.rescoring_features.update(
@@ -101,15 +102,18 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
 def _one_hot_encode_charge(
     charge_states: np.ndarray,
 ) -> Tuple[Iterable[Dict[str, int]], List[str]]:
-    """One-hot encode charge states."""
+    """One-hot encode charge states with fixed range 1-6."""
     n_entries = len(charge_states)
-    min_charge = np.min(charge_states)
-    max_charge = np.max(charge_states)
+    heading = [f"charge_{i}" for i in range(1, 7)]
 
-    mask = np.zeros((n_entries, max_charge - min_charge + 1), dtype=bool)
-    mask[np.arange(n_entries), charge_states - min_charge] = 1
+    # Create mask for charges 1-6
+    mask = np.zeros((n_entries, 6), dtype=bool)
+
+    # Set the appropriate charge position to 1 for each entry
+    for i, charge in enumerate(charge_states):
+        if charge is not None and 1 <= charge <= 6:
+            mask[i, int(charge) - 1] = 1
+
     one_hot = mask.view("i1")
-
-    heading = [f"charge_{i}" for i in range(min_charge, max_charge + 1)]
 
     return [dict(zip(heading, row)) for row in one_hot], heading
