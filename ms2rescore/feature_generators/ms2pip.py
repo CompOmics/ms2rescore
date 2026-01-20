@@ -27,7 +27,7 @@ import logging
 from typing import Optional
 
 from ms2pip import process_MS2_spectra
-from ms2rescore_rs import batch_ms2pip_features_numpy
+from ms2rescore_rs import ms2pip_features_from_prediction_peak_arrays
 
 from psm_utils import PSMList
 
@@ -198,7 +198,7 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
             obs_b.append(r.observed_intensity["b"])
             obs_y.append(r.observed_intensity["y"])
 
-        results = batch_ms2pip_features_numpy(idx, pred_b, pred_y, obs_b, obs_y)
+        results = ms2pip_features_from_prediction_peak_arrays(idx, pred_b, pred_y, obs_b, obs_y)
 
         for psm_index, feats in results:
             if feats:

@@ -7,9 +7,8 @@ import logging
 
 from typing import List, Optional
 
-import numpy as np
 from psm_utils import PSMList
-from ms2rescore_rs import batch_ms2_features_from_spectra
+from ms2rescore_rs import ms2_features_from_ms2spectra
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 
 logger = logging.getLogger(__name__)
@@ -76,7 +75,7 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         proformas = [psm.peptidoform.proforma.split("/")[0] for psm in psm_list]
         seq_lens = [len(psm.peptidoform.sequence) for psm in psm_list]
 
-        feature_dicts = batch_ms2_features_from_spectra(
+        feature_dicts = ms2_features_from_ms2spectra(
             spectra=spectra,
             proformas=proformas,
             seq_lens=seq_lens,
