@@ -37,7 +37,9 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         f"Running MS²Rescore with following configuration: {json.dumps(configuration, indent=4)}"
     )
     config = configuration["ms2rescore"]
-    output_file_root = config["output_path"]
+    output_file_root = config["output_path"].split(".intermidiate.")[
+        0
+    ]  # if no intermediate, takes full name
 
     # Write full configuration including defaults to file
     with open(output_file_root + ".full-config.json", "w") as f:

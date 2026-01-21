@@ -84,8 +84,6 @@ def add_precursor_values(
     if np.any(np.isnan(mz_values)) or np.all(mz_values == 0):
         missing_data_types.add(MSDataType.precursor_mz)
 
-    LOGGER.debug("Missing data types: %s", missing_data_types)
-
     # Find data types that are both missing and required
     data_types_to_parse = missing_data_types & required_data_types
 
@@ -102,6 +100,11 @@ def add_precursor_values(
         raise SpectrumParsingError(
             "Spectrum path must be provided to parse precursor values that are not present in the"
             " PSM list."
+        )
+    else:
+        LOGGER.debug(
+            "Missing required data types: %s. Parsing from spectrum files.",
+            ", ".join(str(dt) for dt in data_types_to_parse),
         )
 
     # Get precursor values from spectrum files
