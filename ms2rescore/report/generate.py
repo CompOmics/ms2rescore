@@ -322,14 +322,12 @@ def _get_features_context(
 
     # DeepLC specific charts
     if "deeplc" in feature_names:
-        import deeplc.plot
-
-        scatter_chart = deeplc.plot.scatter(
+        scatter_chart = charts.rt_scatter(
             df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
             predicted_column="predicted_retention_time_best",
             observed_column="observed_retention_time_best",
         )
-        baseline_chart = deeplc.plot.distribution_baseline(
+        baseline_chart = charts.rt_distribution_baseline(
             df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
             predicted_column="predicted_retention_time_best",
             observed_column="observed_retention_time_best",
@@ -345,9 +343,7 @@ def _get_features_context(
 
     # IM2Deep specific charts
     if "im2deep" in feature_names:
-        import deeplc.plot
-
-        scatter_chart = deeplc.plot.scatter(
+        scatter_chart = charts.rt_scatter(
             df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
             predicted_column="ccs_predicted_im2deep",
             observed_column="ccs_observed_im2deep",
@@ -366,31 +362,22 @@ def _get_features_context(
 
     # ionmob specific charts
     if "ionmob" in feature_names:
-        try:
-            import deeplc.plot
+        scatter_chart = charts.rt_scatter(
+            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
+            predicted_column="ccs_predicted",
+            observed_column="ccs_observed",
+            xaxis_label="Observed CCS",
+            yaxis_label="Predicted CCS",
+            plot_title="Predicted vs. observed CCS - ionmob",
+        )
 
-            scatter_chart = deeplc.plot.scatter(
-                df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
-                predicted_column="ccs_predicted",
-                observed_column="ccs_observed",
-                xaxis_label="Observed CCS",
-                yaxis_label="Predicted CCS",
-                plot_title="Predicted vs. observed CCS - ionmob",
-            )
-
-            context["charts"].append(
-                {
-                    "title": TEXTS["charts"]["ionmob_performance"]["title"],
-                    "description": TEXTS["charts"]["ionmob_performance"]["description"],
-                    "chart": scatter_chart.to_html(**PLOTLY_HTML_KWARGS),
-                }
-            )
-
-        # TODO: for now, ionmob plot will only be available if deeplc is installed. Since ionmob does not have a dependency on deeplc, this should be changed in the future.
-        except ImportError:
-            logger.warning(
-                "Could not import deeplc.plot, skipping ionmob CCS prediction performance plot. Please install DeepLC to generate this plot."
-            )
+        context["charts"].append(
+            {
+                "title": TEXTS["charts"]["ionmob_performance"]["title"],
+                "description": TEXTS["charts"]["ionmob_performance"]["description"],
+                "chart": scatter_chart.to_html(**PLOTLY_HTML_KWARGS),
+            }
+        )
     return context
 
 
