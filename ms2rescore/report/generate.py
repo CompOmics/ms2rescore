@@ -24,8 +24,11 @@ import ms2rescore
 import ms2rescore.report.charts as charts
 import ms2rescore.report.templates as templates
 from ms2rescore.report.utils import (
+    calculate_fdr_stats,
+    create_psm_dataframe,
     get_confidence_estimates,
     get_feature_values,
+    infer_feature_names_from_psm_list,
     read_feature_names,
 )
 
@@ -50,6 +53,8 @@ def generate_report(
     psm_list: Optional[psm_utils.PSMList] = None,
     feature_names: Optional[Dict[str, set]] = None,
     use_txt_log: bool = False,
+    output_file: Optional[Path] = None,
+    use_mokapot: bool = False,
 ):
     """
     Generate the report.
@@ -68,6 +73,11 @@ def generate_report(
     use_txt_log
         If True, the log file will be read from ``output_path_prefix + ".log.txt"`` instead of
         ``output_path_prefix + ".log.html"``.
+    output_file
+        Path to the output HTML file. If not provided, will be ``output_path_prefix + ".report.html"``.
+    use_mokapot
+        If True, use mokapot LinearConfidence objects for overview charts (legacy mode).
+        If False (default), use PSM dataframe directly.
 
     """
     files = _collect_files(output_path_prefix, use_txt_log=use_txt_log)
@@ -80,27 +90,53 @@ def generate_report(
         else:
             raise FileNotFoundError("PSM file not found and no PSM list provided.")
 
-    # Read config
-    config = json.loads(files["configuration"].read_text())
+    # Create comprehensive dataframe from PSM list
+    logger.debug("Creating PSM dataframe...")
+    psm_df = create_psm_dataframe(psm_list)
 
-    logger.debug("Recalculating confidence estimates...")
-    fasta_file = config["ms2rescore"]["fasta_file"]
-    confidence_before, confidence_after = get_confidence_estimates(psm_list, fasta_file)
+    # Try to read config, but don't fail if it doesn't exist
+    config = None
+    if files["configuration"] and files["configuration"].is_file():
+        try:
+            config = json.loads(files["configuration"].read_text())
+        except (json.JSONDecodeError, FileNotFoundError):
+            logger.warning("Could not read configuration file. Proceeding without it.")
+            config = {"ms2rescore": {}}
+    else:
+        logger.info("No configuration file found. Proceeding without it.")
+        config = {"ms2rescore": {}}
 
-    overview_context = _get_overview_context(confidence_before, confidence_after)
+    # Generate overview context
+    if use_mokapot and config.get("ms2rescore", {}).get("fasta_file"):
+        logger.debug("Recalculating confidence estimates with mokapot...")
+        fasta_file = config["ms2rescore"]["fasta_file"]
+        confidence_before, confidence_after = get_confidence_estimates(psm_list, fasta_file)
+        overview_context = _get_overview_context(confidence_before, confidence_after)
+    else:
+        logger.debug("Generating overview from PSM dataframe...")
+        overview_context = _get_overview_context_df(psm_df)
+
     target_decoy_context = _get_target_decoy_context(psm_list)
     features_context = _get_features_context(psm_list, files, feature_names=feature_names)
     config_context = _get_config_context(config)
     log_context = _get_log_context(files)
+
+    # Get PSM filename(s) for metadata
+    if config.get("ms2rescore", {}).get("psm_file"):
+        psm_filenames = "\n".join(
+            [Path(id_file).name for id_file in config["ms2rescore"]["psm_file"]]
+        )
+    elif files["PSMs"]:
+        psm_filenames = files["PSMs"].name
+    else:
+        psm_filenames = "Unknown"
 
     context = {
         "plotlyjs_version": get_plotlyjs_version(),
         "metadata": {
             "generated_on": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "ms2rescore_version": ms2rescore.__version__,  # TODO: Write during run?
-            "psm_filename": "\n".join(
-                [Path(id_file).name for id_file in config["ms2rescore"]["psm_file"]]
-            ),
+            "psm_filename": psm_filenames,
         },
         "main_tabs": [
             {
@@ -136,7 +172,7 @@ def generate_report(
         ],
     }
 
-    _render_and_write(output_path_prefix, **context)
+    _render_and_write(output_path_prefix, output_file=output_file, **context)
 
 
 def _collect_files(output_path_prefix, use_txt_log=False):
@@ -195,6 +231,88 @@ def _get_stats_context(confidence_before, confidence_after):
             }
         )
     return stats
+
+
+def _get_stats_context_df(psm_df: pd.DataFrame, fdr_threshold: float = 0.01) -> list:
+    """Return context for overview statistics pane from dataframe."""
+    stats = []
+
+    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+        return stats
+
+    targets = psm_df[~psm_df["is_decoy"]]
+
+    # PSM level stats
+    psms_before = len(targets[targets["qvalue_before"] <= fdr_threshold])
+    psms_after = len(targets[targets["qvalue_after"] <= fdr_threshold])
+
+    if psms_before > 0:
+        increase = (psms_after - psms_before) / psms_before * 100
+        stats.append(
+            {
+                "item": "PSMs",
+                "card_color": "card-bg-blue",
+                "number": psms_after,
+                "diff": f"({psms_after - psms_before:+})",
+                "percentage": f"{increase:.1f}%",
+                "is_increase": increase > 0,
+                "bar_percentage": psms_before / psms_after * 100
+                if increase > 0
+                else psms_after / psms_before * 100,
+                "bar_color": "#24a143" if increase > 0 else "#a12424",
+            }
+        )
+
+    # Peptide level stats
+    if "peptidoform" in psm_df.columns:
+        peptides_before = targets[targets["qvalue_before"] <= fdr_threshold][
+            "peptidoform"
+        ].nunique()
+        peptides_after = targets[targets["qvalue_after"] <= fdr_threshold]["peptidoform"].nunique()
+
+        if peptides_before > 0:
+            increase = (peptides_after - peptides_before) / peptides_before * 100
+            stats.append(
+                {
+                    "item": "Peptides",
+                    "card_color": "card-bg-green",
+                    "number": peptides_after,
+                    "diff": f"({peptides_after - peptides_before:+})",
+                    "percentage": f"{increase:.1f}%",
+                    "is_increase": increase > 0,
+                    "bar_percentage": peptides_before / peptides_after * 100
+                    if increase > 0
+                    else peptides_after / peptides_before * 100,
+                    "bar_color": "#24a143" if increase > 0 else "#a12424",
+                }
+            )
+
+    return stats
+
+
+def _get_overview_context_df(psm_df: pd.DataFrame) -> dict:
+    """Return context for overview tab from dataframe."""
+    logger.debug("Generating overview charts from PSM dataframe...")
+    return {
+        "stats": _get_stats_context_df(psm_df),
+        "charts": [
+            {
+                "title": TEXTS["charts"]["score_comparison"]["title"],
+                "description": TEXTS["charts"]["score_comparison"]["description"],
+                "chart": charts.score_scatter_plot_df(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+            },
+            {
+                "title": TEXTS["charts"]["fdr_comparison"]["title"],
+                "description": TEXTS["charts"]["fdr_comparison"]["description"],
+                "chart": charts.fdr_plot_comparison_df(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+            },
+            {
+                "title": TEXTS["charts"]["identification_overlap"]["title"],
+                "description": TEXTS["charts"]["identification_overlap"]["description"],
+                "chart": charts.identification_overlap_df(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+            },
+        ],
+    }
 
 
 def _get_overview_context(confidence_before, confidence_after) -> dict:
@@ -260,8 +378,23 @@ def _get_features_context(
     context: dict[str, list] = {"charts": []}
 
     # Get feature names, mapping with generator, and flat list
+    if feature_names is None or not feature_names:
+        # Try to read from file first
+        feature_names = read_feature_names(files.get("feature names"))
+        
+        # If file doesn't exist or is empty, infer from PSM list
+        if not feature_names:
+            logger.info("Feature names file not found. Inferring from PSM list...")
+            feature_names = infer_feature_names_from_psm_list(psm_list)
+    
+    # If still no features, return empty context
     if not feature_names:
-        feature_names = read_feature_names(files["feature names"])
+        logger.warning("No features found in PSM list. Skipping feature charts.")
+        return context
+    
+    # Convert sets to lists if needed (for compatibility with both sources)
+    feature_names = {k: list(v) if isinstance(v, set) else v for k, v in feature_names.items()}
+    
     feature_names_flat = [f_name for f_list in feature_names.values() for f_name in f_list]
     feature_names_inv = {name: gen for gen, f_list in feature_names.items() for name in f_list}
 
@@ -269,29 +402,32 @@ def _get_features_context(
     color_map = dict(zip(feature_names.keys(), cycle(px.colors.qualitative.Plotly)))
 
     # feature weights
-    if not files["feature weights"]:
-        logger.warning("Could not find feature weights files. Skipping feature weights plot.")
+    if not files.get("feature weights") or not files["feature weights"].is_file():
+        logger.info("Feature weights file not found. Skipping feature weights plot.")
     else:
-        feature_weights = pd.read_csv(files["feature weights"], sep="\t").melt(
-            var_name="feature", value_name="weight"
-        )
-        feature_weights["feature"] = feature_weights["feature"].str.replace(
-            r"^(feature:)?", "", regex=True
-        )
-        feature_weights["feature_generator"] = feature_weights["feature"].map(feature_names_inv)
+        try:
+            feature_weights = pd.read_csv(files["feature weights"], sep="\t").melt(
+                var_name="feature", value_name="weight"
+            )
+            feature_weights["feature"] = feature_weights["feature"].str.replace(
+                r"^(feature:)?", "", regex=True
+            )
+            feature_weights["feature_generator"] = feature_weights["feature"].map(feature_names_inv)
 
-        context["charts"].append(
-            {
-                "title": TEXTS["charts"]["feature_usage"]["title"],
-                "description": TEXTS["charts"]["feature_usage"]["description"],
-                "chart": charts.feature_weights_by_generator(
-                    feature_weights, color_discrete_map=color_map
-                ).to_html(**PLOTLY_HTML_KWARGS)
-                + charts.feature_weights(feature_weights, color_discrete_map=color_map).to_html(
-                    **PLOTLY_HTML_KWARGS
-                ),
-            }
-        )
+            context["charts"].append(
+                {
+                    "title": TEXTS["charts"]["feature_usage"]["title"],
+                    "description": TEXTS["charts"]["feature_usage"]["description"],
+                    "chart": charts.feature_weights_by_generator(
+                        feature_weights, color_discrete_map=color_map
+                    ).to_html(**PLOTLY_HTML_KWARGS)
+                    + charts.feature_weights(feature_weights, color_discrete_map=color_map).to_html(
+                        **PLOTLY_HTML_KWARGS
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Could not generate feature weights plot: {e}")
 
     # Individual feature performance
     features = get_feature_values(psm_list, feature_names_flat)
@@ -403,9 +539,13 @@ def _get_log_context(files: Dict[str, Path]) -> dict:
     return {"log": "<i>Log file format not recognized.</i>"}
 
 
-def _render_and_write(output_path_prefix: str, **context):
+def _render_and_write(output_path_prefix: str, output_file: Optional[Path] = None, **context):
     """Render template with context and write to HTML file."""
-    report_path = Path(output_path_prefix + ".report.html").resolve()
+    if output_file:
+        report_path = Path(output_file).resolve()
+    else:
+        report_path = Path(output_path_prefix + ".report.html").resolve()
+
     logger.info("Writing report to %s", report_path.as_posix())
 
     # Use importlib.resources for PyInstaller compatibility

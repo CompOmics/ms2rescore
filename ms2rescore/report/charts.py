@@ -789,3 +789,217 @@ def rt_distribution_baseline(
     )
 
     return fig
+
+
+def score_scatter_plot_df(
+    psm_df: pd.DataFrame,
+    fdr_threshold: float = 0.01,
+) -> go.Figure:
+    """
+    Plot PSM scores before and after rescoring from a dataframe.
+
+    Parameters
+    ----------
+    psm_df
+        Dataframe with PSM information including score_before, score_after,
+        qvalue_before, qvalue_after, and is_decoy columns.
+    fdr_threshold
+        FDR threshold for drawing threshold lines.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with score comparison.
+    """
+    if "score_before" not in psm_df.columns or "score_after" not in psm_df.columns:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after score data available for comparison.",
+            showarrow=False,
+        )
+        return figure
+
+    # Prepare data
+    plot_df = psm_df.copy()
+    plot_df["PSM type"] = plot_df["is_decoy"].map({True: "decoy", False: "target"})
+
+    # Get score thresholds
+    try:
+        score_threshold_before = (
+            plot_df[plot_df["qvalue_before"] <= fdr_threshold]
+            .sort_values("qvalue_before", ascending=False)["score_before"]
+            .iloc[0]
+        )
+    except (IndexError, KeyError):
+        score_threshold_before = None
+
+    try:
+        score_threshold_after = (
+            plot_df[plot_df["qvalue_after"] <= fdr_threshold]
+            .sort_values("qvalue_after", ascending=False)["score_after"]
+            .iloc[0]
+        )
+    except (IndexError, KeyError):
+        score_threshold_after = None
+
+    # Plot
+    fig = px.scatter(
+        data_frame=plot_df,
+        x="score_before",
+        y="score_after",
+        color="PSM type",
+        marginal_x="histogram",
+        marginal_y="histogram",
+        opacity=0.1,
+        labels={
+            "score_before": "PSM score (before rescoring)",
+            "score_after": "PSM score (after rescoring)",
+        },
+    )
+
+    # Draw FDR thresholds
+    if score_threshold_before:
+        fig.add_vline(x=score_threshold_before, line_dash="dash", row=1, col=1)
+        fig.add_vline(x=score_threshold_before, line_dash="dash", row=2, col=1)
+    if score_threshold_after:
+        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=1)
+        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=2)
+
+    return fig
+
+
+def fdr_plot_comparison_df(
+    psm_df: pd.DataFrame,
+) -> go.Figure:
+    """
+    Plot number of identifications in function of FDR threshold before/after rescoring from dataframe.
+
+    Parameters
+    ----------
+    psm_df
+        Dataframe with PSM information including qvalue_before, qvalue_after, and is_decoy columns.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with FDR comparison.
+    """
+    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after q-value data available for comparison.",
+            showarrow=False,
+        )
+        return figure
+
+    # Filter targets only
+    targets = psm_df[~psm_df["is_decoy"]].copy()
+
+    # Prepare data in long format
+    plot_data = pd.concat(
+        [
+            targets[["qvalue_before"]]
+            .rename(columns={"qvalue_before": "q-value"})
+            .assign(**{"before/after": "before rescoring"}),
+            targets[["qvalue_after"]]
+            .rename(columns={"qvalue_after": "q-value"})
+            .assign(**{"before/after": "after rescoring"}),
+        ]
+    )
+
+    # Plot
+    fig = px.ecdf(
+        data_frame=plot_data,
+        x="q-value",
+        color="before/after",
+        log_x=True,
+        ecdfnorm=None,
+        labels={
+            "q-value": "FDR threshold",
+            "before/after": "",
+        },
+        color_discrete_map={
+            "before rescoring": "#316395",
+            "after rescoring": "#319545",
+        },
+    )
+    fig.add_vline(x=0.01, line_dash="dash", line_color="black")
+    fig.update_layout(yaxis_title="Identified PSMs")
+    return fig
+
+
+def identification_overlap_df(
+    psm_df: pd.DataFrame,
+    fdr_threshold: float = 0.01,
+) -> go.Figure:
+    """
+    Plot stacked bar charts of removed, retained, and gained PSMs and peptides from dataframe.
+
+    Parameters
+    ----------
+    psm_df
+        Dataframe with PSM information including qvalue_before, qvalue_after,
+        is_decoy, and peptidoform columns.
+    fdr_threshold
+        FDR threshold for counting identifications.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with identification overlap.
+    """
+    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after q-value data available for comparison.",
+            showarrow=False,
+        )
+        return figure
+
+    overlap_data = defaultdict(dict)
+
+    # PSM level
+    targets = psm_df[~psm_df["is_decoy"]]
+    psms_before = set(targets[targets["qvalue_before"] <= fdr_threshold].index)
+    psms_after = set(targets[targets["qvalue_after"] <= fdr_threshold].index)
+
+    overlap_data["removed"]["psms"] = -len(psms_before - psms_after)
+    overlap_data["retained"]["psms"] = len(psms_after.intersection(psms_before))
+    overlap_data["gained"]["psms"] = len(psms_after - psms_before)
+
+    # Peptide level
+    if "peptidoform" in psm_df.columns:
+        peptides_before = set(
+            targets[targets["qvalue_before"] <= fdr_threshold]["peptidoform"].unique()
+        )
+        peptides_after = set(
+            targets[targets["qvalue_after"] <= fdr_threshold]["peptidoform"].unique()
+        )
+
+        overlap_data["removed"]["peptides"] = -len(peptides_before - peptides_after)
+        overlap_data["retained"]["peptides"] = len(peptides_after.intersection(peptides_before))
+        overlap_data["gained"]["peptides"] = len(peptides_after - peptides_before)
+
+    colors = ["#953331", "#316395", "#319545"]
+    levels = list(overlap_data["retained"].keys())
+    fig = plotly.subplots.make_subplots(rows=len(levels), cols=1)
+
+    for i, level in enumerate(levels):
+        for (item, data), color in zip(overlap_data.items(), colors):
+            if level not in data:
+                continue
+            fig.add_trace(
+                go.Bar(
+                    y=[level],
+                    x=[data[level]],
+                    marker={"color": color},
+                    orientation="h",
+                    name=item,
+                    showlegend=True if i == 0 else False,
+                ),
+                row=i + 1,
+                col=1,
+            )
+    fig.update_layout(barmode="relative")
+
+    return fig
