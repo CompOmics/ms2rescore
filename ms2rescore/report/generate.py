@@ -4,7 +4,6 @@ import importlib.resources
 import json
 import logging
 from datetime import datetime
-from itertools import cycle
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -381,25 +380,34 @@ def _get_features_context(
     if feature_names is None or not feature_names:
         # Try to read from file first
         feature_names = read_feature_names(files.get("feature names"))
-        
+
         # If file doesn't exist or is empty, infer from PSM list
         if not feature_names:
             logger.info("Feature names file not found. Inferring from PSM list...")
             feature_names = infer_feature_names_from_psm_list(psm_list)
-    
+
     # If still no features, return empty context
     if not feature_names:
         logger.warning("No features found in PSM list. Skipping feature charts.")
         return context
-    
+
     # Convert sets to lists if needed (for compatibility with both sources)
     feature_names = {k: list(v) if isinstance(v, set) else v for k, v in feature_names.items()}
-    
+
     feature_names_flat = [f_name for f_list in feature_names.values() for f_name in f_list]
     feature_names_inv = {name: gen for gen, f_list in feature_names.items() for name in f_list}
 
-    # Get fixed color map for feature generators
-    color_map = dict(zip(feature_names.keys(), cycle(px.colors.qualitative.Plotly)))
+    # Fixed color map for feature generators
+    FEATURE_GENERATOR_COLORS = {
+        "ms2pip": "#16BA27",  
+        "deeplc": "#EC4807",  
+        "im2deep": "#1E25EA",  
+        "ionmob": "#AB63FA", # remove ionmob?
+        "basic": "#000000",  
+        "psm_file": "#F1ED06",  
+        "other": "#FF6692",  
+    }
+    color_map = {fg: FEATURE_GENERATOR_COLORS.get(fg, "#FFFFFF") for fg in feature_names.keys()}
 
     # feature weights
     if not files.get("feature weights") or not files["feature weights"].is_file():
@@ -412,7 +420,9 @@ def _get_features_context(
             feature_weights["feature"] = feature_weights["feature"].str.replace(
                 r"^(feature:)?", "", regex=True
             )
-            feature_weights["feature_generator"] = feature_weights["feature"].map(feature_names_inv)
+            feature_weights["feature_generator"] = feature_weights["feature"].map(
+                feature_names_inv
+            )
 
             context["charts"].append(
                 {
@@ -421,9 +431,9 @@ def _get_features_context(
                     "chart": charts.feature_weights_by_generator(
                         feature_weights, color_discrete_map=color_map
                     ).to_html(**PLOTLY_HTML_KWARGS)
-                    + charts.feature_weights(feature_weights, color_discrete_map=color_map).to_html(
-                        **PLOTLY_HTML_KWARGS
-                    ),
+                    + charts.feature_weights(
+                        feature_weights, color_discrete_map=color_map
+                    ).to_html(**PLOTLY_HTML_KWARGS),
                 }
             )
         except Exception as e:
