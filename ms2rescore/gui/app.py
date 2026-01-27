@@ -67,10 +67,6 @@ CITATIONS = [
         "https://doi.org/10.1038/s41592-021-01301-5",
     ),
     (
-        "ionmob: Teschner et al. Bioinformatics (2023)",
-        "https://doi.org/10.1093/bioinformatics/btad486",
-    ),
-    (
         "Mokapot: Fondrie et al. JPR (2021)",
         "https://doi.org/10.1021/acs.jproteome.0c01010",
     ),
@@ -514,16 +510,12 @@ class FeatureGeneratorConfig(ctk.CTkFrame):
         self.im2deep_config = Im2DeepConfiguration(self)
         self.im2deep_config.grid(row=3, column=0, pady=(0, 20), sticky="nsew")
 
-        self.ionmob_config = IonmobConfiguration(self)
-        self.ionmob_config.grid(row=4, column=0, pady=(0, 20), sticky="nsew")
-
     def get(self) -> Dict:
         """Return the configuration as a dictionary."""
         basic_enabled, basic_config = self.basic_config.get()
         ms2pip_enabled, ms2pip_config = self.ms2pip_config.get()
         deeplc_enabled, deeplc_config = self.deeplc_config.get()
         im2deep_enabled, im2deep_config = self.im2deep_config.get()
-        ionmob_enabled, ionmob_config = self.ionmob_config.get()
 
         config = {}
         if basic_enabled:
@@ -532,8 +524,6 @@ class FeatureGeneratorConfig(ctk.CTkFrame):
             config["ms2pip"] = ms2pip_config
         if deeplc_enabled:
             config["deeplc"] = deeplc_config
-        if ionmob_enabled:
-            config["ionmob"] = ionmob_config
         if im2deep_enabled:
             config["im2deep"] = im2deep_config
 
@@ -650,35 +640,6 @@ class DeepLCConfiguration(ctk.CTkFrame):
             "n_epochs": int(self.num_epochs.get()),
             "calibration_set_size": calibration_set_size,
         }
-        return enabled, config
-
-
-class IonmobConfiguration(ctk.CTkFrame):
-    def __init__(self, *args, **kwargs):
-        """IonMob configuration frame."""
-        super().__init__(*args, **kwargs)
-
-        self.configure(fg_color="transparent")
-        self.grid_columnconfigure(0, weight=1)
-
-        self.title = widgets._Heading(self, text="Ionmob (ion mobility prediction)")
-        self.title.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="ew")
-
-        self.enabled = widgets.LabeledSwitch(self, label="Enable Ionmob", default=False)
-        self.enabled.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
-
-        self.model = widgets.LabeledEntry(
-            self,
-            label="Name of built-in model or path to custom model",
-            placeholder_text="GRUPredictor",
-            default_value="GRUPredictor",
-        )
-        self.model.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
-
-    def get(self) -> Tuple[bool, Dict[str, Any]]:
-        """Return the configuration as a dictionary."""
-        enabled = self.enabled.get()
-        config = {"ionmob_model": self.model.get()}
         return enabled, config
 
 
@@ -904,7 +865,7 @@ def app():
     )
     root.protocol("WM_DELETE_WINDOW", sys.exit)
     dpi = root.winfo_fpixels("1i")
-    root.geometry(f"{int(15*dpi)}x{int(10*dpi)}")
+    root.geometry(f"{int(15 * dpi)}x{int(10 * dpi)}")
     root.minsize(int(13 * dpi), int(9 * dpi))
     root.title("MS²Rescore")
     if platform.system() != "Linux":
