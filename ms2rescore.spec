@@ -16,7 +16,7 @@ project = "ms2rescore"
 bundle_name = "ms2rescore"
 bundle_identifier = f"{bundle_name}.{__version__}"
 
-extra_requirements = {"ionmob"}
+extra_requirements = {}
 
 # Requirements config
 skip_requirements_regex = r"^(?:.*\..*)"

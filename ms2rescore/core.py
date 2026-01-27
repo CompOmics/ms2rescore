@@ -66,8 +66,6 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     )
     # ckeck if all features are already present
     for fgen_name, fgen_config in list(config["feature_generators"].items()):
-        # conf = config.copy()
-        # conf.update(fgen_config)
         fgen_features = FEATURE_GENERATORS[fgen_name]().feature_names
         if set(fgen_features).issubset(psm_list_feature_names):
             logger.debug(
@@ -120,6 +118,12 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             raise e
         logger.debug(f"Adding features from {fgen_name}: {set(fgen.feature_names)}")
         feature_names[fgen_name] = set(fgen.feature_names)
+
+        # Remove overlapping features from psm_file to avoid duplicates
+        # (e.g., hyperscore can be in both psm_file and ms2pip)
+        overlap = feature_names.get("psm_file", set()) & feature_names[fgen_name]
+        if overlap:
+            feature_names["psm_file"] = feature_names["psm_file"] - overlap
 
     # Filter out psms that do not have all added features
     all_feature_names = {f for fgen in feature_names.values() for f in fgen}

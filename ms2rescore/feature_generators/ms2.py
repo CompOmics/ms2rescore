@@ -25,7 +25,7 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         fragmentation_model: str = "cidhcd",
         mass_mode: str = "monoisotopic",
         processes: int = 1,
-        calculate_hyperscore: bool = True,
+        calculate_hyperscore: bool = False,
         **kwargs,
     ) -> None:
         """

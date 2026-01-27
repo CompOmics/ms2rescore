@@ -20,7 +20,7 @@ def read_feature_names(feature_names_path: Optional[Path]) -> dict:
     feature_names = defaultdict(list)
     if not feature_names_path or not feature_names_path.is_file():
         return feature_names
-    
+
     try:
         with open(feature_names_path) as f:
             reader = DictReader(f, delimiter="\t")
@@ -28,39 +28,44 @@ def read_feature_names(feature_names_path: Optional[Path]) -> dict:
                 feature_names[line["feature_generator"]].append(line["feature_name"])
     except (FileNotFoundError, KeyError, ValueError) as e:
         logger.warning(f"Could not read feature names file: {e}")
-    
+
     return feature_names
 
 
 def infer_feature_names_from_psm_list(psm_list: psm_utils.PSMList) -> Dict[str, list]:
     """Infer feature names and generators from PSM list when no feature_names file exists."""
     feature_names = defaultdict(list)
-    
+
     if not psm_list or not psm_list[0].rescoring_features:
         return feature_names
-    
+
     # Get all feature names from the first PSM
     all_features = list(psm_list[0].rescoring_features.keys())
-    
+
     # Try to infer generator from feature name patterns
     for fname in all_features:
         fname_lower = fname.lower()
-        
+
         # Pattern matching for common feature generators
         if any(x in fname_lower for x in ["ms2pip", "spec_pearson", "spec_spearman", "ionmatch"]):
             feature_names["ms2pip"].append(fname)
         elif any(x in fname_lower for x in ["deeplc", "retention_time", "rt_diff"]):
             feature_names["deeplc"].append(fname)
-        elif any(x in fname_lower for x in ["im2deep", "ccs_predicted_im2deep", "ccs_observed_im2deep"]):
+        elif any(
+            x in fname_lower for x in ["im2deep", "ccs_predicted_im2deep", "ccs_observed_im2deep"]
+        ):
             feature_names["im2deep"].append(fname)
-        elif any(x in fname_lower for x in ["ionmob", "ccs_predicted", "ccs_observed"]) and "im2deep" not in fname_lower:
+        elif (
+            any(x in fname_lower for x in ["ionmob", "ccs_predicted", "ccs_observed"])
+            and "im2deep" not in fname_lower
+        ):
             feature_names["ionmob"].append(fname)
         elif any(x in fname_lower for x in ["basic", "charge", "missed_cleavages"]):
             feature_names["basic"].append(fname)
         else:
             # Unknown generator - use "other" category
             feature_names["other"].append(fname)
-    
+
     return feature_names
 
 
@@ -150,11 +155,14 @@ def create_psm_dataframe(psm_list: psm_utils.PSMList) -> pd.DataFrame:
         psm_df["score_before"] = None
         psm_df["qvalue_before"] = None
 
-    # Add rescoring features
+    # Add rescoring features - vectorized extraction
     if psm_list[0].rescoring_features:
-        features_df = get_feature_values(psm_list)
+        # Extract all rescoring_features dicts at once (much faster than looping)
+        features_df = pd.DataFrame.from_records(psm_list["rescoring_features"]).astype("float32")
         # Merge features with PSM dataframe (they should have same index)
         psm_df = pd.concat([psm_df, features_df], axis=1)
+        # Remove duplicate columns (keep last, i.e., from features_df)
+        psm_df = psm_df.loc[:, ~psm_df.columns.duplicated(keep="last")]
 
     # Rename current score/qvalue to score_after/qvalue_after for clarity
     psm_df["score_after"] = psm_df["score"]

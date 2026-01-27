@@ -3,6 +3,7 @@
 import importlib.resources
 import json
 import logging
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
@@ -22,6 +23,7 @@ except ImportError:
 import ms2rescore
 import ms2rescore.report.charts as charts
 import ms2rescore.report.templates as templates
+from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.report.utils import (
     calculate_fdr_stats,
     create_psm_dataframe,
@@ -93,6 +95,16 @@ def generate_report(
     logger.debug("Creating PSM dataframe...")
     psm_df = create_psm_dataframe(psm_list)
 
+    # Pre-compute commonly used filtered subsets for performance
+    targets = psm_df[~psm_df["is_decoy"]]
+    is_decoy = psm_df["is_decoy"]  # Extract once for reuse
+    if "qvalue_before" in psm_df.columns and "qvalue_after" in psm_df.columns:
+        targets_before_fdr = targets[targets["qvalue_before"] <= 0.01]
+        targets_after_fdr = targets[targets["qvalue_after"] <= 0.01]
+    else:
+        targets_before_fdr = None
+        targets_after_fdr = None
+
     # Try to read config, but don't fail if it doesn't exist
     config = None
     if files["configuration"] and files["configuration"].is_file():
@@ -113,10 +125,17 @@ def generate_report(
         overview_context = _get_overview_context(confidence_before, confidence_after)
     else:
         logger.debug("Generating overview from PSM dataframe...")
-        overview_context = _get_overview_context_df(psm_df)
+        overview_context = _get_overview_context_df(
+            psm_df,
+            targets=targets,
+            targets_before_fdr=targets_before_fdr,
+            targets_after_fdr=targets_after_fdr,
+        )
 
-    target_decoy_context = _get_target_decoy_context(psm_list)
-    features_context = _get_features_context(psm_list, files, feature_names=feature_names)
+    target_decoy_context = _get_target_decoy_context(psm_df)
+    features_context = _get_features_context(
+        psm_df, files, is_decoy=is_decoy, feature_names=feature_names
+    )
     config_context = _get_config_context(config)
     log_context = _get_log_context(files)
 
@@ -232,18 +251,30 @@ def _get_stats_context(confidence_before, confidence_after):
     return stats
 
 
-def _get_stats_context_df(psm_df: pd.DataFrame, fdr_threshold: float = 0.01) -> list:
+def _get_stats_context_df(
+    psm_df: pd.DataFrame,
+    targets: Optional[pd.DataFrame] = None,
+    targets_before_fdr: Optional[pd.DataFrame] = None,
+    targets_after_fdr: Optional[pd.DataFrame] = None,
+    fdr_threshold: float = 0.01,
+) -> list:
     """Return context for overview statistics pane from dataframe."""
     stats = []
 
     if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
         return stats
 
-    targets = psm_df[~psm_df["is_decoy"]]
+    # Use pre-computed subsets if available, otherwise compute now
+    if targets is None:
+        targets = psm_df[~psm_df["is_decoy"]]
 
-    # PSM level stats
-    psms_before = len(targets[targets["qvalue_before"] <= fdr_threshold])
-    psms_after = len(targets[targets["qvalue_after"] <= fdr_threshold])
+    # PSM level stats - use pre-computed subsets if available
+    if targets_before_fdr is not None and targets_after_fdr is not None:
+        psms_before = len(targets_before_fdr)
+        psms_after = len(targets_after_fdr)
+    else:
+        psms_before = len(targets[targets["qvalue_before"] <= fdr_threshold])
+        psms_after = len(targets[targets["qvalue_after"] <= fdr_threshold])
 
     if psms_before > 0:
         increase = (psms_after - psms_before) / psms_before * 100
@@ -264,10 +295,16 @@ def _get_stats_context_df(psm_df: pd.DataFrame, fdr_threshold: float = 0.01) -> 
 
     # Peptide level stats
     if "peptidoform" in psm_df.columns:
-        peptides_before = targets[targets["qvalue_before"] <= fdr_threshold][
-            "peptidoform"
-        ].nunique()
-        peptides_after = targets[targets["qvalue_after"] <= fdr_threshold]["peptidoform"].nunique()
+        if targets_before_fdr is not None and targets_after_fdr is not None:
+            peptides_before = targets_before_fdr["peptidoform"].nunique()
+            peptides_after = targets_after_fdr["peptidoform"].nunique()
+        else:
+            peptides_before = targets[targets["qvalue_before"] <= fdr_threshold][
+                "peptidoform"
+            ].nunique()
+            peptides_after = targets[targets["qvalue_after"] <= fdr_threshold][
+                "peptidoform"
+            ].nunique()
 
         if peptides_before > 0:
             increase = (peptides_after - peptides_before) / peptides_before * 100
@@ -289,11 +326,21 @@ def _get_stats_context_df(psm_df: pd.DataFrame, fdr_threshold: float = 0.01) -> 
     return stats
 
 
-def _get_overview_context_df(psm_df: pd.DataFrame) -> dict:
+def _get_overview_context_df(
+    psm_df: pd.DataFrame,
+    targets: Optional[pd.DataFrame] = None,
+    targets_before_fdr: Optional[pd.DataFrame] = None,
+    targets_after_fdr: Optional[pd.DataFrame] = None,
+) -> dict:
     """Return context for overview tab from dataframe."""
-    logger.debug("Generating overview charts from PSM dataframe...")
+    logger.debug("Generating overview charts from dataframe...")
     return {
-        "stats": _get_stats_context_df(psm_df),
+        "stats": _get_stats_context_df(
+            psm_df,
+            targets=targets,
+            targets_before_fdr=targets_before_fdr,
+            targets_after_fdr=targets_after_fdr,
+        ),
         "charts": [
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
@@ -348,9 +395,8 @@ def _get_overview_context(confidence_before, confidence_after) -> dict:
     }
 
 
-def _get_target_decoy_context(psm_list) -> dict:
+def _get_target_decoy_context(psm_df: pd.DataFrame) -> dict:
     logger.debug("Generating target-decoy charts...")
-    psm_df = psm_list.to_dataframe()
     return {
         "charts": [
             {
@@ -368,12 +414,17 @@ def _get_target_decoy_context(psm_list) -> dict:
 
 
 def _get_features_context(
-    psm_list: PSMList,
+    psm_df: pd.DataFrame,
     files: Dict[str, Path],
+    is_decoy: Optional[pd.Series] = None,
     feature_names: Optional[Dict[str, set]] = None,
 ) -> dict:
     """Return context for features tab."""
     logger.debug("Generating feature-related charts...")
+
+    # Use pre-computed is_decoy if provided, otherwise extract
+    if is_decoy is None:
+        is_decoy = psm_df["is_decoy"]
     context: dict[str, list] = {"charts": []}
 
     # Get feature names, mapping with generator, and flat list
@@ -381,14 +432,62 @@ def _get_features_context(
         # Try to read from file first
         feature_names = read_feature_names(files.get("feature names"))
 
-        # If file doesn't exist or is empty, infer from PSM list
+        # If file doesn't exist or is empty, infer from feature generators
         if not feature_names:
-            logger.info("Feature names file not found. Inferring from PSM list...")
-            feature_names = infer_feature_names_from_psm_list(psm_list)
+            logger.info("Feature names file not found. Inferring from feature generators...")
+            # Get feature columns (exclude standard PSM columns)
+            standard_columns = {
+                "spectrum_id",
+                "run",
+                "collection",
+                "spectrum",
+                "peptidoform",
+                "precursor_mz",
+                "retention_time",
+                "protein_list",
+                "rank",
+                "source",
+                "provenance_data",
+                "metadata",
+                "rescoring_features",
+                "qvalue",
+                "pep",
+                "score",
+                "precursor_charge",
+                "is_decoy",
+                "score_before",
+                "qvalue_before",
+                "score_after",
+                "qvalue_after",
+            }
+            feature_cols = [col for col in psm_df.columns if col not in standard_columns]
+
+            if feature_cols:
+                # Build mapping of feature name -> generator by checking each generator's feature_names
+                feature_to_generator = {}
+                for fgen_name, fgen_class in FEATURE_GENERATORS.items():
+                    try:
+                        # Instantiate with empty config to get feature names
+                        fgen = fgen_class()
+                        fgen_features = fgen.feature_names
+                        for fname in fgen_features:
+                            feature_to_generator[fname] = fgen_name
+                    except Exception:
+                        # If instantiation fails, skip this generator
+                        continue
+
+                # Categorize features based on generator mapping
+                feature_names = defaultdict(list)
+                for fname in feature_cols:
+                    if fname in feature_to_generator:
+                        feature_names[feature_to_generator[fname]].append(fname)
+                    else:
+                        # Unknown feature - put in "other" category
+                        feature_names["other"].append(fname)
 
     # If still no features, return empty context
     if not feature_names:
-        logger.warning("No features found in PSM list. Skipping feature charts.")
+        logger.warning("No features found. Skipping feature charts.")
         return context
 
     # Convert sets to lists if needed (for compatibility with both sources)
@@ -399,13 +498,12 @@ def _get_features_context(
 
     # Fixed color map for feature generators
     FEATURE_GENERATOR_COLORS = {
-        "ms2pip": "#16BA27",  
-        "deeplc": "#EC4807",  
-        "im2deep": "#1E25EA",  
-        "ionmob": "#AB63FA", # remove ionmob?
-        "basic": "#000000",  
-        "psm_file": "#F1ED06",  
-        "other": "#FF6692",  
+        "ms2pip": "#16BA27",
+        "deeplc": "#EC4807",
+        "im2deep": "#1E25EA",
+        "basic": "#000000",
+        "psm_file": "#F1ED06",
+        "other": "#FF6692",
     }
     color_map = {fg: FEATURE_GENERATOR_COLORS.get(fg, "#FFFFFF") for fg in feature_names.keys()}
 
@@ -439,9 +537,9 @@ def _get_features_context(
         except Exception as e:
             logger.warning(f"Could not generate feature weights plot: {e}")
 
-    # Individual feature performance
-    features = get_feature_values(psm_list, feature_names_flat)
-    _, feature_ecdf_auc = charts.calculate_feature_qvalues(features, psm_list["is_decoy"])
+    # Individual feature performance - extract features from dataframe
+    features = psm_df[feature_names_flat].copy()
+    _, feature_ecdf_auc = charts.calculate_feature_qvalues(features, is_decoy)
     feature_ecdf_auc["feature_generator"] = feature_ecdf_auc["feature"].map(feature_names_inv)
 
     context["charts"].append(
@@ -460,21 +558,25 @@ def _get_features_context(
             {
                 "title": TEXTS["charts"]["ms2pip_pearson"]["title"],
                 "description": TEXTS["charts"]["ms2pip_pearson"]["description"],
-                "chart": charts.ms2pip_correlation(
-                    features, psm_list["is_decoy"], psm_list["qvalue"]
-                ).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.ms2pip_correlation(features, is_decoy, psm_df["qvalue"]).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             }
         )
+
+    # Pre-compute filtered subset for feature-specific charts (high-confidence targets)
+    high_conf_mask = (~is_decoy) & (psm_df["qvalue"] <= 0.01)
+    high_conf_features = features[high_conf_mask]
 
     # DeepLC specific charts
     if "deeplc" in feature_names:
         scatter_chart = charts.rt_scatter(
-            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
+            df=high_conf_features,
             predicted_column="predicted_retention_time_best",
             observed_column="observed_retention_time_best",
         )
         baseline_chart = charts.rt_distribution_baseline(
-            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
+            df=high_conf_features,
             predicted_column="predicted_retention_time_best",
             observed_column="observed_retention_time_best",
         )
@@ -490,7 +592,7 @@ def _get_features_context(
     # IM2Deep specific charts
     if "im2deep" in feature_names:
         scatter_chart = charts.rt_scatter(
-            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
+            df=high_conf_features,
             predicted_column="ccs_predicted_im2deep",
             observed_column="ccs_observed_im2deep",
             xaxis_label="Observed CCS",
@@ -506,24 +608,6 @@ def _get_features_context(
             }
         )
 
-    # ionmob specific charts
-    if "ionmob" in feature_names:
-        scatter_chart = charts.rt_scatter(
-            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
-            predicted_column="ccs_predicted",
-            observed_column="ccs_observed",
-            xaxis_label="Observed CCS",
-            yaxis_label="Predicted CCS",
-            plot_title="Predicted vs. observed CCS - ionmob",
-        )
-
-        context["charts"].append(
-            {
-                "title": TEXTS["charts"]["ionmob_performance"]["title"],
-                "description": TEXTS["charts"]["ionmob_performance"]["description"],
-                "chart": scatter_chart.to_html(**PLOTLY_HTML_KWARGS),
-            }
-        )
     return context
 
 
