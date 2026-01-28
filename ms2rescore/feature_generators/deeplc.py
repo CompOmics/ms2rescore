@@ -82,7 +82,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         self.predict_kwargs = {
             k: v for k, v in self.deeplc_kwargs.items() if k in ["device", "batch_size"]
         }  # getfullargspec(predict).args does not work on this outer predict function
-        self.predict_kwargs["num_workers"] = processes
+        # self.predict_kwargs["num_workers"] = processes
 
         # Prepare DeepLC finetune kwargs
         if "deeplc_retrain" not in self.deeplc_kwargs:
@@ -104,7 +104,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
                     "validation_split",
                 ]
             }
-            self.finetune_kwargs["num_workers"] = processes
+            self.finetune_kwargs["threads"] = processes
 
     @property
     def feature_names(self) -> List[str]:

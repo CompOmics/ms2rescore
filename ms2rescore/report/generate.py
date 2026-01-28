@@ -496,14 +496,15 @@ def _get_features_context(
     feature_names_flat = [f_name for f_list in feature_names.values() for f_name in f_list]
     feature_names_inv = {name: gen for gen, f_list in feature_names.items() for name in f_list}
 
-    # Fixed color map for feature generators
+    # Fixed color map for feature generators (Okabe-Ito colorblind-safe palette)
     FEATURE_GENERATOR_COLORS = {
-        "ms2pip": "#16BA27",
-        "deeplc": "#EC4807",
-        "im2deep": "#1E25EA",
-        "basic": "#000000",
-        "psm_file": "#F1ED06",
-        "other": "#FF6692",
+        "ms2pip": "#009E73",  # Bluish green
+        "deeplc": "#E69F00",  # Orange
+        "im2deep": "#0072B2",  # Blue
+        "ms2": "#56B4E9",  # Sky blue
+        "basic": "#000000",  # Black
+        "psm_file": "#F0E442",  # Yellow
+        "other": "#CC79A7",  # Pink
     }
     color_map = {fg: FEATURE_GENERATOR_COLORS.get(fg, "#FFFFFF") for fg in feature_names.keys()}
 
