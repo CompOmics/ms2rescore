@@ -163,11 +163,14 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
         # Calibrate predictions per run
         logger.info("Calibrating predicted retention times per run...")
+        psm_list_df = psm_list_df.sort_values("qvalue")
         for run in psm_list_df["run"].unique():
-            run_df = psm_list_df[psm_list_df["run"] == run].copy()
+            run_df = psm_list_df[psm_list_df["run"] == run]
 
             # Get calibration data (target PSMs only)
             observed_rt_calibration, predicted_rt_calibration = self._get_calibration_data(run_df)
+            if len(observed_rt_calibration) == 0:
+                raise ValueError(f"Run '{run}' has no target PSMs available for calibration.")
 
             # Fit calibration and transform all predictions for this run
             calibration = SplineTransformerCalibration()
@@ -218,17 +221,16 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         Parameters
         ----------
         run_df : pd.DataFrame
-            Dataframe containing PSMs for a single run, with columns:
-            'retention_time', 'predicted_retention_time', 'qvalue', 'is_decoy'
+            Dataframe containing PSMs for a single run, pre-sorted by qvalue ascending, with
+            columns: 'retention_time', 'predicted_retention_time', 'qvalue', 'is_decoy'
 
         Returns
         -------
         tuple[np.ndarray, np.ndarray]
             Observed and predicted retention times for calibration
         """
-        # Filter to target PSMs only
-        target_df = run_df[~run_df["is_decoy"]].copy()
-        target_df = target_df.sort_values("qvalue", ascending=True)
+        # Filter to target PSMs only (run_df is pre-sorted by qvalue)
+        target_df = run_df[~run_df["is_decoy"]]
 
         # Determine number of calibration PSMs
         if isinstance(self.calibration_set_size, float):
@@ -254,7 +256,6 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
         logger.debug(f"Using {num_calibration_psms} target PSMs for calibration")
 
-        # Select calibration PSMs (assuming they are sorted by q-value)
         calibration_df = target_df.head(num_calibration_psms)
 
         return (
@@ -315,7 +316,8 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
             if max_score == 0:
                 logger.warning(
-                    "No runs share any identified proteoforms with other runs; transfer learning might not be as effective."
+                    "No runs share any identified proteoforms with other runs; transfer learning "
+                    "might not be as effective."
                 )
                 return run_order[0]
 
@@ -344,7 +346,8 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
         if max_score == 0:
             logger.warning(
-                "No runs share any identified proteoforms with other runs; transfer learning might not be as effective."
+                "No runs share any identified proteoforms with other runs; transfer learning "
+                "might not be as effective."
             )
             return run_order[0]
 

@@ -25,7 +25,7 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         fragmentation_model: str = "cidhcd",
         mass_mode: str = "monoisotopic",
         processes: int = 1,
-        calculate_hyperscore: bool = False,
+        calculate_hyperscore: bool = True,
         **kwargs,
     ) -> None:
         """
@@ -33,6 +33,22 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
 
         Parameters
         ----------
+        spectrum_path
+            Path to spectrum file or directory with spectrum files. If None, inferred from ``run``
+            field in PSMs. Defaults to :py:const:`None`.
+        spectrum_id_pattern : str, optional
+            Regular expression pattern to extract spectrum ID from spectrum file. Defaults to
+            :py:const:`.*`.
+        fragmentation_model
+            Fragmentation model to use for theoretical spectrum generation. Defaults to
+            :py:const:`cidhcd` (b and y ions).
+        mass_mode
+            Mass mode to use for theoretical spectrum generation. Defaults to
+            :py:const:`monoisotopic`.
+        processes : int, optional
+            Number of processes to use for feature generation. Defaults to 1.
+        calculate_hyperscore : bool, optional
+            Whether to calculate hyperscore feature. Defaults to True.
 
         Attributes
         ----------
