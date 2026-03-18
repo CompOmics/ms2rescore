@@ -1,6 +1,6 @@
 [project]
 name = "ms2rescore"
-version = "3.2.0.post1"
+version = "3.2.1"
 description = " Modular and user-friendly platform for AI-assisted rescoring of peptide identifications."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -73,9 +73,12 @@ docs = [
 ]
 installer = [
     # Pinned dependencies for reproducible Windows installer builds
-    "pyinstaller",
-    "pyopenms==3.3",
-    "im2deep==1.1.1",
+    "cbor2",
+    # "deeplc==4.0.0",  # TODO: Update upon stable release
+    # "im2deep==2.0.0",
+    # "ms2rescore-rs==0.5.0",
+    "psm_utils==1.5.2",
+    "pyopenms==3.5",
 ]
 
 [project.urls]
@@ -103,11 +106,11 @@ profile = "black"
 
 [tool.black]
 line-length = 99
-target-version = ['py39']
+target-version = ['py311']
 
 [tool.ruff]
 line-length = 99
-target-version = 'py39'
+target-version = 'py311'
 
 [tool.ruff.lint]
 extend-select = ["T201", "T203"]

@@ -83,12 +83,16 @@ def score_histogram(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
 
     # Get score thresholds
     if all(psm_df["qvalue"]):
-        score_threshold = (
-            psm_df[psm_df["qvalue"] <= 0.01]
-            .sort_values("qvalue", ascending=False)["qvalue"]
-            .iloc[0]
-        )
-        fig.add_vline(x=score_threshold, line_dash="dash", line_color="black")
+        try:
+            score_threshold = (
+                psm_df[psm_df["qvalue"] <= 0.01]
+                .sort_values("qvalue", ascending=False)["qvalue"]
+                .iloc[0]
+            )
+        except IndexError:  # No PSMs below threshold
+            pass
+        else:
+            fig.add_vline(x=score_threshold, line_dash="dash", line_color="black")
 
     return fig
 

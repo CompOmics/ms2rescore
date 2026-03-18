@@ -53,8 +53,8 @@ def _print_credits(tims=False):
     text.append("Please cite: ")
     if tims:
         text.append(
-            "Declercq & Devreese et al. bioRxiv (2024)",
-            style="link https://doi.org/10.1101/2024.05.29.596400",
+            "Declercq & Devreese et al. JPR (2025)",
+            style="link https://doi.org/10.1021/acs.jproteome.4c00609",
         )
     else:
         text.append(
