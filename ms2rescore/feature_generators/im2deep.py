@@ -12,10 +12,11 @@ import logging
 from typing import List, Union
 
 import numpy as np
-from psm_utils import PSMList
-from im2deep.core import predict
+import pandas as pd
 from im2deep.calibration import LinearCCSCalibration, get_default_reference
+from im2deep.core import predict
 from im2deep.utils import im2ccs
+from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
@@ -153,7 +154,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         for psm, features in zip(psm_list, psm_list_feature_dicts):
             psm.rescoring_features.update(features)
 
-    def _get_im_calibration_data(self, run_df) -> "pd.DataFrame":
+    def _get_im_calibration_data(self, run_df) -> pd.DataFrame:
         """Get calibration data (observed and predicted CCS values) from run dataframe.
 
         Only target (non-decoy) PSMs are used for calibration.
