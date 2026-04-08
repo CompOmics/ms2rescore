@@ -8,6 +8,8 @@ from typing import Dict, Optional, Tuple
 
 import pandas as pd
 import psm_utils
+
+from ms2rescore.constants import CHARGE_PATTERN
 from mokapot import LinearConfidence, LinearPsmDataset, read_fasta
 
 from ms2rescore.exceptions import ReportGenerationError
@@ -92,7 +94,9 @@ def get_confidence_estimates(
 
     score_after = psm_list["score"]
     peptide = (
-        pd.Series(psm_list["peptidoform"]).astype(str).str.replace(r"(/\d+$)", "", n=1, regex=True)
+        pd.Series(psm_list["peptidoform"])
+        .astype(str)
+        .str.replace(CHARGE_PATTERN, "", n=1, regex=True)
     )
     psms = pd.DataFrame({"peptide": peptide, "is_target": ~psm_list["is_decoy"]}).reset_index()
     lin_psm_dataset = LinearPsmDataset(

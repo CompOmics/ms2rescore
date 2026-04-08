@@ -107,8 +107,15 @@ def filter_mumble_psms(psm_list: PSMList, threshold=1) -> PSMList:
     threshold : float, optional
         Threshold to lower the maximum matched_ions_pct of the original hit
     """
+    if not psm_list:
+        return psm_list
+
     # Extract relevant fields from the PSM list
-    original_hit = np.array([metadata.get("original_psm") for metadata in psm_list["metadata"]])
+    # Default to True: PSMs without "original_psm" metadata were not added by mumble and should
+    # be treated as original hits (i.e., never filtered out by this function).
+    original_hit = np.array(
+        [metadata.get("original_psm", True) for metadata in psm_list["metadata"]], dtype=bool
+    )
     spectrum_indices = np.array([psm.spectrum_id for psm in psm_list])
     runs = np.array([psm.run for psm in psm_list])
 

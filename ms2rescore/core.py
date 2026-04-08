@@ -3,11 +3,13 @@ import logging
 from multiprocessing import cpu_count
 from typing import Dict, Optional
 
+import numpy as np
 import psm_utils.io
 from mokapot.dataset import LinearPsmDataset
 from psm_utils import PSMList
 
 from ms2rescore import exceptions
+from ms2rescore.constants import CHARGE_PATTERN
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.parse_psms import parse_psms
 from ms2rescore.parse_spectra import add_precursor_values
@@ -64,8 +66,9 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     logger.debug(
         f"PSMs already contain the following rescoring features: {psm_list_feature_names}"
     )
-    # ckeck if all features are already present
-    for fgen_name, fgen_config in list(config["feature_generators"].items()):
+    # Check if all features are already present; collect generators to skip
+    skip_fgens = set()
+    for fgen_name, fgen_config in config["feature_generators"].items():
         fgen_features = FEATURE_GENERATORS[fgen_name]().feature_names
         if set(fgen_features).issubset(psm_list_feature_names):
             logger.debug(
@@ -74,12 +77,13 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             )
             feature_names[fgen_name] = set(fgen_features)
             feature_names["psm_file"] = psm_list_feature_names - set(fgen_features)
-            del config["feature_generators"][fgen_name]
+            skip_fgens.add(fgen_name)
 
     # Add missing precursor info from spectrum file if needed
     required_ms_data = {
         ms_data
         for fgen_name in config["feature_generators"].keys()
+        if fgen_name not in skip_fgens
         for ms_data in FEATURE_GENERATORS[fgen_name].required_ms_data
     }
     available_ms_data = add_precursor_values(
@@ -91,6 +95,8 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Add rescoring features
     for fgen_name, fgen_config in config["feature_generators"].items():
+        if fgen_name in skip_fgens:
+            continue
         # Compile configuration
         conf = config.copy()
         conf.update(fgen_config)
@@ -107,7 +113,10 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             continue
         try:
             fgen.add_features(psm_list)
-        except (Exception, KeyboardInterrupt) as e:
+        except (
+            Exception,
+            KeyboardInterrupt,
+        ) as e:  # Intentionally broad to save intermediate output before re-raising
             logger.error(
                 f"Error while adding features from {fgen_name}: {e}, writing intermediary output..."
             )
@@ -196,7 +205,10 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
                 protein_kwargs=protein_kwargs,
                 **config["rescoring_engine"]["mokapot"],
             )
-    except (Exception, KeyboardInterrupt):
+    except (
+        Exception,
+        KeyboardInterrupt,
+    ):  # Intentionally broad to save intermediate output before re-raising
         # Write output
         logger.info(f"Writing intermediary output to {output_file_root}.intermediate.psms.tsv...")
         psm_utils.io.write_file(
@@ -257,10 +269,12 @@ def _write_feature_names(feature_names, output_file_root):
 def _log_id_psms_before(psm_list: PSMList, fdr: float = 0.01, max_rank: int = 1) -> int:
     """Log #PSMs identified before rescoring."""
     id_psms_before = (
-        (psm_list["qvalue"] <= 0.01)
+        (psm_list["qvalue"] <= fdr)
         & (psm_list["rank"] <= max_rank)
         & (~psm_list["is_decoy"])
-        & ([(metadata or {}).get("original_psm", True) for metadata in psm_list["metadata"]])
+        & np.array(
+            [(metadata or {}).get("original_psm", True) for metadata in psm_list["metadata"]]
+        )
     ).sum()
     logger.info(
         f"Found {id_psms_before} identified PSMs with rank <= {max_rank} at {fdr} FDR before "
@@ -315,7 +329,7 @@ def _calculate_confidence(psm_list: PSMList) -> PSMList:
     psm_df = psm_list.to_dataframe()
     psm_df = psm_df.reset_index(drop=True).reset_index()
     psm_df["peptide"] = (
-        psm_df["peptidoform"].astype(str).str.replace(r"(/\d+$)", "", n=1, regex=True)
+        psm_df["peptidoform"].astype(str).str.replace(CHARGE_PATTERN, "", n=1, regex=True)
     )
     psm_df["is_target"] = ~psm_df["is_decoy"]
     lin_psm_data = LinearPsmDataset(
