@@ -111,15 +111,6 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
     psm_list.add_fixed_modifications(config["fixed_modifications"])
     psm_list.apply_fixed_modifications()
 
-    if config["psm_id_pattern"]:
-        pattern = re.compile(config["psm_id_pattern"])
-        logger.debug("Applying 'psm_id_pattern'...")
-        logger.debug(
-            f"Parsing '{psm_list[0].spectrum_id}' to '{_match_psm_ids(psm_list[0].spectrum_id, pattern)}'"
-        )
-        new_ids = [_match_psm_ids(old_id, pattern) for old_id in psm_list["spectrum_id"]]
-        psm_list["spectrum_id"] = new_ids
-
     # Addition of Modifications for mass shifts in the PSMs with Mumble
     if "mumble" in config["psm_generator"]:
         try:

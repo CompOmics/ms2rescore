@@ -68,9 +68,7 @@ def add_precursor_values(
     """
     # Check which data types are missing
     # Missing if: all values are 0, OR any values are None/NaN
-    missing_data_types = set()
-    if MSDataType.ms2_spectra in required_data_types:
-        missing_data_types.add(MSDataType.ms2_spectra)
+    missing_data_types = {MSDataType.ms2_spectra}  # Always missing until spectrum files are parsed
 
     rt_values = np.asarray(psm_list["retention_time"])
     if np.any(np.isnan(rt_values)) or np.all(rt_values == 0):
@@ -145,7 +143,7 @@ def add_precursor_values(
             "(all values are zero)."
         )
 
-    if np.all(mzs == 0.0):
+    if not np.all(mzs == 0.0):
         found_data_types.add(MSDataType.precursor_mz)
         if MSDataType.precursor_mz in data_types_to_parse:
             LOGGER.debug("Missing precursor m/z values in PSM list. Updating from spectrum files.")
