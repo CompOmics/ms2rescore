@@ -26,7 +26,7 @@ If you use MS²PIP through MS²Rescore, please cite:
 import logging
 from typing import Optional
 
-from ms2pip import process_MS2_spectra
+from ms2pip import correlate_preloaded
 from ms2rescore_rs import ms2pip_features_from_prediction_peak_arrays
 
 from psm_utils import PSMList
@@ -174,7 +174,7 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
 
         """
         logger.info("Adding MS²PIP-derived features to PSMs.")
-        ms2pip_results = process_MS2_spectra(
+        ms2pip_results = correlate_preloaded(
             psms=psm_list,
             model=self.model,
             model_dir=self.model_dir,

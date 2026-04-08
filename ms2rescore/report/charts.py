@@ -3,7 +3,6 @@
 import importlib.resources
 import warnings
 from collections import defaultdict
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import mokapot
@@ -724,12 +723,13 @@ def rt_distribution_baseline(
     try:
         import deeplc.package_data
 
-        baseline_path = (
-            Path(importlib.resources.files(deeplc.package_data))
+        baseline_ref = (
+            importlib.resources.files(deeplc.package_data)
             / "baseline_performance"
             / "baseline_predictions.csv"
         )
-        baseline_df = pd.read_csv(baseline_path)
+        with importlib.resources.as_file(baseline_ref) as baseline_path:
+            baseline_df = pd.read_csv(baseline_path)
     except (ImportError, FileNotFoundError):
         # If deeplc is not installed or baseline data not found, return empty figure
         fig = go.Figure()

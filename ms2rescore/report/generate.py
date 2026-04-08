@@ -9,11 +9,9 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
-import plotly.express as px
 import psm_utils.io
 from jinja2 import Environment, FileSystemLoader
 from plotly.offline import get_plotlyjs_version
-from psm_utils.psm_list import PSMList
 
 try:
     import tomllib
@@ -25,11 +23,8 @@ import ms2rescore.report.charts as charts
 import ms2rescore.report.templates as templates
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.report.utils import (
-    calculate_fdr_stats,
     create_psm_dataframe,
     get_confidence_estimates,
-    get_feature_values,
-    infer_feature_names_from_psm_list,
     read_feature_names,
 )
 

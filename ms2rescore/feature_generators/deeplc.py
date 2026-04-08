@@ -19,9 +19,9 @@ import logging
 from typing import List, Union
 
 import numpy as np
-from psm_utils import PSMList
-from deeplc.core import predict, finetune
 from deeplc.calibration import SplineTransformerCalibration
+from deeplc.core import finetune, predict
+from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
@@ -80,9 +80,11 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
         # Prepare DeepLC predict kwargs
         self.predict_kwargs = {
-            k: v for k, v in self.deeplc_kwargs.items() if k in ["device", "batch_size"]
+            k: v
+            for k, v in self.deeplc_kwargs.items()
+            if k in ["device", "batch_size", "num_threads"]
         }  # getfullargspec(predict).args does not work on this outer predict function
-        # self.predict_kwargs["num_workers"] = processes
+        self.predict_kwargs["num_threads"] = processes
 
         # Prepare DeepLC finetune kwargs
         if "deeplc_retrain" not in self.deeplc_kwargs:
@@ -104,7 +106,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
                     "validation_split",
                 ]
             }
-            self.finetune_kwargs["threads"] = processes
+            self.finetune_kwargs["num_threads"] = processes
 
     @property
     def feature_names(self) -> List[str]:

@@ -1,6 +1,5 @@
 """Entrypoint for MS²Rescore GUI."""
 
-import contextlib
 import multiprocessing
 import os
 import sys
