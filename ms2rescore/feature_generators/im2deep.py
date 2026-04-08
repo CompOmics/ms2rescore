@@ -153,7 +153,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         for psm, features in zip(psm_list, psm_list_feature_dicts):
             psm.rescoring_features.update(features)
 
-    def _get_im_calibration_data(self, run_df) -> tuple[np.ndarray, np.ndarray]:
+    def _get_im_calibration_data(self, run_df) -> "pd.DataFrame":
         """Get calibration data (observed and predicted CCS values) from run dataframe.
 
         Only target (non-decoy) PSMs are used for calibration.
@@ -163,10 +163,11 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         run_df : pd.DataFrame
             Dataframe containing PSMs for a single run, with columns:
             'ccs_observed_im2deep', 'ccs_predicted_im2deep', 'qvalue', 'is_decoy'
+
         Returns
         -------
-        tuple[np.ndarray, np.ndarray]
-            Observed and predicted CCS values for calibration
+        pd.DataFrame
+            DataFrame with 'peptidoform' and 'CCS' columns for calibration.
         """
         # Filter to target PSMs only
         target_df = run_df[~run_df["is_decoy"]].copy()

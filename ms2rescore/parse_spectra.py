@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Optional, Set
 
 import numpy as np
-from ms2rescore_rs import Precursor, get_ms2_spectra, MS2Spectrum
+from ms2rescore_rs import get_ms2_spectra, MS2Spectrum
 from rich.progress import track
 
 from psm_utils import PSMList
@@ -177,7 +177,7 @@ def add_precursor_values(
 
 def _acquire_observed_spectra_dict(
     ms2: list[MS2Spectrum], pattern: str, spectrum_ids: list[str]
-) -> dict[str, Precursor]:
+) -> dict[str, MS2Spectrum]:
     """Apply spectrum ID pattern to precursor IDs."""
     # Map precursor IDs using regex pattern
     compiled_pattern = re.compile(pattern)
@@ -223,9 +223,17 @@ def _add_precursor_values(
             ms2_spectra, spectrum_id_pattern, psm_list_run["spectrum_id"]
         )
 
-        psm_list_run["spectrum"] = [
-            ms2_spectra_dict[spec_id] for spec_id in psm_list_run["spectrum_id"]
-        ]
+        try:
+            psm_list_run["spectrum"] = [
+                ms2_spectra_dict[spec_id] for spec_id in psm_list_run["spectrum_id"]
+            ]
+        except KeyError as e:
+            raise SpectrumParsingError(
+                f"Could not find spectrum {e} in spectrum file '{spectrum_file}'. Please "
+                "check the 'spectrum_id_pattern' and 'psm_id_pattern' configuration options. See "
+                "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
+                "for more information."
+            ) from e
 
 
 class SpectrumParsingError(MS2RescoreError):

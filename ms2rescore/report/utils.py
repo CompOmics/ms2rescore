@@ -55,11 +55,6 @@ def infer_feature_names_from_psm_list(psm_list: psm_utils.PSMList) -> Dict[str, 
             x in fname_lower for x in ["im2deep", "ccs_predicted_im2deep", "ccs_observed_im2deep"]
         ):
             feature_names["im2deep"].append(fname)
-        elif (
-            any(x in fname_lower for x in ["ionmob", "ccs_predicted", "ccs_observed"])
-            and "im2deep" not in fname_lower
-        ):
-            feature_names["ionmob"].append(fname)
         elif any(x in fname_lower for x in ["basic", "charge", "missed_cleavages"]):
             feature_names["basic"].append(fname)
         else:

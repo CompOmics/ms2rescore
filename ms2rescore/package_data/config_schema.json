@@ -303,7 +303,7 @@
         },
         "mumble": {
             "$ref": "#/definitions/psm_generator",
-            "description": "Mumble PSM generator configuration using Mubmle",
+            "description": "Mumble PSM generator configuration",
             "type": "object",
             "additionalProperties": true,
             "properties": {

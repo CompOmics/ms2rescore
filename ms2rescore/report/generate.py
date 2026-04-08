@@ -257,6 +257,10 @@ def _get_stats_context_df(
     stats = []
 
     if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+        logger.warning(
+            "Before/after rescoring q-values not found in PSM data. "
+            "Overview statistics will be empty."
+        )
         return stats
 
     # Use pre-computed subsets if available, otherwise compute now

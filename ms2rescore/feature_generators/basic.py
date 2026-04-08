@@ -1,7 +1,8 @@
 """Generate basic features that can be extracted from any PSM list."""
 
+from __future__ import annotations
+
 import logging
-from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 from psm_utils import PSMList
@@ -33,7 +34,7 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
         super().__init__(*args, **kwargs)
 
     @property
-    def feature_names(self) -> List[str]:
+    def feature_names(self) -> list[str]:
         return [
             "charge_n",
             "charge_1",
@@ -54,6 +55,9 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
         """
         Add basic features to a PSM list.
 
+        All features listed in ``feature_names`` are always added. When the required data
+        (charge, m/z, score) is not available, the corresponding features are set to 0.
+
         Parameters
         ----------
         psm_list
@@ -61,6 +65,7 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
 
         """
         logger.info("Adding basic features to PSMs.")
+        n = len(psm_list)
 
         charge_states = np.array([psm.peptidoform.precursor_charge for psm in psm_list])
         precursor_mzs = psm_list["precursor_mz"]
@@ -74,35 +79,48 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
         if has_charge:
             charge_n = charge_states
             charge_one_hot, _ = _one_hot_encode_charge(charge_states)
+        else:
+            logger.warning("Charge states not available for all PSMs; charge features will be 0.")
+            charge_n = np.zeros(n)
+            charge_one_hot = [dict.fromkeys([f"charge_{i}" for i in range(1, 7)], 0) for _ in range(n)]
 
         if has_mz:  # Charge also required for theoretical m/z
             theo_mz = np.array([psm.peptidoform.theoretical_mz for psm in psm_list])
             abs_ms1_error_ppm = np.abs((precursor_mzs - theo_mz) / theo_mz * 10**6)
-
-        if has_mz and has_charge:
             experimental_mass = (precursor_mzs * charge_n) - (charge_n * 1.007276466812)
             theoretical_mass = (theo_mz * charge_n) - (charge_n * 1.007276466812)
             mass_error = experimental_mass - theoretical_mass
+        else:
+            logger.warning("Precursor m/z not available for all PSMs; m/z features will be 0.")
+            abs_ms1_error_ppm = np.zeros(n)
+            experimental_mass = np.zeros(n)
+            theoretical_mass = np.zeros(n)
+            mass_error = np.zeros(n)
 
         for i, psm in enumerate(psm_list):
+            if psm.rescoring_features is None:
+                psm.rescoring_features = {}
             psm.rescoring_features.update(
-                dict(
-                    **{"charge_n": charge_n[i]} if has_charge else {},
-                    **charge_one_hot[i] if has_charge else {},
-                    **{"abs_ms1_error_ppm": abs_ms1_error_ppm[i]} if has_mz else {},
-                    **{"search_engine_score": scores[i]} if has_score else {},
-                    **{"theoretical_mass": theoretical_mass[i]} if has_mz and has_charge else {},
-                    **{"experimental_mass": experimental_mass[i]} if has_mz and has_charge else {},
-                    **{"mass_error": mass_error[i]} if has_mz and has_charge else {},
-                    **{"pep_len": peptide_lengths[i]},
-                )
+                {
+                    "charge_n": charge_n[i],
+                    **charge_one_hot[i],
+                    "abs_ms1_error_ppm": abs_ms1_error_ppm[i],
+                    "search_engine_score": scores[i] if has_score else 0,
+                    "theoretical_mass": theoretical_mass[i],
+                    "experimental_mass": experimental_mass[i],
+                    "mass_error": mass_error[i],
+                    "pep_len": peptide_lengths[i],
+                }
             )
 
 
 def _one_hot_encode_charge(
     charge_states: np.ndarray,
-) -> Tuple[Iterable[Dict[str, int]], List[str]]:
-    """One-hot encode charge states with fixed range 1-6."""
+) -> tuple[list[dict[str, int]], list[str]]:
+    """One-hot encode charge states with fixed range 1-6.
+
+    Charge states outside the 1-6 range are encoded as all zeros.
+    """
     n_entries = len(charge_states)
     heading = [f"charge_{i}" for i in range(1, 7)]
 

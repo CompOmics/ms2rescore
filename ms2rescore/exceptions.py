@@ -44,6 +44,6 @@ class RescoringError(MS2RescoreError):
 
 
 class ParseSpectrumError(MS2RescoreError):
-    """Error while rescoring PSMs."""
+    """Error while parsing spectrum files."""
 
     pass

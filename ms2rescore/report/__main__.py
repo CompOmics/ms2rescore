@@ -34,28 +34,22 @@ def main(psm_file, output):
     try:
         psm_file_path = Path(psm_file)
 
+        # Infer output prefix from PSM file name
+        if ".ms2rescore.psms.tsv" in psm_file_path.name:
+            output_prefix = str(psm_file_path).replace(".psms.tsv", "")
+        else:
+            output_prefix = str(psm_file_path.with_suffix(""))
+
         # Determine output path
         if output:
             output_path = Path(output)
         else:
-            # Try to infer from ms2rescore naming convention
-            if ".ms2rescore.psms.tsv" in psm_file_path.name:
-                output_prefix = str(psm_file_path).replace(".psms.tsv", "")
-            else:
-                # Use the PSM file name without extension
-                output_prefix = str(psm_file_path.with_suffix(""))
             output_path = Path(output_prefix + ".report.html")
 
         logger.info(f"Reading PSMs from {psm_file_path}...")
         psm_list = psm_utils.io.read_file(psm_file_path, filetype="tsv", show_progressbar=True)
 
         logger.info("Generating report...")
-        # Try to infer output prefix for finding other files
-        if ".ms2rescore.psms.tsv" in psm_file_path.name:
-            output_prefix = str(psm_file_path).replace(".psms.tsv", "")
-        else:
-            output_prefix = str(psm_file_path.with_suffix(""))
-
         generate_report(
             output_path_prefix=output_prefix,
             psm_list=psm_list,

@@ -37,7 +37,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         f"Running MS²Rescore with following configuration: {json.dumps(configuration, indent=4)}"
     )
     config = configuration["ms2rescore"]
-    output_file_root = config["output_path"].split(".intermidiate.")[
+    output_file_root = config["output_path"].split(".intermediate.")[
         0
     ]  # if no intermediate, takes full name
 
@@ -115,7 +115,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             psm_utils.io.write_file(
                 psm_list, output_file_root + ".intermediate.psms.tsv", filetype="tsv"
             )
-            raise e
+            raise
         logger.debug(f"Adding features from {fgen_name}: {set(fgen.feature_names)}")
         feature_names[fgen_name] = set(fgen.feature_names)
 
@@ -196,7 +196,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
                 protein_kwargs=protein_kwargs,
                 **config["rescoring_engine"]["mokapot"],
             )
-    except (Exception, KeyboardInterrupt) as e:
+    except (Exception, KeyboardInterrupt):
         # Write output
         logger.info(f"Writing intermediary output to {output_file_root}.intermediate.psms.tsv...")
         psm_utils.io.write_file(
@@ -204,7 +204,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         )
 
         # Reraise exception
-        raise e
+        raise
 
     # Post-rescoring processing
     if all(psm_list["pep"] == 1.0):
@@ -260,7 +260,7 @@ def _log_id_psms_before(psm_list: PSMList, fdr: float = 0.01, max_rank: int = 1)
         (psm_list["qvalue"] <= 0.01)
         & (psm_list["rank"] <= max_rank)
         & (~psm_list["is_decoy"])
-        & ([metadata.get("original_psm", True) for metadata in psm_list["metadata"]])
+        & ([(metadata or {}).get("original_psm", True) for metadata in psm_list["metadata"]])
     ).sum()
     logger.info(
         f"Found {id_psms_before} identified PSMs with rank <= {max_rank} at {fdr} FDR before "
