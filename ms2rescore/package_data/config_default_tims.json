@@ -11,7 +11,7 @@
                 "deeplc_retrain": false
             },
             "im2deep": {},
-            "maxquant": {}
+            "ms2": {}
         },
         "rescoring_engine": {
             "mokapot": {

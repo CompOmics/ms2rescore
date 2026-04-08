@@ -1,5 +1,6 @@
 """Collection of Plotly-based charts for reporting results of MS²Rescore."""
 
+import importlib.resources
 import warnings
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
@@ -639,3 +640,370 @@ def feature_ecdf_auc_bar(
         },
         color_discrete_map=color_discrete_map,
     )
+
+
+def rt_scatter(
+    df: pd.DataFrame,
+    predicted_column: str = "Predicted retention time",
+    observed_column: str = "Observed retention time",
+    xaxis_label: str = "Observed retention time",
+    yaxis_label: str = "Predicted retention time",
+    plot_title: str = "Predicted vs. observed retention times",
+) -> go.Figure:
+    """
+    Plot a scatter plot of the predicted vs. observed retention times.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe containing the predicted and observed retention times.
+    predicted_column : str, optional
+        Name of the column containing the predicted retention times, by default
+        ``Predicted retention time``.
+    observed_column : str, optional
+        Name of the column containing the observed retention times, by default
+        ``Observed retention time``.
+    xaxis_label : str, optional
+        X-axis label, by default ``Observed retention time``.
+    yaxis_label : str, optional
+        Y-axis label, by default ``Predicted retention time``.
+    plot_title : str, optional
+        Scatter plot title, by default ``Predicted vs. observed retention times``
+
+    """
+    # Draw scatter
+    fig = px.scatter(
+        df,
+        x=observed_column,
+        y=predicted_column,
+        opacity=0.3,
+    )
+
+    # Draw diagonal line
+    fig.add_scatter(
+        x=[min(df[observed_column]), max(df[observed_column])],
+        y=[min(df[observed_column]), max(df[observed_column])],
+        mode="lines",
+        line=dict(color="red", width=3, dash="dash"),
+    )
+
+    # Hide legend
+    fig.update_layout(
+        title=plot_title,
+        showlegend=False,
+        xaxis_title=xaxis_label,
+        yaxis_title=yaxis_label,
+    )
+
+    return fig
+
+
+def rt_distribution_baseline(
+    df: pd.DataFrame,
+    predicted_column: str = "Predicted retention time",
+    observed_column: str = "Observed retention time",
+) -> go.Figure:
+    """
+    Plot a distribution plot of the relative mean absolute error of the current
+    DeepLC performance compared to the baseline performance.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe containing the predicted and observed retention times.
+    predicted_column : str, optional
+        Name of the column containing the predicted retention times, by default
+        ``Predicted retention time``.
+    observed_column : str, optional
+        Name of the column containing the observed retention times, by default
+        ``Observed retention time``.
+
+    """
+    # Get baseline data from deeplc package
+    try:
+        import deeplc.package_data
+
+        baseline_ref = (
+            importlib.resources.files(deeplc.package_data)
+            / "baseline_performance"
+            / "baseline_predictions.csv"
+        )
+        with importlib.resources.as_file(baseline_ref) as baseline_path:
+            baseline_df = pd.read_csv(baseline_path)
+    except (ImportError, FileNotFoundError):
+        # If deeplc is not installed or baseline data not found, return empty figure
+        fig = go.Figure()
+        fig.add_annotation(
+            text="DeepLC baseline data not available. Install DeepLC to view performance comparison.",
+            showarrow=False,
+        )
+        return fig
+
+    baseline_df["rel_mae_best"] = baseline_df[
+        ["rel_mae_transfer_learning", "rel_mae_new_model", "rel_mae_calibrate"]
+    ].min(axis=1)
+    baseline_df.fillna(0.0, inplace=True)
+
+    # Calculate current RMAE and percentile compared to baseline
+    mae = sum(abs(df[observed_column] - df[predicted_column])) / len(df.index)
+    mae_rel = (mae / max(df[observed_column])) * 100
+    percentile = round((baseline_df["rel_mae_transfer_learning"] < mae_rel).mean() * 100, 1)
+
+    # Calculate x-axis range with 5% padding
+    all_values = np.append(baseline_df["rel_mae_transfer_learning"].values, mae_rel)
+    padding = (all_values.max() - all_values.min()) / 20  # 5% padding
+    x_min = all_values.min() - padding
+    x_max = all_values.max() + padding
+
+    # Make labels human-readable
+    hover_label_mapping = {
+        "train_number": "Training dataset size",
+        "rel_mae_transfer_learning": "RMAE with transfer learning",
+        "rel_mae_new_model": "RMAE with new model from scratch",
+        "rel_mae_calibrate": "RMAE with calibrating existing model",
+        "rel_mae_best": "RMAE with best method",
+    }
+    label_mapping = hover_label_mapping.copy()
+    label_mapping.update({"Unnamed: 0": "Dataset"})
+
+    # Generate plot
+    fig = px.histogram(
+        data_frame=baseline_df,
+        x="rel_mae_best",
+        marginal="rug",
+        hover_data=hover_label_mapping.keys(),
+        hover_name="Unnamed: 0",
+        labels=label_mapping,
+        opacity=0.8,
+    )
+    fig.add_vline(
+        x=mae_rel,
+        line_width=3,
+        line_dash="dash",
+        line_color="red",
+        annotation_text=f"Current performance (percentile {percentile}%)",
+        annotation_position="top left",
+        name="Current performance",
+        row=1,
+    )
+    fig.update_xaxes(range=[x_min, x_max])
+    fig.update_layout(
+        title=(f"Current DeepLC performance compared to {len(baseline_df.index)} datasets"),
+        xaxis_title="Relative mean absolute error (%)",
+    )
+
+    return fig
+
+
+def score_scatter_plot_df(
+    psm_df: pd.DataFrame,
+    fdr_threshold: float = 0.01,
+) -> go.Figure:
+    """
+    Plot PSM scores before and after rescoring from a dataframe.
+
+    Parameters
+    ----------
+    psm_df
+        Dataframe with PSM information including score_before, score_after,
+        qvalue_before, qvalue_after, and is_decoy columns.
+    fdr_threshold
+        FDR threshold for drawing threshold lines.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with score comparison.
+    """
+    if "score_before" not in psm_df.columns or "score_after" not in psm_df.columns:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after score data available for comparison.",
+            showarrow=False,
+        )
+        return figure
+
+    # Prepare data
+    plot_df = psm_df.copy()
+    plot_df["PSM type"] = plot_df["is_decoy"].map({True: "decoy", False: "target"})
+
+    # Get score thresholds
+    try:
+        score_threshold_before = (
+            plot_df[plot_df["qvalue_before"] <= fdr_threshold]
+            .sort_values("qvalue_before", ascending=False)["score_before"]
+            .iloc[0]
+        )
+    except (IndexError, KeyError):
+        score_threshold_before = None
+
+    try:
+        score_threshold_after = (
+            plot_df[plot_df["qvalue_after"] <= fdr_threshold]
+            .sort_values("qvalue_after", ascending=False)["score_after"]
+            .iloc[0]
+        )
+    except (IndexError, KeyError):
+        score_threshold_after = None
+
+    # Plot
+    fig = px.scatter(
+        data_frame=plot_df,
+        x="score_before",
+        y="score_after",
+        color="PSM type",
+        marginal_x="histogram",
+        marginal_y="histogram",
+        opacity=0.1,
+        labels={
+            "score_before": "PSM score (before rescoring)",
+            "score_after": "PSM score (after rescoring)",
+        },
+    )
+
+    # Draw FDR thresholds
+    if score_threshold_before:
+        fig.add_vline(x=score_threshold_before, line_dash="dash", row=1, col=1)
+        fig.add_vline(x=score_threshold_before, line_dash="dash", row=2, col=1)
+    if score_threshold_after:
+        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=1)
+        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=2)
+
+    return fig
+
+
+def fdr_plot_comparison_df(
+    psm_df: pd.DataFrame,
+) -> go.Figure:
+    """
+    Plot number of identifications in function of FDR threshold before/after rescoring from dataframe.
+
+    Parameters
+    ----------
+    psm_df
+        Dataframe with PSM information including qvalue_before, qvalue_after, and is_decoy columns.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with FDR comparison.
+    """
+    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after q-value data available for comparison.",
+            showarrow=False,
+        )
+        return figure
+
+    # Filter targets only
+    targets = psm_df[~psm_df["is_decoy"]].copy()
+
+    # Prepare data in long format
+    plot_data = pd.concat(
+        [
+            targets[["qvalue_before"]]
+            .rename(columns={"qvalue_before": "q-value"})
+            .assign(**{"before/after": "before rescoring"}),
+            targets[["qvalue_after"]]
+            .rename(columns={"qvalue_after": "q-value"})
+            .assign(**{"before/after": "after rescoring"}),
+        ]
+    )
+
+    # Plot
+    fig = px.ecdf(
+        data_frame=plot_data,
+        x="q-value",
+        color="before/after",
+        log_x=True,
+        ecdfnorm=None,
+        labels={
+            "q-value": "FDR threshold",
+            "before/after": "",
+        },
+        color_discrete_map={
+            "before rescoring": "#316395",
+            "after rescoring": "#319545",
+        },
+    )
+    fig.add_vline(x=0.01, line_dash="dash", line_color="black")
+    fig.update_layout(yaxis_title="Identified PSMs")
+    return fig
+
+
+def identification_overlap_df(
+    psm_df: pd.DataFrame,
+    fdr_threshold: float = 0.01,
+) -> go.Figure:
+    """
+    Plot stacked bar charts of removed, retained, and gained PSMs and peptides from dataframe.
+
+    Parameters
+    ----------
+    psm_df
+        Dataframe with PSM information including qvalue_before, qvalue_after,
+        is_decoy, and peptidoform columns.
+    fdr_threshold
+        FDR threshold for counting identifications.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with identification overlap.
+    """
+    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after q-value data available for comparison.",
+            showarrow=False,
+        )
+        return figure
+
+    overlap_data = defaultdict(dict)
+
+    # PSM level
+    targets = psm_df[~psm_df["is_decoy"]]
+    psms_before = set(targets[targets["qvalue_before"] <= fdr_threshold].index)
+    psms_after = set(targets[targets["qvalue_after"] <= fdr_threshold].index)
+
+    overlap_data["removed"]["psms"] = -len(psms_before - psms_after)
+    overlap_data["retained"]["psms"] = len(psms_after.intersection(psms_before))
+    overlap_data["gained"]["psms"] = len(psms_after - psms_before)
+
+    # Peptide level
+    if "peptidoform" in psm_df.columns:
+        peptides_before = set(
+            targets[targets["qvalue_before"] <= fdr_threshold]["peptidoform"].unique()
+        )
+        peptides_after = set(
+            targets[targets["qvalue_after"] <= fdr_threshold]["peptidoform"].unique()
+        )
+
+        overlap_data["removed"]["peptides"] = -len(peptides_before - peptides_after)
+        overlap_data["retained"]["peptides"] = len(peptides_after.intersection(peptides_before))
+        overlap_data["gained"]["peptides"] = len(peptides_after - peptides_before)
+
+    colors = ["#953331", "#316395", "#319545"]
+    levels = list(overlap_data["retained"].keys())
+    fig = plotly.subplots.make_subplots(rows=len(levels), cols=1)
+
+    for i, level in enumerate(levels):
+        for (item, data), color in zip(overlap_data.items(), colors):
+            if level not in data:
+                continue
+            fig.add_trace(
+                go.Bar(
+                    y=[level],
+                    x=[data[level]],
+                    marker={"color": color},
+                    orientation="h",
+                    name=item,
+                    showlegend=True if i == 0 else False,
+                ),
+                row=i + 1,
+                col=1,
+            )
+    fig.update_layout(barmode="relative")
+
+    return fig

@@ -31,6 +31,10 @@ Log and configuration files:
 +--------------------------------------+--------------------------------------------------------------------------------------+
 | ``<prefix>.feature_names.tsv``       | List of the features and their descriptions                                          |
 +--------------------------------------+--------------------------------------------------------------------------------------+
+| ``<prefix>.intermediate.psms.tsv``   | Created automatically if the process crashes during feature generation or rescoring. |
+|                                      | Contains all PSMs with successfully added features up to the crash point. Can be     |
+|                                      | used to resume processing with ``-p <prefix>.intermediate.psms.tsv -t tsv``.         |
++--------------------------------------+--------------------------------------------------------------------------------------+
 
 Rescoring engine files:
 

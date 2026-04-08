@@ -3,11 +3,12 @@
 import logging
 import re
 from enum import Enum
-from itertools import chain
-from typing import Optional, Set, Tuple
+from typing import Optional, Set
 
 import numpy as np
-from ms2rescore_rs import Precursor, get_precursor_info
+from ms2rescore_rs import get_ms2_spectra, MS2Spectrum
+from rich.progress import track
+
 from psm_utils import PSMList
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError, MS2RescoreError
@@ -24,7 +25,6 @@ class MSDataType(str, Enum):
     precursor_mz = "precursor m/z"
     ms2_spectra = "MS2 spectra"
 
-    # Mimic behavior of StrEnum (Python >=3.11)
     def __str__(self):
         return self.value
 
@@ -68,9 +68,7 @@ def add_precursor_values(
     """
     # Check which data types are missing
     # Missing if: all values are 0, OR any values are None/NaN
-    missing_data_types = set()
-    if spectrum_path is None:
-        missing_data_types.add(MSDataType.ms2_spectra)
+    missing_data_types = {MSDataType.ms2_spectra}  # Always missing until spectrum files are parsed
 
     rt_values = np.asarray(psm_list["retention_time"])
     if np.any(np.isnan(rt_values)) or np.all(rt_values == 0):
@@ -101,39 +99,67 @@ def add_precursor_values(
             "Spectrum path must be provided to parse precursor values that are not present in the"
             " PSM list."
         )
+    else:
+        LOGGER.debug(
+            "Missing required data types: %s. Parsing from spectrum files.",
+            ", ".join(str(dt) for dt in data_types_to_parse),
+        )
 
     # Get precursor values from spectrum files
     LOGGER.info("Parsing precursor info from spectrum files...")
-    mz, rt, im = _get_precursor_values(psm_list, spectrum_path, spectrum_id_pattern)
+    _add_precursor_values(psm_list, spectrum_path, spectrum_id_pattern)
+
+    # Extract precursor values from MS2 spectrum objects in a single pass
+    precursor_data = [
+        (ms2.precursor.rt, ms2.precursor.im, ms2.precursor.mz) for ms2 in psm_list["spectrum"]
+    ]
+    rts, ims, mzs = map(np.array, zip(*precursor_data))
 
     # Determine which data types were successfully found in spectrum files
-    # ms2rescore_rs always returns 0.0 for missing values
-    found_data_types = {MSDataType.ms2_spectra}  # MS2 spectra available when processing files
-    if np.all(rt != 0.0):
+    found_data_types = {MSDataType.ms2_spectra}
+
+    # Add found data types: if missing and all zeros, raise error
+    if not np.all(rts == 0.0):
         found_data_types.add(MSDataType.retention_time)
-    if np.all(im != 0.0):
+        if MSDataType.retention_time in data_types_to_parse:
+            LOGGER.debug(
+                "Missing retention time values in PSM list. Updating from spectrum files."
+            )
+            psm_list["retention_time"] = rts
+    elif MSDataType.retention_time in data_types_to_parse:
+        raise SpectrumParsingError(
+            "Retention time values are required but not available in spectrum files "
+            "(all values are zero)."
+        )
+
+    if not np.all(ims == 0.0):
         found_data_types.add(MSDataType.ion_mobility)
-    if np.all(mz != 0.0):
+        if MSDataType.ion_mobility in data_types_to_parse:
+            LOGGER.debug("Missing ion mobility values in PSM list. Updating from spectrum files.")
+            psm_list["ion_mobility"] = ims
+    elif MSDataType.ion_mobility in data_types_to_parse:
+        raise SpectrumParsingError(
+            "Ion mobility values are required but not available in spectrum files "
+            "(all values are zero)."
+        )
+
+    if not np.all(mzs == 0.0):
         found_data_types.add(MSDataType.precursor_mz)
+        if MSDataType.precursor_mz in data_types_to_parse:
+            LOGGER.debug("Missing precursor m/z values in PSM list. Updating from spectrum files.")
+            psm_list["precursor_mz"] = mzs
+    elif MSDataType.precursor_mz in data_types_to_parse:
+        raise SpectrumParsingError(
+            "Precursor m/z values are required but not available in spectrum files "
+            "(all values are zero)."
+        )
 
-    # Update PSM list with missing precursor values that were found
-    update_types = data_types_to_parse & found_data_types
-
-    if MSDataType.retention_time in update_types:
-        LOGGER.debug("Missing retention time values in PSM list. Updating from spectrum files.")
-        psm_list["retention_time"] = rt
-    if MSDataType.ion_mobility in update_types:
-        LOGGER.debug("Missing ion mobility values in PSM list. Updating from spectrum files.")
-        psm_list["ion_mobility"] = im
-    if MSDataType.precursor_mz in update_types:
-        LOGGER.debug("Missing precursor m/z values in PSM list. Updating from spectrum files.")
-        psm_list["precursor_mz"] = mz
-    elif (
+    # Check if precursor m/z values are consistent between PSMs and spectrum files
+    if (
         MSDataType.precursor_mz not in missing_data_types
         and MSDataType.precursor_mz in found_data_types
     ):
-        # Check if precursor m/z values are consistent between PSMs and spectrum files
-        mz_diff = np.abs(psm_list["precursor_mz"] - mz)
+        mz_diff = np.abs(psm_list["precursor_mz"] - mzs)
         if np.mean(mz_diff) > 1e-2:
             LOGGER.warning(
                 "Mismatch between precursor m/z values in PSM list and spectrum files (mean "
@@ -149,20 +175,23 @@ def add_precursor_values(
     return available_data_types
 
 
-def _apply_spectrum_id_pattern(
-    precursors: dict[str, Precursor], pattern: str
-) -> dict[str, Precursor]:
+def _acquire_observed_spectra_dict(
+    ms2: list[MS2Spectrum], pattern: str, spectrum_ids: list[str]
+) -> dict[str, MS2Spectrum]:
     """Apply spectrum ID pattern to precursor IDs."""
     # Map precursor IDs using regex pattern
     compiled_pattern = re.compile(pattern)
-    id_mapping = {
-        match.group(1): spectrum_id
-        for spectrum_id in precursors.keys()
-        if (match := compiled_pattern.search(spectrum_id)) is not None
+    spectrum_ids_set = set(spectrum_ids)  # For faster lookup
+
+    ms2_observed_spectra_mapping = {
+        match.group(1): ms2_spectrum
+        for ms2_spectrum in ms2
+        if (match := compiled_pattern.search(str(ms2_spectrum.identifier))) is not None
+        and match.group(1) in spectrum_ids_set
     }
 
     # Validate that any IDs were matched
-    if not id_mapping:
+    if not ms2_observed_spectra_mapping:
         raise MS2RescoreConfigurationError(
             "'spectrum_id_pattern' did not match any spectrum-file IDs. Please check and try "
             "again. See "
@@ -170,64 +199,41 @@ def _apply_spectrum_id_pattern(
             "for more information."
         )
 
-    # Validate that the same number of unique IDs were matched
-    elif len(id_mapping) != len(precursors):
-        new_id, old_id = next(iter(id_mapping.items()))
-        raise MS2RescoreConfigurationError(
-            "'spectrum_id_pattern' resulted in a different number of unique spectrum IDs. This "
-            "indicates issues with the regex pattern. Please check and try again. "
-            f"Example old ID: '{old_id}' -> new ID: '{new_id}'. "
-            "See https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
-            "for more information."
-        )
-
-    precursors = {new_id: precursors[orig_id] for new_id, orig_id in id_mapping.items()}
-
-    return precursors
+    return ms2_observed_spectra_mapping
 
 
-def _get_precursor_values(
+def _add_precursor_values(
     psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: Optional[str] = None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> None:
     """Get precursor m/z, RT, and IM from spectrum files."""
     # Iterate over different runs in PSM list
-    precursor_dict = dict()
-    psm_dict = psm_list.get_psm_dict()
-    for runs in psm_dict.values():
-        for run_name, psms in runs.items():
-            psm_list_run = PSMList(psm_list=list(chain.from_iterable(psms.values())))
-            spectrum_file = infer_spectrum_path(spectrum_path, run_name)
+    if spectrum_id_pattern is None:
+        spectrum_id_pattern = r"^(.*)$"  # Match entire identifier if no pattern provided
 
-            LOGGER.debug("Reading spectrum file: '%s'", spectrum_file)
-            precursors: dict[str, Precursor] = get_precursor_info(str(spectrum_file))
+    for run_name in track(set(psm_list["run"])):
+        run_mask = psm_list["run"] == run_name
+        psm_list_run = psm_list[run_mask]
+        spectrum_file = infer_spectrum_path(spectrum_path, run_name)
 
-            # Parse spectrum IDs with regex pattern if provided
-            if spectrum_id_pattern:
-                precursors = _apply_spectrum_id_pattern(precursors, spectrum_id_pattern)
+        LOGGER.debug("Reading spectrum file: '%s'", spectrum_file)
+        ms2_spectra: list[MS2Spectrum] = get_ms2_spectra(str(spectrum_file))
 
-            # Ensure all PSMs have precursor values
-            for psm in psm_list_run:
-                if psm.spectrum_id not in precursors:
-                    raise MS2RescoreConfigurationError(
-                        "Mismatch between PSM and spectrum file IDs. Could not find precursor "
-                        f"values for PSM with ID {psm.spectrum_id} in run {run_name}.\n"
-                        "Please check that the `spectrum_id_pattern` and `psm_id_pattern` options "
-                        "are configured correctly. See "
-                        "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra"
-                        " for more information.\n"
-                        f"Example ID from PSM file: {psm.spectrum_id}\n"
-                        f"Example ID from spectrum file: {list(precursors.keys())[0]}"
-                    )
+        # Parse spectrum IDs with regex pattern if provided
+        ms2_spectra_dict = _acquire_observed_spectra_dict(
+            ms2_spectra, spectrum_id_pattern, psm_list_run["spectrum_id"]
+        )
 
-            # Store precursor values in dictionary
-            precursor_dict[run_name] = precursors
-
-    # Reshape precursor values into arrays matching PSM list
-    mzs = np.fromiter((precursor_dict[psm.run][psm.spectrum_id].mz for psm in psm_list), float)
-    rts = np.fromiter((precursor_dict[psm.run][psm.spectrum_id].rt for psm in psm_list), float)
-    ims = np.fromiter((precursor_dict[psm.run][psm.spectrum_id].im for psm in psm_list), float)
-
-    return mzs, rts, ims
+        try:
+            psm_list_run["spectrum"] = [
+                ms2_spectra_dict[spec_id] for spec_id in psm_list_run["spectrum_id"]
+            ]
+        except KeyError as e:
+            raise SpectrumParsingError(
+                f"Could not find spectrum {e} in spectrum file '{spectrum_file}'. Please "
+                "check the 'spectrum_id_pattern' and 'psm_id_pattern' configuration options. See "
+                "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
+                "for more information."
+            ) from e
 
 
 class SpectrumParsingError(MS2RescoreError):

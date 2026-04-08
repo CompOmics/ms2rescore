@@ -19,8 +19,8 @@ If you use Percolator through MS²Rescore, please cite:
 
 import logging
 import subprocess
-from typing import Any, Dict, Optional
 from copy import deepcopy
+from typing import Any, Dict, Optional
 
 import psm_utils
 
@@ -79,7 +79,7 @@ def rescore(
         Additional keyword arguments for Percolator. Defaults to ``None``.
 
     """
-    percolator_kwargs = {
+    default_kwargs = {
         "results-psms": output_file_root + ".percolator.psms.pout",
         "decoy-results-psms": output_file_root + ".percolator.decoy.psms.pout",
         "results-peptides": output_file_root + ".percolator.peptides.pout",
@@ -92,7 +92,8 @@ def rescore(
         "post-processing-tdc": True,
     }
     if percolator_kwargs:
-        percolator_kwargs.update(percolator_kwargs)
+        default_kwargs.update(percolator_kwargs)
+    percolator_kwargs = default_kwargs
 
     if fasta_file:
         percolator_kwargs["picked-protein"] = fasta_file
@@ -104,6 +105,7 @@ def rescore(
     # to avoid modifying original...
     # TODO: Better approach for this?
 
+    # TODO: Replace deepcopy with a more memory-efficient approach for large PSM lists
     psm_list_reindexed = deepcopy(psm_list)
     psm_list_reindexed.set_ranks()
     psm_list_reindexed["spectrum_id"] = [
@@ -117,20 +119,16 @@ def rescore(
 
     logger.debug(f"Running percolator command {' '.join(percolator_cmd)}")
     try:
-        output = subprocess.run(percolator_cmd, capture_output=True)
+        output = subprocess.run(percolator_cmd, capture_output=True, check=True)
     except FileNotFoundError as e:
-        if subprocess.getstatusoutput("percolator")[0] != 0:
-            raise MS2RescoreError(
-                "Could not run Percolator. Please ensure that the program is installed and "
-                "available in your PATH. See "
-                "https://ms2rescore.readthedocs.io/en/latest/installation/#installing-percolator "
-                "for more information."
-            ) from e
-        else:
-            logger.warn(f"Running Percolator resulted in an error:\n{output.stdout}")
-            raise MS2RescoreError("Percolator error") from e
+        raise MS2RescoreError(
+            "Could not run Percolator. Please ensure that the program is installed and "
+            "available in your PATH. See "
+            "https://ms2rescore.readthedocs.io/en/latest/installation/#installing-percolator "
+            "for more information."
+        ) from e
     except subprocess.CalledProcessError as e:
-        logger.warn(f"Running Percolator resulted in an error:\n{output.stdout}")
+        logger.warning(f"Running Percolator resulted in an error:\n{e.stdout}")
         raise MS2RescoreError("Percolator error") from e
 
     logger.info(

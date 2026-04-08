@@ -17,11 +17,11 @@ class FeatureGeneratorBase(ABC):
 
     @property
     @abstractmethod
-    def feature_names(self):
+    def feature_names(self) -> list[str]:
         pass
 
     @abstractmethod
-    def add_features(self, psm_list: PSMList):
+    def add_features(self, psm_list: PSMList) -> None:
         pass
 
 

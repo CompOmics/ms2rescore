@@ -8,10 +8,11 @@
                 "ms2_tolerance": 0.02
             },
             "deeplc": {
-                "deeplc_retrain": false
+                "deeplc_retrain": true
             },
-            "maxquant": {}
+            "ms2": {}
         },
+        "psm_generator": {},
         "rescoring_engine": {
             "mokapot": {
                 "train_fdr": 0.01,

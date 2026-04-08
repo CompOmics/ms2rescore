@@ -84,7 +84,9 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
             {
                 "before_rescoring_score": psm.score,
                 "before_rescoring_qvalue": psm.qvalue,
-                "before_rescoring_pep": psm.pep,
+                "before_rescoring_pep": psm.pep
+                if psm.pep is not None
+                else float("nan"),  # until fixed in psm_utils
                 "before_rescoring_rank": psm.rank,
             }
         )
@@ -109,6 +111,32 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
     psm_list.add_fixed_modifications(config["fixed_modifications"])
     psm_list.apply_fixed_modifications()
 
+    # Addition of Modifications for mass shifts in the PSMs with Mumble
+    if "mumble" in config["psm_generator"]:
+        try:
+            from mumble import PSMHandler
+        except ImportError:
+            raise MS2RescoreConfigurationError(
+                "mumble is not installed. Please install it with: pip install ms2rescore[mumble]"
+            )
+        logger.debug("Applying modifications for mass shifts using Mumble...")
+        # set inlcude original psm to True and include decoy psm to true
+        config["psm_generator"]["mumble"]["include_original_psm"] = True
+        config["psm_generator"]["mumble"]["include_decoy_psm"] = True
+        mumble_config = config["psm_generator"]["mumble"]
+
+        # Check if psm_list[0].rescoring_features is empty or not
+        if psm_list[0].rescoring_features:
+            logger.debug("Removing psm_file rescoring features from PSMs...")
+            # psm_list.remove_rescoring_features() # TODO add this to psm_utils
+            for psm in psm_list:
+                psm.rescoring_features = {}
+
+        psm_handler = PSMHandler(
+            **mumble_config,
+        )
+        psm_list = psm_handler.add_modified_psms(psm_list)
+
     return psm_list
 
 
@@ -120,7 +148,7 @@ def _read_psms(config, psm_list):
         psm_list = []
         for current_file, psm_file in enumerate(config["psm_file"]):
             logger.info(
-                f"Reading PSMs from PSM file ({current_file+1}/{total_files}): '{psm_file}'..."
+                f"Reading PSMs from PSM file ({current_file + 1}/{total_files}): '{psm_file}'..."
             )
             psm_list.extend(
                 psm_utils.io.read_file(
@@ -186,7 +214,7 @@ def _parse_values_from_spectrum_id(
         ["retention_time", "ion_mobility"],
     ):
         if pattern:
-            logger.debug(f"Parsing {label} from spectrum_id with regex pattern " f"{pattern}")
+            logger.debug(f"Parsing {label} from spectrum_id with regex pattern {pattern}")
             try:
                 pattern = re.compile(pattern)
                 psm_list[key] = [

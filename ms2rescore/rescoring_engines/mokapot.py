@@ -20,7 +20,6 @@ If you use Mokapot through MS²Rescore, please cite:
 """
 
 import logging
-import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import mokapot
@@ -32,6 +31,7 @@ from mokapot.dataset import LinearPsmDataset
 from mokapot.model import PercolatorModel
 from pyteomics.mass import nist_mass
 
+from ms2rescore.constants import CHARGE_PATTERN
 from ms2rescore.exceptions import RescoringError
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ def convert_psm_list(
     psm_df = psm_df.reset_index(drop=True).reset_index()
 
     psm_df["peptide"] = (
-        psm_df["peptidoform"].astype(str).str.replace(r"(/\d+$)", "", n=1, regex=True)
+        psm_df["peptidoform"].astype(str).str.replace(CHARGE_PATTERN, "", n=1, regex=True)
     )
     psm_df["is_target"] = ~psm_df["is_decoy"]
     psm_df["charge"] = psm_df["peptidoform"].apply(lambda x: x.precursor_charge)
@@ -255,9 +255,8 @@ def add_peptide_confidence(
 
     # Add peptide-level scores to PSM metadata
     # run_key = "na" if not all(psm.run for psm in psm_list) else None
-    no_charge_pattern = re.compile(r"(/\d+$)")
     for psm in psm_list:
-        peptide_scores = peptide_info[(no_charge_pattern.sub("", str(psm.peptidoform), 1))]
+        peptide_scores = peptide_info[(CHARGE_PATTERN.sub("", str(psm.peptidoform), 1))]
         psm.metadata.update(
             {
                 "peptide_score": peptide_scores["mokapot score"],
