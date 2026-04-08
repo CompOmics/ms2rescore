@@ -55,7 +55,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mumble = ["rustyms>=0.8.3", "mumble>=0.2.0"]
+mumble = ["mumble>=0.2.0"]
 idxml = ["pyopenms>=3.3"]
 
 [dependency-groups]
