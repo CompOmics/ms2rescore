@@ -1,0 +1,25 @@
+{
+    "$schema": "./config_schema.json",
+    "ms2rescore": {
+        "feature_generators": {
+            "basic": {},
+            "ms2pip": {
+                "model": "timsTOF",
+                "ms2_tolerance": 0.02
+            },
+            "im2deep": {},
+            "ms2": {}
+        },
+        "rescoring_engine": {
+            "mokapot": {
+                "write_weights": true,
+                "write_txt": true
+            }
+        },
+        "psm_file": null,
+        "psm_id_im_pattern": "1/K0=([0-9.]+)",
+        "modification_mapping": {
+            "113": "UNIMOD:35"
+        }
+    }
+}

@@ -1,0 +1,32 @@
+# MS²Rescore configuration for MALDI-MSI data (timsTOF fleX, iprm-PASEF)
+#
+# Key differences from LC-MS/MS configuration:
+# - DeepLC is NOT included (no chromatographic retention time in MALDI)
+# - psm_id_im_pattern extracts 1/K0 from Bruker DataAnalysis MGF TITLE fields
+# - timsTOF MS²PIP model is used for fragment intensity prediction
+# - modification_mapping handles FragPipe's hydroxyproline notation
+
+[ms2rescore]
+psm_file = ["path/to/psm_file.tsv"]
+psm_file_type = "fragpipe"
+spectrum_path = "path/to/spectrum_files/"
+output_path = "path/to/output"
+
+# Extract 1/K0 from MGF TITLE: "..., 1/K0=1.471, ..."
+psm_id_im_pattern = "1/K0=([0-9.]+)"
+
+# FragPipe modification mapping to UNIMOD
+[ms2rescore.modification_mapping]
+"113" = "UNIMOD:35"  # Oxidation/Hydroxylation (hydroxyproline)
+
+# Feature generators: no DeepLC for MALDI (no retention time)
+[ms2rescore.feature_generators.basic]
+[ms2rescore.feature_generators.ms2pip]
+model = "timsTOF"
+ms2_tolerance = 0.02
+[ms2rescore.feature_generators.im2deep]
+[ms2rescore.feature_generators.ms2]
+
+[ms2rescore.rescoring_engine.mokapot]
+write_weights = true
+write_txt = true
