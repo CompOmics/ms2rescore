@@ -112,8 +112,3 @@ description = """
 IM2Deep model performance can be visualized by plotting the predicted CCS against the observed CCS.
 """
 
-[charts.ionmob_performance]
-title = "ionmob model performance"
-description = """
-ionmob model performance can be visualized by plotting the predicted CCS against the observed CCS.
-"""
