@@ -7,24 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `annotate_spectra()` in `parse_spectra.py`: annotates all PSM spectra once before feature
+  generators run, eliminating redundant per-generator spectrum annotation.
+- Top-level configuration options `fragmentation_model`, `tolerance_value`, and `tolerance_mode`
+  to control centralized fragment ion annotation. Defaults: `cidhcd`, `0.02 Da`.
+
 ### Changed
 
-- MS2PIP integration now strips pre-annotated spectra back to raw `MS2Spectrum` before calling
-  `ms2pip.correlate()`, ensuring each PSM is annotated with its own peptidoform.
+- Spectrum annotation is now performed once in `core.py` before all feature generators run.
+  MS²PIP and MS2 feature generators reuse `AnnotatedMS2Spectrum` objects attached to each PSM.
+- MS²PIP: migrated from `correlate_preloaded` back to the now-unified `correlate()` API. Spectra
+  are passed via `psm.spectrum`.
+- MS2: migrated from `ms2_features_from_ms2spectra` to `score_ms2_spectra` API. Feature set
+  expanded to cover all ion series (a, b, c, x, y, z).
+- Dependencies bumped: `ms2pip>=4.2.0b1`, `ms2rescore_rs>=0.5.0b1`.
+- numpy 2.0 compatibility in `charts.py` (`np.trapz` → `np.trapezoid`).
 
 ### Fixed
 
 - MS²PIP features incorrectly computed for multi-rank PSMs (`max_psm_rank_input > 1`): all
   PSMs sharing a spectrum ID received the annotation of the first-seen PSM, producing a bimodal
-  `spec_pearson_norm` distribution.
-- DeepLC RT features incorrectly assigned across PSMs due to missing `sort_index()` after
-  sorting by q-value for calibration, causing every PSM to receive another PSM's RT features.
+  `spec_pearson_norm` distribution. Fixed in ms2pip (per-PSM annotation) and reflected in
+  ms2rescore via centralized per-PSM `annotate_spectra()`.
+- DeepLC RT features incorrectly assigned across PSMs: missing `sort_index()` after q-value sort
+  for calibration caused PSMs to receive another PSM's RT predictions.
+- `processes=-1` (ms2rescore default) passed to DeepLC `num_threads`, which requires a positive
+  integer or `None`.
+- Q-value NaN check in `parse_psms.py` failed when `qvalue` array contained `None` values.
+- `BrokenExecutor` not caught in mokapot rescoring engine.
+- Fragment mass tolerance fallback defaults in `core.py` incorrectly set to `20.0 ppm` instead
+  of `0.02 Da`.
 
 ### Breaking changes
 
-- The `ms2_tolerance` parameter of `MS2PIPFeatureGenerator` has been removed. Fragment mass
-  tolerance is now set globally via `tolerance_value` / `tolerance_mode` in the top-level
-  configuration. The default is `0.02 Da`, matching the previous MS²PIP default.
+- `ms2_tolerance`, `spectrum_path`, and `spectrum_id_pattern` parameters removed from
+  `MS2PIPFeatureGenerator`. Fragment mass tolerance is set globally via `tolerance_value` /
+  `tolerance_mode` in the top-level configuration (default: `0.02 Da`).
+- `spectrum_path`, `spectrum_id_pattern`, `mass_mode`, and `processes` parameters removed from
+  `MS2FeatureGenerator`. Spectra are provided via centralized `annotate_spectra()`.
 
 ## [3.3.0a1] - 2026-04-09
 
