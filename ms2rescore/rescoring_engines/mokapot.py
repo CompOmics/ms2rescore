@@ -20,6 +20,7 @@ If you use Mokapot through MS²Rescore, please cite:
 """
 
 import logging
+from concurrent.futures import BrokenExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
 import mokapot
@@ -104,7 +105,7 @@ def rescore(
         confidence_results, models = brew(
             lin_psm_data, model=PercolatorModel(train_fdr=train_fdr), rng=8, **kwargs
         )
-    except RuntimeError as e:
+    except (RuntimeError, BrokenExecutor) as e:
         raise RescoringError("Mokapot could not be run. Please check the input data.") from e
 
     add_psm_confidence(psm_list, confidence_results)

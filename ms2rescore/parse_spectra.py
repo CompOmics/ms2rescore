@@ -6,10 +6,10 @@ from enum import Enum
 from typing import Optional, Set
 
 import numpy as np
-from ms2rescore_rs import get_ms2_spectra, MS2Spectrum
-from rich.progress import track
-
+from ms2pip._spectrum_processing import proforma_to_mass_shift
+from ms2rescore_rs import AnnotatedMS2Spectrum, MS2Spectrum, annotate_ms2_spectra, get_ms2_spectra
 from psm_utils import PSMList
+from rich.progress import track
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError, MS2RescoreError
 from ms2rescore.utils import infer_spectrum_path
@@ -154,22 +154,6 @@ def add_precursor_values(
             "(all values are zero)."
         )
 
-    # Check if precursor m/z values are consistent between PSMs and spectrum files
-    if (
-        MSDataType.precursor_mz not in missing_data_types
-        and MSDataType.precursor_mz in found_data_types
-    ):
-        mz_diff = np.abs(psm_list["precursor_mz"] - mzs)
-        if np.mean(mz_diff) > 1e-2:
-            LOGGER.warning(
-                "Mismatch between precursor m/z values in PSM list and spectrum files (mean "
-                "difference exceeds 0.01 Da). Please ensure that the correct spectrum files are "
-                "provided and that the `spectrum_id_pattern` and `psm_id_pattern` options are "
-                "configured correctly. See "
-                "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
-                "for more information."
-            )
-
     # Return available data types: (all types - missing types) + found types
     available_data_types = ALL_MS_DATA_TYPES - missing_data_types | found_data_types
     return available_data_types
@@ -234,6 +218,53 @@ def _add_precursor_values(
                 "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
                 "for more information."
             ) from e
+
+
+def annotate_spectra(
+    psm_list: PSMList,
+    fragmentation_model: str = "cidhcd",
+    ms2_tolerance: float = 0.02,
+    ms2_tolerance_mode: str = "Da",
+) -> None:
+    """
+    Annotate MS2 spectra with fragment ion matches, in place.
+
+    Replaces raw ``MS2Spectrum`` objects in ``psm_list["spectrum"]`` with
+    ``AnnotatedMS2Spectrum`` objects that include peak annotations. These annotated
+    spectra can then be consumed by any feature generator that needs fragment ion
+    information (e.g., MS2, MS2PIP). In particular, the unified
+    ``ms2pip.correlate()`` API can reuse these annotations directly when they are
+    already attached to ``psm.spectrum``.
+
+    Parameters
+    ----------
+    psm_list
+        PSM list with loaded MS2 spectra in the ``spectrum`` field.
+    fragmentation_model
+        Fragmentation model: ``cidhcd``, ``etd``, ``ethcd``, or ``all``.
+    ms2_tolerance
+        Fragment mass tolerance value.
+    ms2_tolerance_mode
+        Fragment mass tolerance mode: ``ppm`` or ``Da``.
+
+    """
+    LOGGER.info("Annotating MS2 spectra based on search engine identifications...")
+
+    spectra = list(psm_list["spectrum"])
+    # Convert modification labels to numeric mass shifts so rustyms can parse them
+    # regardless of modification name convention (Unimod name, accession, formula, etc.).
+    proformas = [proforma_to_mass_shift(psm.peptidoform) for psm in psm_list]
+
+    annotated = annotate_ms2_spectra(
+        spectra=spectra,
+        proformas=proformas,
+        fragmentation_model=fragmentation_model,
+        mass_mode="monoisotopic",
+        tolerance_value=ms2_tolerance,
+        tolerance_mode=ms2_tolerance_mode,
+    )
+
+    psm_list["spectrum"] = annotated
 
 
 class SpectrumParsingError(MS2RescoreError):

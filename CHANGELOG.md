@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- MS2PIP integration now strips pre-annotated spectra back to raw `MS2Spectrum` before calling
+  `ms2pip.correlate()`, ensuring each PSM is annotated with its own peptidoform.
+
+### Fixed
+
+- MS²PIP features incorrectly computed for multi-rank PSMs (`max_psm_rank_input > 1`): all
+  PSMs sharing a spectrum ID received the annotation of the first-seen PSM, producing a bimodal
+  `spec_pearson_norm` distribution.
+- DeepLC RT features incorrectly assigned across PSMs due to missing `sort_index()` after
+  sorting by q-value for calibration, causing every PSM to receive another PSM's RT features.
+
+### Breaking changes
+
+- The `ms2_tolerance` parameter of `MS2PIPFeatureGenerator` has been removed. Fragment mass
+  tolerance is now set globally via `tolerance_value` / `tolerance_mode` in the top-level
+  configuration. The default is `0.02 Da`, matching the previous MS²PIP default.
+
 ## [3.3.0a1] - 2026-04-09
 
 ### Added
@@ -31,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default, `SplineTransformerCalibration` for retention time calibration.
 - IM2Deep integration upgraded to v2 API: dataset-wide processing with per-run
   `LinearCCSCalibration` using reference peptides.
-- MS2PIP integration upgraded to use `correlate_preloaded()` and Rust-based feature calculation.
+- MS2PIP integration upgraded to use preloaded spectra and Rust-based feature calculation.
 - Basic feature generator now uses fixed charge encoding (charges 1-6) instead of dynamic
   min-max range.
 - Report generation CLI now accepts PSM file path with optional `--output` flag.
@@ -51,4 +72,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unreachable and broken error handlers in Percolator subprocess execution.
 - `fdr` parameter ignored in `_log_id_psms_before` (hardcoded to 0.01).
 - Out-of-memory errors from multiprocessing in spectrum parsing.
-

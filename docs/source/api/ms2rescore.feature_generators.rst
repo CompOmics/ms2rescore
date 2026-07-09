@@ -43,18 +43,10 @@ ms2rescore.feature_generators.im2deep
 
 
 
-ms2rescore.feature_generators.ionmob
-####################################
+ms2rescore.feature_generators.ms2
+#################################
 
-.. automodule:: ms2rescore.feature_generators.ionmob
-   :members:
-
-
-
-ms2rescore.feature_generators.maxquant
-######################################
-
-.. automodule:: ms2rescore.feature_generators.maxquant
+.. automodule:: ms2rescore.feature_generators.ms2
    :members:
 
 

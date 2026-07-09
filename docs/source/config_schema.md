@@ -11,10 +11,14 @@
     - **`maxquant`**: Refer to *[#/definitions/maxquant](#definitions/maxquant)*.
     - **`ionmob`**: Refer to *[#/definitions/ionmob](#definitions/ionmob)*.
     - **`im2deep`**: Refer to *[#/definitions/im2deep](#definitions/im2deep)*.
+    - **`ms2`**: Refer to *[#/definitions/ms2](#definitions/ms2)*.
   - **`rescoring_engine`** *(object)*: Rescoring engine to use and its configuration. Leave empty to skip rescoring and write features to file. Default: `{"mokapot": {}}`.
     - **`.*`**: Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
     - **`percolator`**: Refer to *[#/definitions/percolator](#definitions/percolator)*.
     - **`mokapot`**: Refer to *[#/definitions/mokapot](#definitions/mokapot)*.
+  - **`psm_generator`** *(object)*: PSM generator and their configuration.
+    - **`.*`**: Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
+    - **`mumble`**: Refer to *[#/definitions/mumble](#definitions/mumble)*.
   - **`config_file`**: Path to configuration file.
     - **One of**
       - *string*
@@ -83,10 +87,15 @@
     - **One of**
       - *boolean*
       - *null*
+  - **`fragmentation_model`** *(string)*: Fragmentation model for spectrum annotation: cidhcd (a/b/y), etd (c/y/z), ethcd (a/b/c/y/z), or all (a/b/c/x/y/z). Must be one of: `["cidhcd", "etd", "ethcd", "all"]`. Default: `"cidhcd"`.
+  - **`mass_mode`** *(string)*: Mass mode for spectrum annotation. Must be one of: `["monoisotopic", "average"]`. Default: `"monoisotopic"`.
+  - **`tolerance_value`** *(number)*: Fragment mass tolerance value for spectrum annotation. Minimum: `0`. Default: `20.0`.
+  - **`tolerance_mode`** *(string)*: Fragment mass tolerance mode for spectrum annotation. Must be one of: `["ppm", "Da"]`. Default: `"ppm"`.
 ## Definitions
 
 - <a id="definitions/feature_generator"></a>**`feature_generator`** *(object)*: Feature generator configuration. Can contain additional properties.
 - <a id="definitions/rescoring_engine"></a>**`rescoring_engine`** *(object)*: Rescoring engine configuration. Can contain additional properties.
+- <a id="definitions/psm_generator"></a>**`psm_generator`** *(object)*: Additional PSM feature generator configuration. Can contain additional properties.
 - <a id="definitions/basic"></a>**`basic`** *(object)*: Basic feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/ms2pip"></a>**`ms2pip`** *(object)*: MS²PIP feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`model`** *(string)*: MS²PIP model to use (see MS²PIP documentation). Default: `"HCD"`.
@@ -101,8 +110,16 @@
   - **`ionmob_model`** *(string)*: Path to Ionmob model directory. Default: `"GRUPredictor"`.
   - **`reference_dataset`** *(string)*: Path to Ionmob reference dataset file. Default: `"Meier_unimod.parquet"`.
   - **`tokenizer`** *(string)*: Path to tokenizer json file. Default: `"tokenizer.json"`.
+- <a id="definitions/ms2"></a>**`ms2`** *(object)*: MS2 spectrum-based feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/im2deep"></a>**`im2deep`** *(object)*: Ion mobility feature generator configuration using IM2Deep. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`reference_dataset`** *(string)*: Path to IM2Deep reference dataset file. Default: `"Meier_unimod.parquet"`.
+- <a id="definitions/mumble"></a>**`mumble`** *(object)*: Mumble PSM generator configuration. Can contain additional properties. Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
+  - **`aa_combinations`** *(integer)*: Additional amino acid combinations to consider as mass shift. Default: `0`.
+  - **`fasta_file`**: Maximum number of modifications per peptide. Default: `false`.
+    - **One of**
+      - *string*
+      - *null*
+  - **`mass_error`** *(number)*: mass error in Da. Default: `0.2`.
 - <a id="definitions/mokapot"></a>**`mokapot`** *(object)*: Mokapot rescoring engine configuration. Additional properties are passed to the Mokapot brew function. Can contain additional properties. Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
   - **`train_fdr`** *(number)*: FDR threshold for training Mokapot. Minimum: `0`. Maximum: `1`. Default: `0.01`.
   - **`write_weights`** *(boolean)*: Write Mokapot weights to a text file. Default: `false`.
