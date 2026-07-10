@@ -183,9 +183,8 @@ def _find_decoys(psm_list: PSMList, id_decoy_pattern: Optional[str] = None):
 
 
 def _calculate_qvalues(psm_list: PSMList, lower_score_is_better: bool):
-    """Calculate q-values for PSMs if not present."""
-    # Calculate q-values if not present
-    if None in psm_list["qvalue"]:
+    """Calculate q-values for PSMs if not already present or contain invalid values."""
+    if np.any(np.isnan(psm_list["qvalue"].astype(float))):
         logger.debug("Recalculating q-values...")
         psm_list.calculate_qvalues(reverse=not lower_score_is_better)
 

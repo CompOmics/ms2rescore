@@ -12,7 +12,7 @@ from ms2rescore import exceptions
 from ms2rescore.constants import CHARGE_PATTERN
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.parse_psms import parse_psms
-from ms2rescore.parse_spectra import add_precursor_values
+from ms2rescore.parse_spectra import MSDataType, add_precursor_values, annotate_spectra
 from ms2rescore.report import generate
 from ms2rescore.rescoring_engines import mokapot, percolator
 from ms2rescore.rescoring_engines.mokapot import (
@@ -92,6 +92,15 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         spectrum_path=config["spectrum_path"],
         spectrum_id_pattern=config["spectrum_id_pattern"],
     )
+
+    # Annotate spectra once so MS2/MS2PIP can both consume preloaded fragment annotations.
+    if MSDataType.ms2_spectra in available_ms_data:
+        annotate_spectra(
+            psm_list,
+            fragmentation_model=config.get("fragmentation_model", "cidhcd"),
+            ms2_tolerance=config.get("tolerance_value", 0.02),
+            ms2_tolerance_mode=config.get("tolerance_mode", "Da"),
+        )
 
     # Add rescoring features
     for fgen_name, fgen_config in config["feature_generators"].items():

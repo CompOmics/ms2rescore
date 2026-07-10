@@ -41,6 +41,9 @@
         "rename_to_usi": false,
         "fasta_file": null,
         "write_flashlfq": false,
-        "write_report": false
+        "write_report": false,
+        "fragmentation_model": "cidhcd",
+        "tolerance_value": 0.02,
+        "tolerance_mode": "Da"
     }
 }

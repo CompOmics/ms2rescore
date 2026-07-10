@@ -17,7 +17,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Run Ruff
-        run: uvx ruff check --output-format=github .
+        run: uvx ruff check --output-format=github ./ms2rescore/
 
   test-python-package:
     needs: check-python-package

@@ -24,24 +24,20 @@
                         "deeplc": {
                             "$ref": "#/definitions/deeplc"
                         },
-                        "maxquant": {
-                            "$ref": "#/definitions/maxquant"
-                        },
-                        "ionmob": {
-                            "$ref": "#/definitions/ionmob"
-                        },
                         "im2deep": {
                             "$ref": "#/definitions/im2deep"
+                        },
+                        "ms2": {
+                            "$ref": "#/definitions/ms2"
                         }
                     },
                     "default": {
                         "basic": {},
                         "ms2pip": {
-                            "model": "HCD",
-                            "ms2_tolerance": 0.02
+                            "model": "HCD"
                         },
-                        "deeplc": {},
-                        "maxquant": {}
+                        "ms2": {},
+                        "deeplc": {}
                     }
                 },
                 "rescoring_engine": {
@@ -200,8 +196,25 @@
                     "description": "Write a txt report using cProfile for profiling",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": false
+                },
+                "fragmentation_model": {
+                    "description": "Fragmentation model for spectrum annotation: cidhcd (a/b/y), etd (c/y/z), ethcd (a/b/c/y/z), or all (a/b/c/x/y/z)",
+                    "type": "string",
+                    "enum": ["cidhcd", "etd", "ethcd", "all"],
+                    "default": "cidhcd"
+                },
+                "tolerance_value": {
+                    "description": "Fragment mass tolerance value for spectrum annotation",
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 20.0
+                },
+                "tolerance_mode": {
+                    "description": "Fragment mass tolerance mode for spectrum annotation",
+                    "type": "string",
+                    "enum": ["ppm", "Da"],
+                    "default": "ppm"
                 }
-                
             }
         }
     },
@@ -259,34 +272,11 @@
                 }
             }
         },
-        "maxquant": {
+        "ms2": {
             "$ref": "#/definitions/feature_generator",
-            "description": "MaxQuant feature generator configuration",
+            "description": "MS2 spectrum-based feature generator configuration",
             "type": "object",
             "additionalProperties": true
-        },
-        "ionmob": {
-            "$ref": "#/definitions/feature_generator",
-            "description": "Ion mobility feature generator configuration using Ionmob",
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-                "ionmob_model": {
-                    "description": "Path to Ionmob model directory",
-                    "type": "string",
-                    "default": "GRUPredictor"
-                },
-                "reference_dataset": {
-                    "description": "Path to Ionmob reference dataset file",
-                    "type": "string",
-                    "default": "Meier_unimod.parquet"
-                },
-                "tokenizer": {
-                    "description": "Path to tokenizer json file",
-                    "type": "string",
-                    "default": "tokenizer.json"
-                }
-            }
         },
         "im2deep": {
             "$ref": "#/definitions/feature_generator",

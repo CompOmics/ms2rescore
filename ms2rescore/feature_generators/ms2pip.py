@@ -13,6 +13,11 @@ Because traditional proteomics search engines do not fully consider MS2 peak int
 scoring functions, adding rescoring features derived from spectrum prediction tools has proved to
 be a very effective way to further improve the sensitivity of peptide-spectrum matching.
 
+MS²Rescore uses the unified ``ms2pip.correlate()`` API with spectra preloaded on
+``psm.spectrum``. Both raw ``MS2Spectrum`` and pre-annotated ``AnnotatedMS2Spectrum`` objects
+are accepted; ms2pip uses each PSM's own annotation directly, so multi-rank inputs are handled
+correctly.
+
 If you use MS²PIP through MS²Rescore, please cite:
 
 .. epigraph::
@@ -26,19 +31,22 @@ If you use MS²PIP through MS²Rescore, please cite:
 import logging
 from typing import Optional
 
-from ms2pip import correlate_preloaded
-from ms2rescore_rs import ms2pip_features_from_prediction_peak_arrays
-
+from ms2pip import correlate
+from ms2rescore_rs import (
+    AnnotatedMS2Spectrum,
+    MS2Spectrum,
+    ms2pip_features_from_prediction_peak_arrays,
+)
 from psm_utils import PSMList
 
-from ms2rescore.feature_generators.base import FeatureGeneratorBase
+from ms2rescore.feature_generators.base import FeatureGeneratorBase, FeatureGeneratorException
 from ms2rescore.parse_spectra import MSDataType
 
 logger = logging.getLogger(__name__)
 
 
 class MS2PIPFeatureGenerator(FeatureGeneratorBase):
-    """Generate MS²PIP-based features."""
+    """Generate MS²PIP-based features from spectra preloaded on the input PSMs."""
 
     required_ms_data = {MSDataType.ms2_spectra}
 
@@ -46,9 +54,6 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
         self,
         *args,
         model: str = "HCD",
-        ms2_tolerance: float = 0.02,
-        spectrum_path: Optional[str] = None,
-        spectrum_id_pattern: str = "(.*)",
         model_dir: Optional[str] = None,
         processes: int = 1,
         **kwargs,
@@ -60,14 +65,6 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
         ----------
         model
             MS²PIP prediction model to use. Defaults to :py:const:`HCD`.
-        ms2_tolerance
-            MS2 mass tolerance in Da. Defaults to :py:const:`0.02`.
-        spectrum_path
-            Path to spectrum file or directory with spectrum files. If None, inferred from ``run``
-            field in PSMs. Defaults to :py:const:`None`.
-        spectrum_id_pattern : str, optional
-            Regular expression pattern to extract spectrum ID from spectrum file. Defaults to
-            :py:const:`.*`.
         model_dir
             Directory containing MS²PIP models. Defaults to :py:const:`None` (use MS²PIP default).
         processes : int, optional
@@ -81,9 +78,6 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
         """
         super().__init__(*args, **kwargs)
         self.model = model
-        self.ms2_tolerance = ms2_tolerance
-        self.spectrum_path = spectrum_path
-        self.spectrum_id_pattern = spectrum_id_pattern
         self.model_dir = model_dir
         self.processes = processes
 
@@ -165,17 +159,29 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
 
     def add_features(self, psm_list: PSMList) -> None:
         """
-        Add MS²PIP-derived features to PSMs.
+        Add MS²PIP-derived features to PSMs with preloaded spectra.
 
         Parameters
         ----------
         psm_list
-            PSMs to add features to.
+            PSMs to add features to. Each PSM must have a spectrum attached on
+            ``psm.spectrum``. Both ``MS2Spectrum`` and ``AnnotatedMS2Spectrum`` are accepted;
+            ms2pip uses each PSM's own annotation directly.
 
         """
         logger.info("Adding MS²PIP-derived features to PSMs.")
-        ms2pip_results = correlate_preloaded(
-            psms=psm_list,
+
+        if any(
+            not isinstance(psm.spectrum, (MS2Spectrum, AnnotatedMS2Spectrum)) for psm in psm_list
+        ):
+            raise FeatureGeneratorException(
+                "MS²PIP feature generation expects spectra to be preloaded on `psm.spectrum`. "
+                "Parse and attach spectra before calling `MS2PIPFeatureGenerator.add_features()`."
+            )
+
+        ms2pip_results = correlate(
+            psm_list,
+            compute_correlations=False,
             model=self.model,
             model_dir=self.model_dir,
             processes=self.processes,

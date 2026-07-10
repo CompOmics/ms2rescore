@@ -16,6 +16,7 @@ If you use DeepLC through MS²Rescore, please cite:
 """
 
 import logging
+import warnings
 from typing import List, Union
 
 import numpy as np
@@ -84,7 +85,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
             for k, v in self.deeplc_kwargs.items()
             if k in ["device", "batch_size", "num_threads"]
         }  # getfullargspec(predict).args does not work on this outer predict function
-        self.predict_kwargs["num_threads"] = processes
+        self.predict_kwargs["num_threads"] = processes if processes > 0 else None
 
         # Prepare DeepLC finetune kwargs
         if "deeplc_retrain" not in self.deeplc_kwargs:
@@ -106,7 +107,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
                     "validation_split",
                 ]
             }
-            self.finetune_kwargs["num_threads"] = processes
+            self.finetune_kwargs["num_threads"] = processes if processes > 0 else None
 
     @property
     def feature_names(self) -> List[str]:
@@ -121,6 +122,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
     def add_features(self, psm_list: PSMList) -> None:
         """Add DeepLC-derived features to PSMs."""
+        warnings.filterwarnings("ignore", category=UserWarning, module="deeplc._features")
 
         logger.info("Adding DeepLC-derived features to PSMs.")
         psm_list_df = psm_list.to_dataframe()
@@ -186,6 +188,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
             # Update predictions with calibrated values
             psm_list_df.loc[psm_list_df["run"] == run, "predicted_retention_time"] = calibrated_rt
 
+        psm_list_df = psm_list_df.sort_index()  # restore original PSM order after sort_values above
         psm_list_df["observed_retention_time"] = psm_list_df["retention_time"]
         psm_list_df["rt_diff"] = (
             psm_list_df["observed_retention_time"] - psm_list_df["predicted_retention_time"]

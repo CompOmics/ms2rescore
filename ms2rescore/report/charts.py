@@ -12,6 +12,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.subplots
 import pyteomics.auxiliary
+from numpy.typing import ArrayLike
 from psm_utils.psm_list import PSMList
 
 
@@ -545,7 +546,7 @@ def ms2pip_correlation(
 
 def calculate_feature_qvalues(
     features: pd.DataFrame,
-    is_decoy: pd.Series,
+    is_decoy: ArrayLike,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate q-values and ECDF AUC for all rescoring features.
@@ -593,7 +594,15 @@ def calculate_feature_qvalues(
                 )
 
         # Calculate ECDF AUC as measure of overall individual performance of feature
-        ecdf_aucs = [np.trapz(y=np.max(q) - np.sort(q)) for q in q_values]
+        ecdf_aucs = []
+        for q in q_values:
+            sorted_q = np.sort(q)
+            y_vals = np.max(q) - sorted_q
+            if hasattr(np, "trapezoid"):
+                auc = np.trapezoid(y_vals)  # Numpy 2.0 and later
+            else:
+                auc = np.trapz(y_vals)  # type: ignore[reportAttributeAccessIssue] # Numpy 1.x
+            ecdf_aucs.append(auc)
 
         # Select and save q-value calculation with best AUC (score reversed or not)
         idx_best = np.argmax(ecdf_aucs)
