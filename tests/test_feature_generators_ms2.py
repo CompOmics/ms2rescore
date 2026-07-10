@@ -1,6 +1,5 @@
 import math
 
-import pytest
 from ms2rescore_rs import AnnotatedMS2Spectrum, FragmentAnnotation, Precursor
 from psm_utils import PSM, PSMList
 
