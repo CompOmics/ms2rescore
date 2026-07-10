@@ -7,7 +7,7 @@ from typing import Optional, Set
 
 import numpy as np
 from ms2pip._spectrum_processing import proforma_to_mass_shift
-from ms2rescore_rs import AnnotatedMS2Spectrum, MS2Spectrum, annotate_ms2_spectra, get_ms2_spectra
+from ms2rescore_rs import MS2Spectrum, annotate_ms2_spectra, get_ms2_spectra
 from psm_utils import PSMList
 from rich.progress import track
 
