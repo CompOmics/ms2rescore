@@ -140,7 +140,8 @@ def convert_psm_list(
         List of feature names to use. Items must be keys in the PSM `rescoring_features` dict.
 
     """
-    psm_df = psm_list.to_dataframe()
+
+    psm_df = psm_list.to_dataframe().drop(columns=["spectrum"], errors="ignore")
     psm_df = psm_df.reset_index(drop=True).reset_index()
 
     psm_df["peptide"] = (

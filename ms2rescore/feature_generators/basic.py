@@ -73,8 +73,9 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
         peptide_lengths = np.array([len(psm.peptidoform.sequence) for psm in psm_list])
 
         has_charge = None not in charge_states
-        has_mz = None not in precursor_mzs and has_charge
-        has_score = None not in scores
+        # precursor_mz and score come back as float arrays where missing values are NaN, not None
+        has_mz = not np.isnan(precursor_mzs).any() and has_charge
+        has_score = not np.isnan(scores).any()
 
         if has_charge:
             charge_n = charge_states

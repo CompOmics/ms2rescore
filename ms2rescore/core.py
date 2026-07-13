@@ -143,6 +143,9 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         if overlap:
             feature_names["psm_file"] = feature_names["psm_file"] - overlap
 
+    # Release the annotated MS2 spectra now that all feature generators have consumed them.
+    psm_list["spectrum"] = [None] * len(psm_list)
+
     # Filter out psms that do not have all added features
     all_feature_names = {f for fgen in feature_names.values() for f in fgen}
     psms_with_features = [

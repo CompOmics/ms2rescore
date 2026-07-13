@@ -107,8 +107,11 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
         # Make predictions with IM2Deep
         logger.info("Predicting CCS values with IM2Deep...")
-        psm_list_df["predicted_CCS_uncalibrated"] = predict(
-            psm_list, model=self.model, predict_kwargs=self.predict_kwargs
+        # float64 so the per-run calibrated write-back below stays dtype-consistent (predict
+        # returns float32; calibration.transform returns object).
+        psm_list_df["predicted_CCS_uncalibrated"] = np.asarray(
+            predict(psm_list, model=self.model, predict_kwargs=self.predict_kwargs),
+            dtype="float64",
         )
 
         # getting reference CCS values for calibration
@@ -120,6 +123,8 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
             run_df = psm_list_df[psm_list_df["run"] == run].copy()
 
             calibration_df = self._get_im_calibration_data(run_df)
+            if calibration_df.empty:
+                raise ValueError(f"Run '{run}' has no target PSMs available for calibration.")
 
             calibration = LinearCCSCalibration()
             calibration.fit(
@@ -131,9 +136,11 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
                 run_df[["peptidoform", "predicted_CCS_uncalibrated"]]
             )
 
-            # Update predictions with calibrated values
-            psm_list_df.loc[psm_list_df["run"] == run, "predicted_CCS_uncalibrated"] = (
-                calibrated_im
+            # Update predictions with calibrated values. transform() returns an object-dtype
+            # array; cast to float64 so the write-back does not upcast the column (pandas
+            # incompatible-dtype FutureWarning).
+            psm_list_df.loc[psm_list_df["run"] == run, "predicted_CCS_uncalibrated"] = np.asarray(
+                calibrated_im, dtype="float64"
             )
 
         # Apply calibration shifts
