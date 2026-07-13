@@ -135,14 +135,18 @@ def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]
         configurations = [configurations]
 
     # Initialize CascadeConfig with validation schema and defaults
-    config_schema = importlib.resources.open_text(package_data, "config_schema.json")
-    config_default = importlib.resources.open_text(package_data, "config_default.json")
+    config_schema = json.loads(
+        importlib.resources.files(package_data).joinpath("config_schema.json").read_text()
+    )
+    config_default = json.loads(
+        importlib.resources.files(package_data).joinpath("config_default.json").read_text()
+    )
     cascade_conf = CascadeConfig(
-        validation_schema=json.load(config_schema),
+        validation_schema=config_schema,
         none_overrides_value=False,
         max_recursion_depth=1,
     )
-    cascade_conf.add_dict(json.load(config_default))
+    cascade_conf.add_dict(config_default)
 
     # Add configurations
     for config in configurations:

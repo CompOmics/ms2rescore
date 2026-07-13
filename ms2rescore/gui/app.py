@@ -25,8 +25,7 @@ from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
 from ms2rescore.gui.function2ctk import Function2CTk, PopupWindow
 
-with importlib.resources.path(pkg_data_img, "config_icon.png") as resource:
-    _IMG_DIR = Path(resource).parent
+_IMG_DIR = Path(str(importlib.resources.files(pkg_data_img)))
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

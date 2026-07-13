@@ -225,7 +225,11 @@ def main(tims=False):
     configurations = []
     if tims:
         configurations.append(
-            json.load(importlib.resources.open_text(package_data, "config_default_tims.json"))
+            json.loads(
+                importlib.resources.files(package_data)
+                .joinpath("config_default_tims.json")
+                .read_text()
+            )
         )
     if cli_args.config_file:
         configurations.append(cli_args.config_file)

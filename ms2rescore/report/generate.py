@@ -41,7 +41,7 @@ PLOTLY_HTML_KWARGS = {
 }
 
 
-TEXTS = tomllib.loads(importlib.resources.read_text(templates, "texts.toml"))
+TEXTS = tomllib.loads(importlib.resources.files(templates).joinpath("texts.toml").read_text())
 
 
 def generate_report(
