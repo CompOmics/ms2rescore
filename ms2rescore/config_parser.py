@@ -8,10 +8,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Dict, List, Union
 
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib  # type: ignore
+import tomllib
 
 from cascade_config import CascadeConfig
 
