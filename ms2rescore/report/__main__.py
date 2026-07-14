@@ -2,9 +2,9 @@ import logging
 from pathlib import Path
 
 import click
-import psm_utils.io
 from rich.logging import RichHandler
 
+from ms2rescore.report.data import ReportData
 from ms2rescore.report.generate import generate_report
 
 logger = logging.getLogger(__name__)
@@ -46,15 +46,9 @@ def main(psm_file, output):
         else:
             output_path = Path(output_prefix + ".report.html")
 
-        logger.info(f"Reading PSMs from {psm_file_path}...")
-        psm_list = psm_utils.io.read_file(psm_file_path, filetype="tsv", show_progressbar=True)
-
         logger.info("Generating report...")
-        generate_report(
-            output_path_prefix=output_prefix,
-            psm_list=psm_list,
-            output_file=output_path,
-        )
+        report_data = ReportData.from_files(output_prefix)
+        generate_report(output_prefix, report_data, output_file=output_path)
 
         logger.info(f"✓ Report generated: {output_path}")
 

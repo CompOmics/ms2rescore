@@ -5,7 +5,6 @@ import warnings
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
 
-import mokapot
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -196,235 +195,6 @@ def fdr_plot(
     if fdr_thresholds:
         for threshold in fdr_thresholds:
             fig.add_vline(x=threshold, line_dash="dash", line_color="red")
-    return fig
-
-
-def score_scatter_plot(
-    before: mokapot.LinearConfidence,
-    after: mokapot.LinearConfidence,
-    level: str = "psms",
-    indexer: str = "index",
-    fdr_threshold: float = 0.01,
-) -> go.Figure:
-    """
-    Plot PSM scores before and after rescoring.
-
-    Parameters
-    ----------
-    before
-        Mokapot linear confidence results before rescoring.
-    after
-        Mokapot linear confidence results after rescoring.
-    level
-        Level of confidence estimates to plot. Must be one of "psms", "peptides", or "proteins".
-    indexer
-        Column with index for each PSM, peptide, or protein to use for merging data frames.
-
-    """
-    if not before or not after:
-        figure = go.Figure()
-        figure.add_annotation(
-            text="No data available for comparison.",
-            showarrow=False,
-        )
-        return figure
-
-    # Restructure data
-    merge_columns = [indexer, "mokapot score", "mokapot q-value", "mokapot PEP"]
-    ce_psms_targets = pd.merge(
-        left=before.confidence_estimates[level],
-        right=after.confidence_estimates[level][merge_columns],
-        on=indexer,
-        suffixes=(" before", " after"),
-    )
-    ce_psms_decoys = pd.merge(
-        left=before.decoy_confidence_estimates[level],
-        right=after.decoy_confidence_estimates[level][merge_columns],
-        on=indexer,
-        suffixes=(" before", " after"),
-    )
-    ce_psms_targets["PSM type"] = "target"
-    ce_psms_decoys["PSM type"] = "decoy"
-    ce_psms = pd.concat([ce_psms_targets, ce_psms_decoys], axis=0)
-
-    # Get score thresholds
-    try:
-        score_threshold_before = (
-            ce_psms[ce_psms["mokapot q-value before"] <= fdr_threshold]
-            .sort_values("mokapot q-value before", ascending=False)["mokapot score before"]
-            .iloc[0]
-        )
-    except IndexError:  # No PSMs below threshold
-        score_threshold_before = None
-    try:
-        score_threshold_after = (
-            ce_psms[ce_psms["mokapot q-value after"] <= fdr_threshold]
-            .sort_values("mokapot q-value after", ascending=False)["mokapot score after"]
-            .iloc[0]
-        )
-    except IndexError:  # No PSMs below threshold
-        score_threshold_after = None
-
-    # Plot
-    fig = px.scatter(
-        data_frame=ce_psms,
-        x="mokapot score before",
-        y="mokapot score after",
-        color="PSM type",
-        marginal_x="histogram",
-        marginal_y="histogram",
-        opacity=0.1,
-        labels={
-            "mokapot score before": "PSM score (before rescoring)",
-            "mokapot score after": "PSM score (after rescoring)",
-        },
-    )
-    # draw FDR thresholds
-    if score_threshold_before:
-        fig.add_vline(x=score_threshold_before, line_dash="dash", row=1, col=1)
-        fig.add_vline(x=score_threshold_before, line_dash="dash", row=2, col=1)
-    if score_threshold_after:
-        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=1)
-        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=2)
-
-    return fig
-
-
-def fdr_plot_comparison(
-    before: mokapot.LinearConfidence,
-    after: mokapot.LinearConfidence,
-    level: str = "psms",
-    indexer: str = "index",
-) -> go.Figure:
-    """
-    Plot number of identifications in function of FDR threshold before/after rescoring.
-
-    Parameters
-    ----------
-    before
-        Mokapot linear confidence results before rescoring.
-    after
-        Mokapot linear confidence results after rescoring.
-    level
-        Level of confidence estimates to plot. Must be one of "psms", "peptides", or "proteins".
-    indexer
-        Column with index for each PSM, peptide, or protein to use for merging dataframes.
-
-    """
-    if not before or not after:
-        figure = go.Figure()
-        figure.add_annotation(
-            text="No data available for comparison.",
-            showarrow=False,
-        )
-        return figure
-
-    # Prepare data
-    ce_psms_targets_melted = (
-        pd.merge(
-            left=before.confidence_estimates[level],
-            right=after.confidence_estimates[level][
-                [indexer, "mokapot score", "mokapot q-value", "mokapot PEP"]
-            ],
-            on=indexer,
-            suffixes=(" before", " after"),
-        )
-        .rename(
-            columns={
-                "mokapot q-value before": "before rescoring",
-                "mokapot q-value after": "after rescoring",
-            }
-        )
-        .melt(
-            id_vars=["index", "peptide", "is_target"],
-            value_vars=["before rescoring", "after rescoring"],
-            var_name="before/after",
-            value_name="q-value",
-        )
-    )
-
-    # Plot
-    fig = px.ecdf(
-        data_frame=ce_psms_targets_melted,
-        x="q-value",
-        color="before/after",
-        log_x=True,
-        ecdfnorm=None,
-        labels={
-            "q-value": "FDR threshold",
-            "before/after": "",
-        },
-        color_discrete_map={
-            "before rescoring": "#316395",
-            "after rescoring": "#319545",
-        },
-    )
-    fig.add_vline(x=0.01, line_dash="dash", line_color="black")
-    fig.update_layout(yaxis_title="Identified PSMs")
-    return fig
-
-
-def identification_overlap(
-    before: mokapot.LinearConfidence,
-    after: mokapot.LinearConfidence,
-) -> go.Figure:
-    """
-    Plot stacked bar charts of removed, retained, and gained PSMs, peptides, and proteins.
-
-    Parameters
-    ----------
-    before
-        Mokapot linear confidence results before rescoring.
-    after
-        Mokapot linear confidence results after rescoring.
-
-    """
-    if not before or not after:
-        figure = go.Figure()
-        figure.add_annotation(
-            text="No data available for comparison.",
-            showarrow=False,
-        )
-        return figure
-
-    levels = before.levels  # ["psms", "peptides", "proteins"] if all available
-    indexers = ["index", "peptide", "mokapot protein group"]
-
-    overlap_data = defaultdict(dict)
-    for level, indexer in zip(levels, indexers):
-        df_before = before.confidence_estimates[level]
-        df_after = after.confidence_estimates[level]
-        if df_before is None and df_after is None:
-            continue
-
-        set_before = set(df_before[df_before["mokapot q-value"] <= 0.01][indexer])
-        set_after = set(df_after[df_after["mokapot q-value"] <= 0.01][indexer])
-
-        overlap_data["removed"][level] = -len(set_before - set_after)
-        overlap_data["retained"][level] = len(set_after.intersection(set_before))
-        overlap_data["gained"][level] = len(set_after - set_before)
-
-    colors = ["#953331", "#316395", "#319545"]
-    fig = plotly.subplots.make_subplots(rows=3, cols=1)
-
-    for i, level in enumerate(levels):
-        for (item, data), color in zip(overlap_data.items(), colors):
-            if level not in data:
-                continue
-            fig.add_trace(
-                go.Bar(
-                    y=["protein groups" if level == "proteins" else level],
-                    x=[data[level]],
-                    marker={"color": color},
-                    orientation="h",
-                    name=item,
-                    showlegend=True if i == 0 else False,
-                ),
-                row=i + 1,
-                col=1,
-            )
-    fig.update_layout(barmode="relative")
-
     return fig
 
 
@@ -804,7 +574,7 @@ def rt_distribution_baseline(
     return fig
 
 
-def score_scatter_plot_df(
+def score_scatter_plot(
     psm_df: pd.DataFrame,
     fdr_threshold: float = 0.01,
 ) -> go.Figure:
@@ -881,7 +651,7 @@ def score_scatter_plot_df(
     return fig
 
 
-def fdr_plot_comparison_df(
+def fdr_plot_comparison(
     psm_df: pd.DataFrame,
 ) -> go.Figure:
     """
@@ -941,7 +711,7 @@ def fdr_plot_comparison_df(
     return fig
 
 
-def identification_overlap_df(
+def identification_overlap(
     psm_df: pd.DataFrame,
     fdr_threshold: float = 0.01,
 ) -> go.Figure:
