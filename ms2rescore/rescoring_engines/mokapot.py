@@ -48,7 +48,7 @@ def rescore(
     write_txt: bool = False,
     protein_kwargs: Optional[Dict[str, Any]] = None,
     **kwargs: Any,
-) -> None:
+) -> Optional[pd.DataFrame]:
     """
     Rescore PSMs with Mokapot.
 
@@ -79,6 +79,12 @@ def rescore(
         method.
     **kwargs
         Additional keyword arguments are passed to the Mokapot :py:func:`~mokapot.brew` function.
+
+    Returns
+    -------
+    Optional[pd.DataFrame]
+        Feature weights of the trained linear model (one row per cross-validation fold), or
+        ``None`` if the model type does not expose linear coefficients.
 
     """
     _set_log_levels()
@@ -111,18 +117,21 @@ def rescore(
     add_psm_confidence(psm_list, confidence_results)
     add_peptide_confidence(psm_list, confidence_results)
 
+    # Extract feature weights for in-memory reporting
+    feature_weights = extract_model_weights(models, feature_names)
+    if feature_weights is None:
+        logger.warning(
+            "Could not extract Mokapot model weights with the `coef_` attribute. Most likely, "
+            "a model type different from the default (linear SVM) was used. No weights available."
+        )
+
     # Write results
-    if write_weights:
-        try:
-            save_model_weights(models, feature_names, output_file_root)
-        except AttributeError:
-            logger.warning(
-                "Could not extract Mokapot model weights with the `coef_` attribute. Most likely, "
-                "a model type different from the default (linear SVM) was used. No weights will "
-                "be saved."
-            )
+    if write_weights and feature_weights is not None:
+        feature_weights.to_csv(output_file_root + ".mokapot.weights.tsv", sep="\t", index=False)
     if write_txt:
         confidence_results.to_txt(file_root=output_file_root, decoys=True)
+
+    return feature_weights
 
 
 def convert_psm_list(
@@ -188,33 +197,31 @@ def convert_psm_list(
     return lin_psm_data
 
 
-def save_model_weights(
-    models: Tuple[mokapot.model.Model], feature_names: List[str], output_file_root: str
-):
+def extract_model_weights(
+    models: Tuple[mokapot.model.Model], feature_names: List[str]
+) -> Optional[pd.DataFrame]:
     """
-    Save model weights to a file.
+    Extract linear-model feature weights from the trained Mokapot models.
 
     Parameters
     ----------
     models
-        Tuple of Mokapot models (one for each fold) to save.
+        Tuple of Mokapot models, one for each cross-validation fold.
     feature_names
         List of feature names that were used to train the models.
-    output_file_root
-        Root of output file names.
+
+    Returns
+    -------
+    Optional[pd.DataFrame]
+        Feature weights with one row per fold and one column per feature, or ``None`` if the
+        models do not expose linear coefficients via the ``coef_`` attribute.
 
     """
     try:
         coefficients = np.stack([m.estimator.coef_[0] for m in models])
-    except AttributeError as e:
-        raise AttributeError(
-            "Could not extract Mokapot model weights with the `coef_` attribute. Most likely, "
-            "a model type different from the default (linear SVM) was used."
-        ) from e
-
-    pd.DataFrame(coefficients, columns=list(feature_names)).to_csv(
-        output_file_root + ".mokapot.weights.tsv", sep="\t", index=False
-    )
+    except AttributeError:
+        return None
+    return pd.DataFrame(coefficients, columns=list(feature_names))
 
 
 def add_psm_confidence(
