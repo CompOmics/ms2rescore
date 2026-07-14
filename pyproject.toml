@@ -1,6 +1,6 @@
 [project]
 name = "ms2rescore"
-version = "3.3.0-alpha.1"
+version = "4.0.0"
 description = " Modular and user-friendly platform for AI-assisted rescoring of peptide identifications."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -31,7 +31,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 requires-python = ">=3.11"
-# TODO: Update upon stable release
 dependencies = [
     "cascade-config>=0.4.0",
     "click>=7",
@@ -69,13 +68,12 @@ docs = [
     "sphinx-argparse",
     "sphinx-autobuild",
 ]
-# TODO: Update upon stable release
 installer = [
     # Pinned dependencies for reproducible Windows installer builds
     "cbor2",
-    # "deeplc==4.0.0",
-    # "im2deep==2.0.0",
-    # "ms2rescore-rs==0.5.0",
+    "deeplc==4.0.0b1",
+    "im2deep==2.0.0",
+    "ms2rescore-rs==0.5.0",
     "psm_utils==1.5.2",
     "pyopenms==3.5",
 ]
@@ -101,7 +99,6 @@ module-name = "ms2rescore"
 module-root = ""
 
 [tool.uv]
-prerelease = "allow"
 
 [tool.uv.sources]
 
