@@ -14,6 +14,7 @@ from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.parse_psms import parse_psms
 from ms2rescore.parse_spectra import MSDataType, add_precursor_values, annotate_spectra
 from ms2rescore.report import generate
+from ms2rescore.report.data import ReportData
 from ms2rescore.rescoring_engines import mokapot, percolator
 from ms2rescore.rescoring_engines.mokapot import (
     add_peptide_confidence,
@@ -194,6 +195,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         return None
 
     # Rescore PSMs
+    feature_weights = None
     try:
         if "percolator" in config["rescoring_engine"]:
             percolator.rescore(
@@ -211,7 +213,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             else:
                 protein_kwargs = dict()
 
-            mokapot.rescore(
+            feature_weights = mokapot.rescore(
                 psm_list,
                 output_file_root=output_file_root,
                 protein_kwargs=protein_kwargs,
@@ -254,9 +256,10 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     # Write report
     if config["write_report"]:
         try:
-            generate.generate_report(
-                output_file_root, psm_list=psm_list, feature_names=feature_names, use_txt_log=True
+            report_data = ReportData.from_run(
+                psm_list, feature_names, configuration, feature_weights
             )
+            generate.generate_report(output_file_root, report_data)
         except exceptions.ReportGenerationError as e:
             logger.exception(e)
 

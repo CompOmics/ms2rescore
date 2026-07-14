@@ -21,7 +21,10 @@ from typing import List, Union
 
 import numpy as np
 from deeplc.calibration import SplineTransformerCalibration
-from deeplc.core import finetune, predict
+
+# NOTE: `_best_correlating_head` is a private DeepLC function. Imported here intentionally to
+# reuse DeepLC's multitask head-selection logic. To be replaced once DeepLC exposes a public API.
+from deeplc.core import _best_correlating_head, finetune, predict
 from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
@@ -159,36 +162,56 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
                 train_kwargs=self.finetune_kwargs,
             )
 
-        # Predict retention times for all PSMs
+        # Ensure a positional index so DataFrame rows map 1:1 to pred_matrix rows
+        psm_list_df = psm_list_df.reset_index(drop=True)
+
+        # Predict retention times for all PSMs at once. The default DeepLC model is a multitask
+        # model, so `return_matrix=True` yields the full (n_psms, n_heads) prediction matrix. The
+        # best-correlating head is selected per run below, rather than defaulting to head 0.
         logger.info("Predicting retention times with DeepLC...")
-        psm_list_df["predicted_retention_time"] = predict(
-            psm_list, model=self.model, predict_kwargs=self.predict_kwargs
+        pred_matrix = predict(
+            psm_list,
+            model=self.model,
+            predict_kwargs=self.predict_kwargs,
+            return_matrix=True,
         )
 
-        # Calibrate predictions per run
-        logger.info("Calibrating predicted retention times per run...")
+        # Calibrate predictions per run, selecting the best-correlating head from each run's
+        # calibration reference PSMs.
+        logger.info("Selecting best head and calibrating predicted retention times per run...")
         psm_list_df = psm_list_df.sort_values("qvalue")
+        psm_list_df["predicted_retention_time"] = np.nan
         for run in psm_list_df["run"].unique():
             run_df = psm_list_df[psm_list_df["run"] == run]
 
-            # Get calibration data (target PSMs only)
-            observed_rt_calibration, predicted_rt_calibration = self._get_calibration_data(run_df)
+            # Get calibration data (target PSMs only): row indices into pred_matrix + observed RTs
+            calibration_idx, observed_rt_calibration = self._get_calibration_data(run_df)
             if len(observed_rt_calibration) == 0:
                 raise ValueError(f"Run '{run}' has no target PSMs available for calibration.")
 
-            # Fit calibration and transform all predictions for this run
+            # Select the head that best correlates with observed RT on the calibration PSMs
+            reference_matrix = pred_matrix[calibration_idx]
+            head = _best_correlating_head(reference_matrix, observed_rt_calibration)
+            logger.debug(f"Run '{run}': selected DeepLC head {head}")
+
+            # Fit calibration on the selected head and transform all predictions for this run
             calibration = SplineTransformerCalibration()
             calibration.fit(
                 target=observed_rt_calibration,
-                source=predicted_rt_calibration,
+                source=reference_matrix[:, head],
             )
 
-            calibrated_rt = calibration.transform(run_df["predicted_retention_time"].values)
+            run_idx = run_df.index.values
+            calibrated_rt = calibration.transform(pred_matrix[run_idx, head])
 
             # Update predictions with calibrated values
             psm_list_df.loc[psm_list_df["run"] == run, "predicted_retention_time"] = calibrated_rt
 
-        psm_list_df = psm_list_df.sort_index()  # restore original PSM order after sort_values above
+        del pred_matrix
+
+        psm_list_df = (
+            psm_list_df.sort_index()
+        )  # restore original PSM order after sort_values above
         psm_list_df["observed_retention_time"] = psm_list_df["retention_time"]
         psm_list_df["rt_diff"] = (
             psm_list_df["observed_retention_time"] - psm_list_df["predicted_retention_time"]
@@ -219,20 +242,21 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
             psm.rescoring_features.update(features)
 
     def _get_calibration_data(self, run_df) -> tuple[np.ndarray, np.ndarray]:
-        """Get calibration data (observed and predicted RTs) from run dataframe.
+        """Get calibration data (pred_matrix row indices and observed RTs) from run dataframe.
 
         Only target (non-decoy) PSMs are used for calibration.
 
         Parameters
         ----------
         run_df : pd.DataFrame
-            Dataframe containing PSMs for a single run, pre-sorted by qvalue ascending, with
-            columns: 'retention_time', 'predicted_retention_time', 'qvalue', 'is_decoy'
+            Dataframe containing PSMs for a single run, pre-sorted by qvalue ascending, with a
+            positional index into the prediction matrix and columns: 'retention_time', 'qvalue',
+            'is_decoy'
 
         Returns
         -------
         tuple[np.ndarray, np.ndarray]
-            Observed and predicted retention times for calibration
+            Row indices (into pred_matrix) and observed retention times for calibration
         """
         # Filter to target PSMs only (run_df is pre-sorted by qvalue)
         target_df = run_df[~run_df["is_decoy"]]
@@ -264,8 +288,8 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         calibration_df = target_df.head(num_calibration_psms)
 
         return (
+            calibration_df.index.values,
             calibration_df["retention_time"].values,
-            calibration_df["predicted_retention_time"].values,
         )
 
     @staticmethod
