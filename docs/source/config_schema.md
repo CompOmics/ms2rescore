@@ -14,7 +14,6 @@
     - **`ms2`**: Refer to *[#/definitions/ms2](#definitions/ms2)*.
   - **`rescoring_engine`** *(object)*: Rescoring engine to use and its configuration. Leave empty to skip rescoring and write features to file. Default: `{"mokapot": {}}`.
     - **`.*`**: Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
-    - **`percolator`**: Refer to *[#/definitions/percolator](#definitions/percolator)*.
     - **`mokapot`**: Refer to *[#/definitions/mokapot](#definitions/mokapot)*.
   - **`psm_generator`** *(object)*: PSM generator and their configuration.
     - **`.*`**: Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
@@ -124,8 +123,3 @@
   - **`train_fdr`** *(number)*: FDR threshold for training Mokapot. Minimum: `0`. Maximum: `1`. Default: `0.01`.
   - **`write_weights`** *(boolean)*: Write Mokapot weights to a text file. Default: `false`.
   - **`write_txt`** *(boolean)*: Write Mokapot results to a text file. Default: `false`.
-- <a id="definitions/percolator"></a>**`percolator`** *(object)*: Percolator rescoring engine configuration. Can contain additional properties. Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
-  - **`init-weights`**: Weights file for scoring function. Default: `false`.
-    - **One of**
-      - *string*
-      - *null*
