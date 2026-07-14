@@ -14,6 +14,76 @@ import pyteomics.auxiliary
 from numpy.typing import ArrayLike
 from psm_utils.psm_list import PSMList
 
+# Fixed color per feature generator (ColorBrewer "Dark2", colorblind-safe and mutually distinct).
+# Used both for the feature-generator overview charts and for the generator-specific charts, so a
+# generator keeps the same color everywhere in the report.
+FEATURE_GENERATOR_COLORS = {
+    "ms2pip": "#1B9E77",  # Teal
+    "deeplc": "#D95F02",  # Orange
+    "im2deep": "#3C93C2",  # Blue
+    "ms2": "#7570B3",  # Violet
+    "basic": "#666666",  # Gray
+    "psm_file": "#E6AB02",  # Gold
+    "other": "#66A61E",  # Olive
+}
+
+# Semantic colors reused across charts.
+_COLOR_TARGET = "#2c6fbb"  # Blue
+_COLOR_DECOY = "#c0392b"  # Red
+_COLOR_REFERENCE = "#7a7a7a"  # Neutral gray for reference/identity lines
+_COLOR_NEUTRAL = "#a7b3bf"  # Muted slate for background distributions
+
+# Categorical color sequence (Dark2) for charts without an explicit mapping.
+_COLORWAY = list(FEATURE_GENERATOR_COLORS.values())
+
+# Shared Plotly template giving every chart the same typographic and grid style as the report.
+_TEMPLATE = go.layout.Template(
+    layout=go.Layout(
+        font=dict(family="Lato, sans-serif", size=13, color="#2b2b2b"),
+        title=dict(
+            font=dict(family="Oswald, sans-serif", size=18, color="#1a1a2e"),
+            x=0.02,
+            xanchor="left",
+        ),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        colorway=_COLORWAY,
+        margin=dict(l=60, r=30, t=60, b=50),
+        xaxis=dict(
+            gridcolor="#ececec",
+            zeroline=False,
+            showline=True,
+            linecolor="#cfcfcf",
+            ticks="outside",
+            tickcolor="#cfcfcf",
+            ticklen=4,
+            automargin=True,
+        ),
+        yaxis=dict(
+            gridcolor="#ececec",
+            zeroline=False,
+            showline=True,
+            linecolor="#cfcfcf",
+            ticks="outside",
+            tickcolor="#cfcfcf",
+            ticklen=4,
+            automargin=True,
+        ),
+        legend=dict(
+            bgcolor="rgba(255, 255, 255, 0.7)",
+            bordercolor="#e0e0e0",
+            borderwidth=1,
+        ),
+        hoverlabel=dict(font=dict(family="Lato, sans-serif", size=12), bordercolor="white"),
+    )
+)
+
+
+def _style(fig: go.Figure) -> go.Figure:
+    """Apply the shared MS²Rescore chart template to a figure and return it."""
+    fig.update_layout(template=_TEMPLATE)
+    return fig
+
 
 class _ECDF:
     """
@@ -77,7 +147,8 @@ def score_histogram(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
         barmode="overlay",
         histnorm="",
         labels={"is_decoy": "PSM type", "False": "target", "True": "decoy"},
-        opacity=0.5,
+        opacity=0.6,
+        color_discrete_map={"target": _COLOR_TARGET, "decoy": _COLOR_DECOY},
     )
 
     # Get score thresholds
@@ -91,9 +162,9 @@ def score_histogram(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
         except IndexError:  # No PSMs below threshold
             pass
         else:
-            fig.add_vline(x=score_threshold, line_dash="dash", line_color="black")
+            fig.add_vline(x=score_threshold, line_dash="dash", line_color=_COLOR_REFERENCE)
 
-    return fig
+    return _style(fig)
 
 
 def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
@@ -134,6 +205,7 @@ def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
             x=decoy_ecdf,
             y=target_ecdf,
             mode="markers",
+            marker=dict(color=_COLOR_TARGET),
         )
     )
     fig.add_trace(
@@ -141,7 +213,7 @@ def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
             x=[0, 1],
             y=[0, pi_zero],
             mode="lines",
-            line=go.scatter.Line(color="red"),
+            line=go.scatter.Line(color=_COLOR_REFERENCE, dash="dash"),
             showlegend=True,
             name="pi0",
         )
@@ -151,7 +223,7 @@ def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
         yaxis_title="Ftp",
         showlegend=False,
     )
-    return fig
+    return _style(fig)
 
 
 def fdr_plot(
@@ -191,11 +263,12 @@ def fdr_plot(
         y="count",
         log_x=log,
         labels={"count": "Number of identified target PSMs", "qvalue": "FDR threshold"},
+        color_discrete_sequence=[_COLOR_TARGET],
     )
     if fdr_thresholds:
         for threshold in fdr_thresholds:
-            fig.add_vline(x=threshold, line_dash="dash", line_color="red")
-    return fig
+            fig.add_vline(x=threshold, line_dash="dash", line_color=_COLOR_REFERENCE)
+    return _style(fig)
 
 
 def feature_weights(
@@ -220,7 +293,7 @@ def feature_weights(
         .reset_index()
     )
 
-    return px.bar(
+    fig = px.bar(
         data_frame=bar_data,
         x="weight",
         y="feature",
@@ -235,6 +308,7 @@ def feature_weights(
         },
         color_discrete_map=color_discrete_map,
     )
+    return _style(fig)
 
 
 def feature_weights_by_generator(
@@ -262,7 +336,7 @@ def feature_weights_by_generator(
         .sort_values("weight")
     )
 
-    return px.bar(
+    fig = px.bar(
         data_frame=bar_data,
         x="weight",
         y="feature_generator",
@@ -277,12 +351,14 @@ def feature_weights_by_generator(
         },
         color_discrete_map=color_discrete_map,
     )
+    return _style(fig)
 
 
 def ms2pip_correlation(
     features: pd.DataFrame,
     is_decoy: Union[pd.Series, np.ndarray],
     qvalue: Union[pd.Series, np.ndarray],
+    color: Optional[str] = None,
 ) -> go.Figure:
     """
     Plot MS²PIP correlation for target PSMs with q-value <= 0.01.
@@ -295,23 +371,26 @@ def ms2pip_correlation(
         Boolean array indicating whether each PSM is a decoy.
     qvalue
         Array of q-values for each PSM.
+    color
+        Bar color. Defaults to the MS²PIP feature-generator color.
 
     """
     data = features["spec_pearson_norm"][(qvalue < 0.01) & (~is_decoy)]
     fig = px.histogram(
         x=data,
         labels={"x": "Pearson correlation"},
+        color_discrete_sequence=[color or FEATURE_GENERATOR_COLORS["ms2pip"]],
     )
     # Draw vertical line at median
     fig.add_vline(
         x=data.median(),
         line_width=3,
         line_dash="dash",
-        line_color="red",
+        line_color=_COLOR_REFERENCE,
         annotation_text=f"Median: {data.median():.2f}",
         annotation_position="top left",
     )
-    return fig
+    return _style(fig)
 
 
 def calculate_feature_qvalues(
@@ -405,7 +484,7 @@ def feature_ecdf_auc_bar(
         Mapping of feature generator names to colors for plotting.
 
     """
-    return px.bar(
+    fig = px.bar(
         data_frame=feature_ecdf_auc.sort_values("ecdf_auc", ascending=True),
         x="ecdf_auc",
         y="feature",
@@ -419,6 +498,7 @@ def feature_ecdf_auc_bar(
         },
         color_discrete_map=color_discrete_map,
     )
+    return _style(fig)
 
 
 def rt_scatter(
@@ -428,6 +508,7 @@ def rt_scatter(
     xaxis_label: str = "Observed retention time",
     yaxis_label: str = "Predicted retention time",
     plot_title: str = "Predicted vs. observed retention times",
+    marker_color: Optional[str] = None,
 ) -> go.Figure:
     """
     Plot a scatter plot of the predicted vs. observed retention times.
@@ -448,6 +529,9 @@ def rt_scatter(
         Y-axis label, by default ``Predicted retention time``.
     plot_title : str, optional
         Scatter plot title, by default ``Predicted vs. observed retention times``
+    marker_color : str, optional
+        Color of the scatter points. Defaults to the Plotly template color. Pass the feature
+        generator color to match the point color to the rest of the report.
 
     """
     # Draw scatter
@@ -456,14 +540,15 @@ def rt_scatter(
         x=observed_column,
         y=predicted_column,
         opacity=0.3,
+        color_discrete_sequence=[marker_color] if marker_color else None,
     )
 
-    # Draw diagonal line
+    # Draw diagonal reference line
     fig.add_scatter(
         x=[min(df[observed_column]), max(df[observed_column])],
         y=[min(df[observed_column]), max(df[observed_column])],
         mode="lines",
-        line=dict(color="red", width=3, dash="dash"),
+        line=dict(color=_COLOR_REFERENCE, width=2, dash="dash"),
     )
 
     # Hide legend
@@ -474,13 +559,14 @@ def rt_scatter(
         yaxis_title=yaxis_label,
     )
 
-    return fig
+    return _style(fig)
 
 
 def rt_distribution_baseline(
     df: pd.DataFrame,
     predicted_column: str = "Predicted retention time",
     observed_column: str = "Observed retention time",
+    highlight_color: Optional[str] = None,
 ) -> go.Figure:
     """
     Plot a distribution plot of the relative mean absolute error of the current
@@ -496,6 +582,8 @@ def rt_distribution_baseline(
     observed_column : str, optional
         Name of the column containing the observed retention times, by default
         ``Observed retention time``.
+    highlight_color : str, optional
+        Color of the current-performance line. Defaults to the DeepLC feature-generator color.
 
     """
     # Get baseline data from deeplc package
@@ -516,7 +604,7 @@ def rt_distribution_baseline(
             text="DeepLC baseline data not available. Install DeepLC to view performance comparison.",
             showarrow=False,
         )
-        return fig
+        return _style(fig)
 
     baseline_df["rel_mae_best"] = baseline_df[
         ["rel_mae_transfer_learning", "rel_mae_new_model", "rel_mae_calibrate"]
@@ -554,12 +642,13 @@ def rt_distribution_baseline(
         hover_name="Unnamed: 0",
         labels=label_mapping,
         opacity=0.8,
+        color_discrete_sequence=[_COLOR_NEUTRAL],
     )
     fig.add_vline(
         x=mae_rel,
         line_width=3,
         line_dash="dash",
-        line_color="red",
+        line_color=highlight_color or FEATURE_GENERATOR_COLORS["deeplc"],
         annotation_text=f"Current performance (percentile {percentile}%)",
         annotation_position="top left",
         name="Current performance",
@@ -571,7 +660,7 @@ def rt_distribution_baseline(
         xaxis_title="Relative mean absolute error (%)",
     )
 
-    return fig
+    return _style(fig)
 
 
 def score_scatter_plot(
@@ -600,7 +689,7 @@ def score_scatter_plot(
             text="No before/after score data available for comparison.",
             showarrow=False,
         )
-        return figure
+        return _style(figure)
 
     # Prepare data
     plot_df = psm_df.copy()
@@ -638,17 +727,18 @@ def score_scatter_plot(
             "score_before": "PSM score (before rescoring)",
             "score_after": "PSM score (after rescoring)",
         },
+        color_discrete_map={"target": _COLOR_TARGET, "decoy": _COLOR_DECOY},
     )
 
     # Draw FDR thresholds
     if score_threshold_before:
-        fig.add_vline(x=score_threshold_before, line_dash="dash", row=1, col=1)
-        fig.add_vline(x=score_threshold_before, line_dash="dash", row=2, col=1)
+        fig.add_vline(x=score_threshold_before, line_dash="dash", line_color=_COLOR_REFERENCE, row=1, col=1)
+        fig.add_vline(x=score_threshold_before, line_dash="dash", line_color=_COLOR_REFERENCE, row=2, col=1)
     if score_threshold_after:
-        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=1)
-        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=2)
+        fig.add_hline(y=score_threshold_after, line_dash="dash", line_color=_COLOR_REFERENCE, row=1, col=1)
+        fig.add_hline(y=score_threshold_after, line_dash="dash", line_color=_COLOR_REFERENCE, row=1, col=2)
 
-    return fig
+    return _style(fig)
 
 
 def fdr_plot_comparison(
@@ -673,7 +763,7 @@ def fdr_plot_comparison(
             text="No before/after q-value data available for comparison.",
             showarrow=False,
         )
-        return figure
+        return _style(figure)
 
     # Filter targets only
     targets = psm_df[~psm_df["is_decoy"]].copy()
@@ -702,13 +792,13 @@ def fdr_plot_comparison(
             "before/after": "",
         },
         color_discrete_map={
-            "before rescoring": "#316395",
-            "after rescoring": "#319545",
+            "before rescoring": _COLOR_NEUTRAL,
+            "after rescoring": "#24a143",
         },
     )
-    fig.add_vline(x=0.01, line_dash="dash", line_color="black")
+    fig.add_vline(x=0.01, line_dash="dash", line_color=_COLOR_REFERENCE)
     fig.update_layout(yaxis_title="Identified PSMs")
-    return fig
+    return _style(fig)
 
 
 def identification_overlap(
@@ -737,7 +827,7 @@ def identification_overlap(
             text="No before/after q-value data available for comparison.",
             showarrow=False,
         )
-        return figure
+        return _style(figure)
 
     overlap_data = defaultdict(dict)
 
@@ -763,7 +853,7 @@ def identification_overlap(
         overlap_data["retained"]["peptides"] = len(peptides_after.intersection(peptides_before))
         overlap_data["gained"]["peptides"] = len(peptides_after - peptides_before)
 
-    colors = ["#953331", "#316395", "#319545"]
+    colors = [_COLOR_DECOY, _COLOR_TARGET, "#24a143"]
     levels = list(overlap_data["retained"].keys())
     fig = plotly.subplots.make_subplots(rows=len(levels), cols=1)
 
@@ -777,6 +867,7 @@ def identification_overlap(
                     x=[data[level]],
                     marker={"color": color},
                     orientation="h",
+                    width=0.4,
                     name=item,
                     showlegend=True if i == 0 else False,
                 ),
@@ -785,4 +876,4 @@ def identification_overlap(
             )
     fig.update_layout(barmode="relative")
 
-    return fig
+    return _style(fig)

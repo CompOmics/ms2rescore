@@ -34,16 +34,9 @@ PLOTLY_HTML_KWARGS = {
     },
 }
 
-# Fixed color per feature generator (Okabe-Ito colorblind-safe palette)
-FEATURE_GENERATOR_COLORS = {
-    "ms2pip": "#009E73",  # Bluish green
-    "deeplc": "#D44322",  # Orange
-    "im2deep": "#56B4E9",  # Blue
-    "ms2": "#319F3A",  # Sky blue
-    "basic": "#000000",  # Black
-    "psm_file": "#F0E442",  # Yellow
-    "other": "#CC79A7",  # Pink
-}
+# Fixed color per feature generator, defined alongside the charts so the generator-specific
+# charts (DeepLC, IM2Deep, MS²PIP) reuse the same color as the feature-generator overview charts.
+FEATURE_GENERATOR_COLORS = charts.FEATURE_GENERATOR_COLORS
 
 TEXTS = tomllib.loads(importlib.resources.files(templates).joinpath("texts.toml").read_text())
 
@@ -259,18 +252,18 @@ def _get_features_context(
             {
                 "title": TEXTS["charts"]["ms2pip_pearson"]["title"],
                 "description": TEXTS["charts"]["ms2pip_pearson"]["description"],
-                "chart": charts.ms2pip_correlation(features, is_decoy, psm_df["qvalue"]).to_html(
-                    **PLOTLY_HTML_KWARGS
-                ),
+                "chart": charts.ms2pip_correlation(
+                    features, is_decoy, psm_df["qvalue"], color=color_map.get("ms2pip")
+                ).to_html(**PLOTLY_HTML_KWARGS),
             }
         )
 
     # Retention-time and ion-mobility charts on high-confidence targets
     high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= 0.01)]
     if "deeplc" in feature_names:
-        _add_deeplc_chart(context, high_conf_features)
+        _add_deeplc_chart(context, high_conf_features, color=color_map.get("deeplc"))
     if "im2deep" in feature_names:
-        _add_im2deep_chart(context, high_conf_features)
+        _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
 
     return context
 
@@ -297,17 +290,19 @@ def _add_feature_weights_chart(context, feature_weights, feature_names_inv, colo
         logger.warning("Could not generate feature weights plot: %s", e)
 
 
-def _add_deeplc_chart(context, high_conf_features):
+def _add_deeplc_chart(context, high_conf_features, color=None):
     """Append the DeepLC retention-time charts to the features context."""
     scatter = charts.rt_scatter(
         df=high_conf_features,
         predicted_column="predicted_retention_time_best",
         observed_column="observed_retention_time_best",
+        marker_color=color,
     )
     baseline = charts.rt_distribution_baseline(
         df=high_conf_features,
         predicted_column="predicted_retention_time_best",
         observed_column="observed_retention_time_best",
+        highlight_color=color,
     )
     context["charts"].append(
         {
@@ -319,7 +314,7 @@ def _add_deeplc_chart(context, high_conf_features):
     )
 
 
-def _add_im2deep_chart(context, high_conf_features):
+def _add_im2deep_chart(context, high_conf_features, color=None):
     """Append the IM2Deep CCS chart to the features context."""
     scatter = charts.rt_scatter(
         df=high_conf_features,
@@ -328,6 +323,7 @@ def _add_im2deep_chart(context, high_conf_features):
         xaxis_label="Observed CCS",
         yaxis_label="Predicted CCS",
         plot_title="Predicted vs. observed CCS - IM2Deep",
+        marker_color=color,
     )
     context["charts"].append(
         {
