@@ -69,10 +69,6 @@ CITATIONS = [
         "Mokapot: Fondrie et al. JPR (2021)",
         "https://doi.org/10.1021/acs.jproteome.0c01010",
     ),
-    (
-        "Percolator: Käll et al. Nat Methods (2007)",
-        "https://doi.org/10.1038/nmeth1113",
-    ),
 ]
 LINKS = [
     (
@@ -671,30 +667,12 @@ class RescoringEngineConfig(ctk.CTkFrame):
         self.configure(fg_color="transparent")
         self.grid_columnconfigure(0, weight=1)
 
-        self.radio_button = widgets.LabeledRadioButtons(
-            self,
-            label="Rescoring engine",
-            options=["Mokapot", "Percolator"],
-            default_value="Mokapot",
-        )
-        self.radio_button.grid(row=0, column=0, pady=(0, 10), sticky="nsew")
-
         self.mokapot_config = MokapotRescoringConfiguration(self)
-        self.mokapot_config.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
-
-        self.percolator_config = PercolatorRescoringConfiguration(self)
-        self.percolator_config.grid(row=2, column=0, pady=(0, 10), sticky="nsew")
+        self.mokapot_config.grid(row=0, column=0, pady=(0, 10), sticky="nsew")
 
     def get(self) -> Dict:
         """Return the configuration as a dictionary."""
-        if self.radio_button.get().lower() == "mokapot":
-            return {self.radio_button.get().lower(): self.mokapot_config.get()}
-        elif self.radio_button.get().lower() == "percolator":
-            return {self.radio_button.get().lower(): self.percolator_config.get()}
-        else:
-            raise MS2RescoreConfigurationError(
-                f"Unknown rescoring engine: {self.radio_button.get().lower()}"
-            )
+        return {"mokapot": self.mokapot_config.get()}
 
 
 class MokapotRescoringConfiguration(ctk.CTkFrame):
@@ -755,28 +733,6 @@ class MokapotRescoringConfiguration(ctk.CTkFrame):
             if mod[0] and mod[1]:
                 protein_kwargs[mod[0].strip()] = mod[1].strip()
         return protein_kwargs
-
-
-class PercolatorRescoringConfiguration(ctk.CTkFrame):
-    def __init__(self, *args, **kwargs):
-        """Rescoring engine configuration frame."""
-        super().__init__(*args, **kwargs)
-
-        self.configure(fg_color="transparent")
-        self.grid_columnconfigure(0, weight=1)
-
-        self.title = widgets._Heading(self, text="Percolator coffeeguration")
-        self.title.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="ew")
-
-        self.weights_file = widgets.LabeledFileSelect(
-            self, label="Pretrained Percolator model weights", file_option="openfile"
-        )
-        self.weights_file.grid(row=1, column=0, columnspan=2, sticky="nsew")
-
-    def get(self) -> Dict:
-        """Return the configuration as a dictionary."""
-        config = {"init-weights": self.weights_file.get()}
-        return config
 
 
 class UpdateDialog(PopupWindow):
