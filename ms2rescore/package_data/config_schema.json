@@ -47,9 +47,6 @@
                     "maxProperties": 1,
                     "patternProperties": {
                         ".*": { "$ref": "#/definitions/rescoring_engine" },
-                        "percolator": {
-                            "$ref": "#/definitions/percolator"
-                        },
                         "mokapot": {
                             "$ref": "#/definitions/mokapot"
                         }
@@ -336,19 +333,6 @@
                 "write_txt": {
                     "description": "Write Mokapot results to a text file",
                     "type": "boolean",
-                    "default": false
-                }
-            }
-        },
-        "percolator": {
-            "$ref": "#/definitions/rescoring_engine",
-            "description": "Percolator rescoring engine configuration",
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-                "init-weights": {
-                    "description": "Weights file for scoring function",
-                    "oneOf": [{ "type": "string" }, { "type": "null" }],
                     "default": false
                 }
             }

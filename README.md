@@ -13,8 +13,8 @@ Modular and user-friendly platform for AI-assisted rescoring of peptide identifi
 ## About MS²Rescore
 
 MS²Rescore performs ultra-sensitive peptide identification rescoring with LC-MS predictors such as
-[MS²PIP][ms2pip] and [DeepLC][deeplc], and with ML-driven rescoring engines
-[Percolator][percolator] or [Mokapot][mokapot]. This results in more confident peptide
+[MS²PIP][ms2pip] and [DeepLC][deeplc], using ML-driven rescoring engines
+like [Mokapot][mokapot]. This results in more confident peptide
 identifications, which allows you to get **more peptide IDs** at the same false discovery rate
 (FDR) threshold, or to set a **more stringent FDR threshold** while still retaining a similar
 number of peptide IDs. MS²Rescore is **ideal for challenging proteomics identification workflows**,
@@ -106,7 +106,6 @@ make a [pull request][pr]!
 [publication-branch]: https://github.com/compomics/ms2rescore/tree/pub
 [ms2pip]: https://github.com/compomics/ms2pip
 [deeplc]: https://github.com/compomics/deeplc
-[percolator]: https://github.com/percolator/percolator/
 [mokapot]: https://mokapot.readthedocs.io/
 [psm_utils]: https://github.com/compomics/psm_utils
 [file-formats]: https://psm-utils.readthedocs.io/en/stable/#supported-file-formats

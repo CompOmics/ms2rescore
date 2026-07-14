@@ -287,9 +287,9 @@ the following configuration can be used:
 Configuring rescoring engines
 =============================
 
-MS²Rescore supports multiple rescoring engines, such as Mokapot and Percolator. The rescoring
-engine can be selected and configured with the ``rescoring_engine`` option. For example, to use
-Mokapot with a custom train_fdr of 0.1%, the following configuration can be used:
+MS²Rescore uses Mokapot as its rescoring engine. It can be configured with the
+``rescoring_engine`` option. For example, to use Mokapot with a custom train_fdr of 0.1%, the
+following configuration can be used:
 
 .. tab:: JSON
 

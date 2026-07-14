@@ -38,26 +38,25 @@ Log and configuration files:
 
 Rescoring engine files:
 
-+-------------------------------------------------------------+-------------------------------------------------------------+
-| File                                                        | Description                                                 |
-+=============================================================+=============================================================+
-| ``<prefix>.<mokapot/percolator>.psms.txt``                  | PSMs and their new scores at PSM-level FDR.                 |
-+-------------------------------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.<mokapot/percolator>.peptides.txt``              | Peptides and their new scores at peptide-level FDR.         |
-+-------------------------------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.<mokapot/percolator>.proteins.txt``              | Proteins and their new scores at protein-level FDR.         |
-+-------------------------------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.<mokapot/percolator>.decoy.psms.txt``            | Decoy PSMs and their new scores at PSM-level FDR.           |
-+-------------------------------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.<mokapot/percolator>.decoy.peptides.txt``        | Decoy peptides and their new scores at peptide-level FDR.   |
-+-------------------------------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.<mokapot/percolator>.decoy.proteins.txt``        | Decoy proteins and their new scores at protein-level FDR.   |
-+-------------------------------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.<mokapot/percolator>.weights.txt``               | Feature weights, showing feature usage in the rescoring run |
-+-------------------------------------------------------------+-------------------------------------------------------------+
++-----------------------------------------+-------------------------------------------------------------+
+| File                                    | Description                                                 |
++=========================================+=============================================================+
+| ``<prefix>.mokapot.psms.txt``           | PSMs and their new scores at PSM-level FDR.                 |
++-----------------------------------------+-------------------------------------------------------------+
+| ``<prefix>.mokapot.peptides.txt``       | Peptides and their new scores at peptide-level FDR.         |
++-----------------------------------------+-------------------------------------------------------------+
+| ``<prefix>.mokapot.proteins.txt``       | Proteins and their new scores at protein-level FDR.         |
++-----------------------------------------+-------------------------------------------------------------+
+| ``<prefix>.mokapot.decoy.psms.txt``     | Decoy PSMs and their new scores at PSM-level FDR.           |
++-----------------------------------------+-------------------------------------------------------------+
+| ``<prefix>.mokapot.decoy.peptides.txt`` | Decoy peptides and their new scores at peptide-level FDR.   |
++-----------------------------------------+-------------------------------------------------------------+
+| ``<prefix>.mokapot.decoy.proteins.txt`` | Decoy proteins and their new scores at protein-level FDR.   |
++-----------------------------------------+-------------------------------------------------------------+
+| ``<prefix>.mokapot.weights.txt``        | Feature weights, showing feature usage in the rescoring run |
++-----------------------------------------+-------------------------------------------------------------+
 
-If no rescoring engine is selected, if Percolator was selected, or in DEBUG mode, the following
-files will also be written:
+If no rescoring engine is selected or in DEBUG mode, the following files will also be written:
 
 +-------------------------------------------------------------+-----------------------------------------------------------+
 | File                                                        | Description                                               |

@@ -15,7 +15,7 @@ from ms2rescore.parse_psms import parse_psms
 from ms2rescore.parse_spectra import MSDataType, add_precursor_values, annotate_spectra
 from ms2rescore.report import generate
 from ms2rescore.report.data import ReportData
-from ms2rescore.rescoring_engines import mokapot, percolator
+from ms2rescore.rescoring_engines import mokapot
 from ms2rescore.rescoring_engines.mokapot import (
     add_peptide_confidence,
     add_psm_confidence,
@@ -197,15 +197,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     # Rescore PSMs
     feature_weights = None
     try:
-        if "percolator" in config["rescoring_engine"]:
-            percolator.rescore(
-                psm_list,
-                output_file_root=output_file_root,
-                log_level=config["log_level"],
-                processes=config["processes"],
-                percolator_kwargs=config["rescoring_engine"]["percolator"],
-            )
-        elif "mokapot" in config["rescoring_engine"]:
+        if "mokapot" in config["rescoring_engine"]:
             if "fasta_file" not in config["rescoring_engine"]["mokapot"]:
                 config["rescoring_engine"]["mokapot"]["fasta_file"] = config["fasta_file"]
             if "protein_kwargs" in config["rescoring_engine"]["mokapot"]:
