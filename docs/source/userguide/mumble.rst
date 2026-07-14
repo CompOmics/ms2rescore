@@ -134,6 +134,25 @@ unmodified PSM, *before* rescoring. This keeps the candidate set focused on modi
 are actually well-supported by the fragmentation spectrum, without requiring extra
 configuration.
 
+Mumble-generated candidates are also excluded from the DeepLC and IM2Deep calibration sets:
+since a candidate is an unconfirmed hypothesis about the peptide's identity (it inherits the
+original PSM's score and q-value verbatim, so it cannot be distinguished from a confirmed hit on
+those columns alone), only the original, non-Mumble PSMs are used to calibrate retention time and
+ion mobility predictions.
+
+
+.. caution::
+  **Ties at the top rank are broken arbitrarily.** With the default ``max_psm_rank_output: 1``,
+  MS²Rescore keeps only the single best-scoring PSM per spectrum. If several Mumble candidates
+  (and/or the original PSM) end up with an identical rescoring score for the same spectrum - not
+  uncommon, since near-isobaric or poorly discriminated modifications can score alike - which one
+  is kept as "the" top hit is **not deterministic**: it depends on the internal sort order of the
+  PSM list, not on any chemically meaningful tie-break. MS²Rescore logs a warning when this
+  situation can occur (Mumble enabled and ``max_psm_rank_output`` is 1). To inspect these cases
+  rather than silently pick one, set ``max_psm_rank_output`` to a value greater than 1 and review
+  same-spectrum, same-score groups in the output before drawing conclusions from the winning
+  peptidoform.
+
 
 Tips and known limitations
 ----------------------------

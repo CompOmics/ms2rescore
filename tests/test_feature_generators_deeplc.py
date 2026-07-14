@@ -242,6 +242,7 @@ def test_get_calibration_data_returns_indices_and_observed():
             "retention_time": [10.0, 20.0, 30.0, 40.0],
             "qvalue": [0.001, 0.005, 0.02, 0.001],
             "is_decoy": [False, False, False, True],
+            "original_psm": [True, True, True, True],
         },
         index=[5, 6, 7, 8],
     ).sort_values("qvalue")  # add_features pre-sorts by qvalue ascending
@@ -250,6 +251,31 @@ def test_get_calibration_data_returns_indices_and_observed():
 
     # Decoy (index 8) excluded; targets with qvalue<=0.01 are indices 5 (0.001) and 6 (0.005).
     assert list(idx) == [5, 6]
+    assert list(observed) == [10.0, 20.0]
+
+
+def test_get_calibration_data_excludes_mumble_psms():
+    """Mumble-generated candidate PSMs (original_psm=False) are unconfirmed and must never enter
+    the calibration set, even if they carry a high-confidence qvalue copied from the original
+    hit."""
+    import pandas as pd
+
+    gen = DeepLCFeatureGenerator(deeplc_retrain=False)
+    gen.calibration_set_size = None
+    run_df = pd.DataFrame(
+        {
+            "retention_time": [10.0, 999.0, 20.0],
+            "qvalue": [0.001, 0.001, 0.005],
+            "is_decoy": [False, False, False],
+            # Index 6 is a Mumble mass-shift candidate sharing the original's qvalue.
+            "original_psm": [True, False, True],
+        },
+        index=[5, 6, 7],
+    ).sort_values("qvalue")
+
+    idx, observed = gen._get_calibration_data(run_df)
+
+    assert list(idx) == [5, 7]
     assert list(observed) == [10.0, 20.0]
 
 
