@@ -11,10 +11,7 @@ import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 from plotly.offline import get_plotlyjs_version
 
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
+import tomllib
 
 import ms2rescore
 import ms2rescore.report.charts as charts
