@@ -1052,8 +1052,8 @@ wheels = [
 
 [[package]]
 name = "im2deep"
-version = "2.0.0"
-source = { registry = "https://pypi.org/simple" }
+version = "2.0.1"
+source = { editable = "../IM2Deep" }
 dependencies = [
     { name = "click" },
     { name = "deeplc" },
@@ -1064,9 +1064,35 @@ dependencies = [
     { name = "rich" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/64/0ce3b325dbbf9730f1f70aa4fd70e071c1fcd4c132f96d552580e1f58ef0/im2deep-2.0.0.tar.gz", hash = "sha256:e7d09fd13200d7f9da69e12f5a3de4d980bf68589edd739d7c7b80728fa173ba", size = 70314614, upload-time = "2026-07-13T14:05:12.716Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/b1/b947c423715f9ebeacbf5e94a9188ac7f555f9686a8737b612bb690588b1/im2deep-2.0.0-py3-none-any.whl", hash = "sha256:a603f7b1ffa6539c527b136ae81113031c488feb142dafe1e4415402063aff1e", size = 70315338, upload-time = "2026-07-13T14:05:06.974Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8,<9" },
+    { name = "deeplc", specifier = ">=4.0.0b1,<5" },
+    { name = "lightning", specifier = ">=2.1,<3" },
+    { name = "numpy", specifier = ">=1.25,<3" },
+    { name = "pandas", specifier = ">=1.5,<3" },
+    { name = "psm-utils", specifier = ">=1.5.1,<2" },
+    { name = "rich", specifier = ">=13,<15" },
+    { name = "torch", specifier = ">=2.6.0,<3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pre-commit", specifier = ">=3.0" },
+    { name = "pytest", specifier = ">=7.0" },
+    { name = "pytest-cov", specifier = ">=4.0" },
+    { name = "pytest-mock", specifier = ">=3.10" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+docs = [
+    { name = "numpydoc", specifier = ">=1.5" },
+    { name = "sphinx", specifier = ">=6.0" },
+    { name = "sphinx-autobuild", specifier = ">=2021.3" },
+    { name = "sphinx-click" },
+    { name = "sphinx-mdinclude", specifier = ">=0.5" },
+    { name = "sphinx-rtd-theme", specifier = ">=1.2" },
 ]
 
 [[package]]
@@ -1807,13 +1833,13 @@ requires-dist = [
     { name = "click", specifier = ">=7" },
     { name = "customtkinter", specifier = ">=5,<6" },
     { name = "deeplc", specifier = ">=4.0.0b1" },
-    { name = "im2deep", specifier = ">=2.0.0" },
+    { name = "im2deep", editable = "../IM2Deep" },
     { name = "jinja2", specifier = ">=3" },
     { name = "lxml", specifier = ">=4.5" },
     { name = "mokapot", specifier = "==0.10" },
     { name = "ms2pip", specifier = ">=4.2.0" },
     { name = "ms2rescore-rs", specifier = ">=0.5.0" },
-    { name = "mumble", marker = "extra == 'mumble'", specifier = ">=0.2.0" },
+    { name = "mumble", marker = "extra == 'mumble'", editable = "../mumble" },
     { name = "numpy", specifier = ">=1.25,<3.0" },
     { name = "packaging", specifier = ">=25.0" },
     { name = "pandas", specifier = ">=1" },
@@ -1847,7 +1873,7 @@ docs = [
 installer = [
     { name = "cbor2" },
     { name = "deeplc", specifier = "==4.0.0b1" },
-    { name = "im2deep", specifier = "==2.0.0" },
+    { name = "im2deep", editable = "../IM2Deep" },
     { name = "ms2rescore-rs", specifier = "==0.5.0" },
     { name = "psm-utils", specifier = "==1.5.2" },
     { name = "pyopenms", specifier = "==3.5" },
@@ -2012,21 +2038,36 @@ wheels = [
 
 [[package]]
 name = "mumble"
-version = "0.2.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.3.0"
+source = { editable = "../mumble" }
 dependencies = [
     { name = "click" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "platformdirs" },
     { name = "psm-utils" },
     { name = "pyteomics" },
     { name = "rich" },
     { name = "rustyms" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/d4/6c25f3a04830c13ea5de395722faf567dea53bbb3ff9afc23dfda0a975b7/mumble-0.2.0.tar.gz", hash = "sha256:be62befe66e68b9db82285a28061a917db81bf0fb164b72f214208b26c6a3c39", size = 28065, upload-time = "2025-02-11T15:34:35.102Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/2e/963baa2f937ca0e43acb556d7996a3e284f6b98953030caab7099aab6d0b/mumble-0.2.0-py3-none-any.whl", hash = "sha256:0a822efe46f84a5b1d673c3ffa68808d36865f80fdcd4bb52e3e1ecddf9868c1", size = 24403, upload-time = "2025-02-11T15:34:32.304Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "black", marker = "extra == 'dev'" },
+    { name = "bumpver", marker = "extra == 'dev'" },
+    { name = "click", specifier = ">=8.0.1" },
+    { name = "numpy", specifier = ">=1.23.0" },
+    { name = "pandas", specifier = ">=1.5.0" },
+    { name = "platformdirs", specifier = ">=3.0.0" },
+    { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "psm-utils", specifier = ">=0.9.0" },
+    { name = "pyteomics", specifier = ">=4.7.3" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "ruff", marker = "extra == 'dev'" },
+    { name = "rustyms", specifier = ">=0.10.0" },
 ]
+provides-extras = ["dev"]
 
 [[package]]
 name = "mypy-extensions"

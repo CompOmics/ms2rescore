@@ -44,7 +44,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         Parameters
         ----------
         processes : int, optional
-            Number of parallel processes to use for IM2Deep predictions. Default is 1.
+            Number of threads to use for IM2Deep predictions. Default is 1.
         **kwargs : dict, optional
             Additional keyword arguments to `im2deep.predict_ccs`.
 
@@ -66,9 +66,11 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
         # Prepare IM2Deep predict kwargs
         self.predict_kwargs = {
-            k: v for k, v in self.im2deep_kwargs.items() if k in ["device", "batch_size"]
+            k: v
+            for k, v in self.im2deep_kwargs.items()
+            if k in ["device", "batch_size", "num_threads"]
         }
-        self.predict_kwargs["num_workers"] = processes
+        self.predict_kwargs["num_threads"] = processes if processes > 0 else None
 
     @property
     def feature_names(self) -> List[str]:

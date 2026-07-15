@@ -36,7 +36,7 @@ dependencies = [
     "click>=7",
     "customtkinter>=5,<6",
     "deeplc>=4.0.0b1",
-    "im2deep>=2.0.0",
+    "im2deep>=2.0.1",
     "jinja2>=3",
     "lxml>=4.5",
     "mokapot==0.10",                     # 0.11.0 will introduce API changes
@@ -52,7 +52,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mumble = ["mumble>=0.2.0"]
+mumble = ["mumble>=0.3.0"]
 idxml = ["pyopenms>=3.3"]
 
 [dependency-groups]
@@ -72,7 +72,7 @@ installer = [
     # Pinned dependencies for reproducible Windows installer builds
     "cbor2",
     "deeplc==4.0.0b1",
-    "im2deep==2.0.0",
+    "im2deep==2.0.1",
     "ms2rescore-rs==0.5.0",
     "psm_utils==1.5.2",
     "pyopenms==3.5",
@@ -101,6 +101,8 @@ module-root = ""
 [tool.uv]
 
 [tool.uv.sources]
+mumble = { path = "../mumble", editable = true }
+im2deep = { path = "../IM2Deep", editable = true }
 
 [tool.pytest.ini_options]
 markers = [
