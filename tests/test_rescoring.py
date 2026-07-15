@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 from psm_utils import PSM, PSMList
+from ristretto import RescoreResult
 
 from ms2rescore import rescoring
 
@@ -99,18 +100,26 @@ def test_evaluate_before_returns_result_with_expected_columns():
     psm_list = _make_psm_list(n_spectra=30, seed=4)
     result = rescoring.evaluate_before(psm_list, BASE_CONFIG)
 
-    assert {"spectrum_id", "peptidoform", "score", "qvalue", "pep"}.issubset(result.psms.columns)
+    assert {"spectrum_id", "run", "peptidoform", "score", "qvalue", "pep"}.issubset(
+        result.psms.columns
+    )
     assert len(result.psms) == 30  # competed to one best PSM per spectrum
     assert result.peptidoforms is not None
+    assert (result.psms["run"] == "run1").all()
 
 
 def test_rescore_writes_scores_and_metadata():
     psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=1, seed=5)
 
-    new_psm_list, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    new_psm_list, after_result, after_report_result = rescoring.rescore(
+        psm_list, BASE_CONFIG, "unused-output-root"
+    )
 
+    # max_psm_rank_output == 1: the report view is the same competition as the final result.
+    assert after_report_result is after_result
     assert len(new_psm_list) == len(after_result.psms)
     assert set(new_psm_list["qvalue"]) == set(after_result.psms["qvalue"])
+    assert "run" in after_result.psms.columns
     for psm in new_psm_list:
         assert "peptidoform_score" in psm.metadata
         assert "peptidoform_qvalue" in psm.metadata
@@ -121,13 +130,21 @@ def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():
     psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=2, seed=6)
     config = {**BASE_CONFIG, "max_psm_rank_output": 2}
 
-    new_psm_list, after_result = rescoring.rescore(psm_list, config, "unused-output-root")
+    new_psm_list, after_result, after_report_result = rescoring.rescore(
+        psm_list, config, "unused-output-root"
+    )
 
     new_psm_list.set_ranks(lower_score_better=False)
     assert (new_psm_list["rank"] <= 2).all()
     # At least some spectra should retain both ranks
     counts = pd.Series(list(new_psm_list["spectrum_id"])).value_counts()
     assert (counts == 2).any()
+
+    # The report view is always rank-1: one row per spectrum, distinct from the multi-rank
+    # final result.
+    assert after_report_result is not after_result
+    assert len(after_report_result.psms) == 30
+    assert after_report_result.psms["spectrum_id"].is_unique
 
 
 def test_fix_constant_pep_removes_higher_scoring_decoys():
@@ -137,9 +154,21 @@ def test_fix_constant_pep_removes_higher_scoring_decoys():
             PSM(peptidoform="BBBK/2", spectrum_id="2", is_decoy=True, score=5.0, pep=1.0),
         ]
     )
-    fixed = rescoring.fix_constant_pep(psm_list)
-    assert len(fixed) == 1
-    assert not fixed[0].is_decoy
+    result = RescoreResult(
+        psms=pd.DataFrame({"spectrum_id": ["1", "2"], "score": [1.0, 5.0]}),
+        peptidoforms=pd.DataFrame(),
+        peptides=None,
+        proteins=None,
+        pi0=float("nan"),
+        n_iterations=[],
+        feature_weights=pd.DataFrame(),
+    )
+
+    fixed_psm_list, fixed_result = rescoring.fix_constant_pep(psm_list, result)
+    assert len(fixed_psm_list) == 1
+    assert not fixed_psm_list[0].is_decoy
+    assert len(fixed_result.psms) == 1
+    assert fixed_result.psms["spectrum_id"].tolist() == ["1"]
 
 
 def test_fix_constant_pep_is_noop_when_pep_not_constant():
@@ -149,20 +178,46 @@ def test_fix_constant_pep_is_noop_when_pep_not_constant():
             PSM(peptidoform="BBBK/2", spectrum_id="2", is_decoy=True, score=5.0, pep=1.0),
         ]
     )
-    fixed = rescoring.fix_constant_pep(psm_list)
-    assert len(fixed) == 2
+    result = RescoreResult(
+        psms=pd.DataFrame({"spectrum_id": ["1", "2"], "score": [1.0, 5.0]}),
+        peptidoforms=pd.DataFrame(),
+        peptides=None,
+        proteins=None,
+        pi0=float("nan"),
+        n_iterations=[],
+        feature_weights=pd.DataFrame(),
+    )
+
+    fixed_psm_list, fixed_result = rescoring.fix_constant_pep(psm_list, result)
+    assert len(fixed_psm_list) == 2
+    assert len(fixed_result.psms) == 2
 
 
 def test_write_rescoring_tables(tmp_path):
     psm_list = _make_psm_list(n_spectra=30, seed=7)
     before = rescoring.evaluate_before(psm_list, BASE_CONFIG)
-    _, after = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    _, after, after_report = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
     prefix = str(tmp_path / "test")
-    rescoring.write_rescoring_tables(before, after, prefix)
+    rescoring.write_rescoring_tables(before, after, prefix, after_report)
 
     for suffix in ("before", "after"):
         assert (tmp_path / f"test.ristretto.psms_{suffix}.parquet").is_file()
         assert (tmp_path / f"test.ristretto.peptidoforms_{suffix}.parquet").is_file()
         assert (tmp_path / f"test.ristretto.proteins_{suffix}.parquet").is_file()
     assert (tmp_path / "test.ristretto.weights.parquet").is_file()
+    # max_psm_rank_output == 1: after_report is after, so no extra files are written.
+    assert not (tmp_path / "test.ristretto.psms_after_report.parquet").is_file()
+
+
+def test_write_rescoring_tables_writes_after_report_when_multi_rank(tmp_path):
+    psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=2, seed=8)
+    config = {**BASE_CONFIG, "max_psm_rank_output": 2}
+    before = rescoring.evaluate_before(psm_list, config)
+    _, after, after_report = rescoring.rescore(psm_list, config, "unused-output-root")
+
+    prefix = str(tmp_path / "test")
+    rescoring.write_rescoring_tables(before, after, prefix, after_report)
+
+    assert (tmp_path / "test.ristretto.psms_after_report.parquet").is_file()
+    assert (tmp_path / "test.ristretto.peptidoforms_after_report.parquet").is_file()

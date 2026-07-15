@@ -17,10 +17,11 @@ _CHARGE_PATTERN = re.compile(r"(/\d+$)")
 
 
 def _make_result(psm_list: PSMList, scores, qvalues) -> RescoreResult:
-    """Build a RescoreResult whose psms join onto psm_list's spectrum_id/peptidoform."""
+    """Build a RescoreResult whose psms join onto psm_list's run/spectrum_id."""
     psms = pd.DataFrame(
         {
             "spectrum_id": list(psm_list["spectrum_id"]),
+            "run": list(psm_list["run"]),
             "is_decoy": list(psm_list["is_decoy"]),
             "peptidoform": [_CHARGE_PATTERN.sub("", str(p)) for p in psm_list["peptidoform"]],
             "score": scores,
@@ -58,6 +59,7 @@ def psm_list():
             score=float(20 - i),
             qvalue=0.001 * (i + 1),
             pep=0.5,
+            rank=1,
             rescoring_features={"feature_a": float(i), "feature_b": float(i * 2)},
         )
         psms.append(psm)
@@ -152,6 +154,7 @@ def test_from_files_without_ristretto_tables_degrades_gracefully(psm_list, tmp_p
     assert len(data.psm_df) == 14
     assert data.psm_df["score_before"].isna().all()
     assert data.id_stats == []
+    assert data.rescoring_tables_unavailable is True
 
 
 def test_compute_protein_stats_without_protein_col_returns_none(before_after):
