@@ -9,9 +9,10 @@ to serve MS²Rescore. It takes a plain :py:class:`pandas.DataFrame` in and retur
 """
 
 import logging
+import re
 from concurrent.futures import BrokenExecutor
 from pathlib import Path
-from typing import Dict, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -75,7 +76,8 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     (``max_psm_rank_output == 1``) so before/after counts are directly comparable.
 
     """
-    features_df = build_features_dataframe(psm_list, set(), infer_score_direction(psm_list))
+    train_fdr = config["rescoring"]["train_fdr"] if config["rescoring"] else 0.01
+    features_df = build_features_dataframe(psm_list, set(), infer_score_direction(psm_list, train_fdr))
     return ristretto.evaluate(
         features_df,
         peptide_col="peptide",
@@ -104,7 +106,7 @@ def rescore(
 
     """
     feature_names = {f for psm in psm_list for f in psm.rescoring_features}
-    lower_score_is_better = infer_score_direction(psm_list)
+    lower_score_is_better = infer_score_direction(psm_list, config["rescoring"]["train_fdr"])
     features_df = build_features_dataframe(psm_list, feature_names, lower_score_is_better)
 
     peptide_col = "peptide"
@@ -155,17 +157,42 @@ def rescore(
     if final_result.peptides is not None:
         _write_group_metadata(psm_list, final_result.psms, final_result.peptides, "peptide")
     if final_result.proteins is not None:
-        _write_group_metadata(psm_list, final_result.psms, final_result.proteins, "protein")
+        if decoy_pattern:
+            logger.debug("Protein-level FDR used picked-protein competition (decoy_pattern set).")
+        else:
+            logger.warning(
+                "id_decoy_pattern is not set: protein-level FDR falls back to a plain rollup "
+                "instead of picked-protein competition. Protein q-values/PEPs may be less "
+                "accurate. Set id_decoy_pattern to enable picked-protein competition."
+            )
+        _write_group_metadata(
+            psm_list, final_result.psms, final_result.proteins, "protein", decoy_pattern
+        )
 
     return psm_list, final_result
 
 
 def _write_group_metadata(
-    psm_list: PSMList, psms: pd.DataFrame, rollup: pd.DataFrame, group_col: str
+    psm_list: PSMList,
+    psms: pd.DataFrame,
+    rollup: pd.DataFrame,
+    group_col: str,
+    decoy_pattern: Optional[str] = None,
 ) -> None:
-    """Write a rollup's score/qvalue/pep onto each PSM's metadata, keyed by ``group_col``."""
+    """
+    Write a rollup's score/qvalue/pep onto each PSM's metadata, keyed by ``group_col``.
+
+    For protein-level rollups computed with ``decoy_pattern`` set, ristretto's
+    ``picked_rollup`` strips the decoy pattern from each group key (picked-protein
+    competition, Savitski et al. 2015), so it must be stripped from ``psms[group_col]``
+    the same way before the lookup.
+
+    """
     lookup = rollup.set_index(group_col)[["score", "qvalue", "pep"]].to_dict(orient="index")
+    strip_pattern = re.compile(decoy_pattern) if group_col == "protein" and decoy_pattern else None
     for psm, group_key in zip(psm_list, psms[group_col]):
+        if strip_pattern is not None:
+            group_key = strip_pattern.sub("", group_key)
         values = lookup[group_key]
         psm.metadata.update(
             {
