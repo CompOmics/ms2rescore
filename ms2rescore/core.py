@@ -170,7 +170,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         from ms2rescore.utils import filter_mumble_psms
 
         # Remove PSMs where matched_ions_pct drops 25% below the original hit
-        psm_list = filter_mumble_psms(psm_list, threshold=0.75)
+        psm_list = filter_mumble_psms(psm_list, threshold=0.50)
 
         if config["max_psm_rank_output"] == 1:
             logger.warning(
