@@ -1,4 +1,13 @@
 <h3>General statistics</h3>
+{% if tab.context.rescoring_tables_unavailable %}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    Before/after rescoring tables were not found for this run (likely
+    <code>write_rescoring_tables</code> was disabled). Identification statistics and
+    before/after comparison charts below are unavailable.
+  </div>
+</div>
+{% endif %}
 <div class="mt-2 mb-4">
   <div class="row gy-4">{% for stats in tab.context.stats %} {% include 'stats-card.html' %} {% endfor %}</div>
 </div>

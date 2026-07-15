@@ -50,7 +50,7 @@ _NON_FEATURE_COLUMNS = {
     "pep_after",
 }
 
-_EMPTY_PSMS_COLUMNS = ["spectrum_id", "is_decoy", "peptidoform", "score", "qvalue", "pep"]
+_EMPTY_PSMS_COLUMNS = ["spectrum_id", "run", "is_decoy", "peptidoform", "score", "qvalue", "pep"]
 _EMPTY_ROLLUP_COLUMNS = ["peptidoform", "score", "qvalue", "pep", "is_decoy", "n_psms"]
 
 
@@ -71,6 +71,9 @@ class ReportData:
     feature_weights: Optional[pd.DataFrame] = None
     id_stats: List[dict] = field(default_factory=list)
     log_html: Optional[str] = None
+    before: RescoreResult = field(default_factory=lambda: _empty_result())
+    after: RescoreResult = field(default_factory=lambda: _empty_result())
+    rescoring_tables_unavailable: bool = False
 
     @classmethod
     def from_run(
@@ -83,6 +86,7 @@ class ReportData:
     ) -> "ReportData":
         """Build report data from an in-memory MS²Rescore run."""
         config = config or {"ms2rescore": {}}
+        rescoring_tables_unavailable = before is None or after is None
         before = before or _empty_result()
         after = after or _empty_result()
         psm_df = create_psm_dataframe(psm_list, before, after)
@@ -93,6 +97,9 @@ class ReportData:
             config=config,
             feature_weights=after.feature_weights,
             id_stats=compute_id_stats(before, after),
+            before=before,
+            after=after,
+            rescoring_tables_unavailable=rescoring_tables_unavailable,
         )
 
     @classmethod
@@ -105,8 +112,23 @@ class ReportData:
         logger.info("Reading PSMs from %s...", psm_file.as_posix())
         psm_list = psm_utils.io.read_file(psm_file, filetype="tsv", show_progressbar=True)
 
-        before = _read_rescore_result(output_path_prefix, "before")
-        after = _read_rescore_result(output_path_prefix, "after")
+        # The report is always a rank-1 view: prefer the separate after_report tables (written
+        # when max_psm_rank_output > 1), falling back to after (already rank-1 when it was ==1).
+        after_report_path = Path(f"{output_path_prefix}.ristretto.psms_after_report.parquet")
+        after_suffix = "after_report" if after_report_path.is_file() else "after"
+
+        before_raw = _read_rescore_result(output_path_prefix, "before")
+        after_raw = _read_rescore_result(output_path_prefix, after_suffix)
+        rescoring_tables_unavailable = before_raw is None or after_raw is None
+        if rescoring_tables_unavailable:
+            logger.warning(
+                "Ristretto before/after tables not found for '%s'. They were likely disabled "
+                "(write_rescoring_tables=false) during the original run. Before/after "
+                "identification statistics and comparison charts will be unavailable.",
+                output_path_prefix,
+            )
+        before = before_raw or _empty_result()
+        after = after_raw or _empty_result()
         psm_df = create_psm_dataframe(psm_list, before, after)
 
         config = _read_config(Path(output_path_prefix + ".full-config.json"))
@@ -119,6 +141,9 @@ class ReportData:
             config=config,
             feature_weights=after.feature_weights,
             id_stats=compute_id_stats(before, after),
+            before=before,
+            after=after,
+            rescoring_tables_unavailable=rescoring_tables_unavailable,
         )
 
 
@@ -184,14 +209,17 @@ def _empty_result() -> RescoreResult:
     )
 
 
-def _read_rescore_result(output_path_prefix: str, suffix: str) -> RescoreResult:
-    """Reconstruct a `RescoreResult` from the Parquet tables written by `write_rescoring_tables`."""
+def _read_rescore_result(output_path_prefix: str, suffix: str) -> Optional[RescoreResult]:
+    """
+    Reconstruct a `RescoreResult` from the Parquet tables written by `write_rescoring_tables`.
+
+    Returns ``None`` (rather than a placeholder) when the tables are missing, so callers can
+    tell "genuinely unavailable" apart from "loaded, but empty".
+
+    """
     psms_path = Path(f"{output_path_prefix}.ristretto.psms_{suffix}.parquet")
     if not psms_path.is_file():
-        logger.info(
-            "Ristretto '%s' tables not found. Before/after comparisons will be empty.", suffix
-        )
-        return _empty_result()
+        return None
 
     peptidoforms_path = Path(f"{output_path_prefix}.ristretto.peptidoforms_{suffix}.parquet")
     peptides_path = Path(f"{output_path_prefix}.ristretto.peptides_{suffix}.parquet")

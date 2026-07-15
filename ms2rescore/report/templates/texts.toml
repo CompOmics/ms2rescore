@@ -28,8 +28,9 @@ indicates the 1% FDR threshold.
 [charts.identification_overlap]
 title = "Identification overlap"
 description = """
-This plot shows the unique identified PSMs, peptides, and (optionally)
-protein groups that were removed, retained, and gained by rescoring.
+This plot shows the unique identified spectra, peptidoforms, peptides,
+and (optionally) protein groups that were removed, retained, and
+gained by rescoring, at each level's own competed FDR.
 """
 
 [charts.score_histogram]

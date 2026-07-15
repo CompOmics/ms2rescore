@@ -10,6 +10,7 @@ from typing import Optional
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 from plotly.offline import get_plotlyjs_version
+from ristretto import RescoreResult
 
 import tomllib
 
@@ -72,7 +73,9 @@ def generate_report(
                 "id": "main_tab_comparison",
                 "title": "Overview",
                 "template": "overview.html",
-                "context": _get_overview_context(psm_df, data.id_stats),
+                "context": _get_overview_context(
+                    psm_df, data.id_stats, data.before, data.after, data.rescoring_tables_unavailable
+                ),
             },
             {
                 "id": "main_tab_target_decoy",
@@ -114,11 +117,18 @@ def _get_psm_filenames(data: ReportData) -> str:
     return "Unknown"
 
 
-def _get_overview_context(psm_df: pd.DataFrame, id_stats: list) -> dict:
+def _get_overview_context(
+    psm_df: pd.DataFrame,
+    id_stats: list,
+    before: RescoreResult,
+    after: RescoreResult,
+    rescoring_tables_unavailable: bool,
+) -> dict:
     """Return context for the overview tab."""
     logger.debug("Generating overview charts...")
     return {
         "stats": id_stats,
+        "rescoring_tables_unavailable": rescoring_tables_unavailable,
         "charts": [
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
@@ -133,7 +143,9 @@ def _get_overview_context(psm_df: pd.DataFrame, id_stats: list) -> dict:
             {
                 "title": TEXTS["charts"]["identification_overlap"]["title"],
                 "description": TEXTS["charts"]["identification_overlap"]["description"],
-                "chart": charts.identification_overlap(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.identification_overlap(before, after).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
         ],
     }

@@ -10,8 +10,6 @@ import pandas as pd
 import psm_utils
 from ristretto import RescoreResult
 
-from ms2rescore.constants import CHARGE_PATTERN
-
 logger = logging.getLogger(__name__)
 
 # Stat card background color, one per identification level
@@ -111,12 +109,17 @@ def create_psm_dataframe(
     """
     Create a comprehensive dataframe from a PSM list with all information needed for the report.
 
-    This dataframe includes:
+    The report is always a rank-1, one-row-per-spectrum view, regardless of
+    ``max_psm_rank_output``: ``psm_list`` is first filtered to ``rank == 1``. This dataframe
+    includes:
+
     - Basic PSM information (peptidoform, score, qvalue, is_decoy, etc.)
     - Before/after rescoring score, q-value, and PEP, merged in from ristretto's `RescoreResult`s
-      by (spectrum_id, charge-stripped peptidoform) -- not by row position, since `before` was
-      computed on the PSM list as it stood right after parsing, which may differ in length or
-      order from the final, post-rescoring PSM list.
+      by ``(run, spectrum_id)`` -- not by row position (`before` was computed on the PSM list
+      as it stood right after parsing, which may differ in length or order from the final
+      PSM list) and not by peptidoform (rescoring can legitimately promote a different
+      peptidoform as a spectrum's winner, so the pre-rescoring winner for that spectrum may be
+      a different peptidoform than the post-rescoring one).
     - All rescoring features.
 
     Parameters
@@ -124,26 +127,23 @@ def create_psm_dataframe(
     psm_list
         Final (post-rescoring) PSM list to convert to a dataframe.
     before
-        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+        Result of evaluating the PSMs' pre-rescoring score with ristretto (rank-1).
     after
-        Result of rescoring the PSMs with ristretto.
+        Result of rescoring the PSMs with ristretto (rank-1 report view).
 
     """
+    psm_list = psm_list[psm_list["rank"] == 1]
     psm_df = psm_list.to_dataframe()
 
-    join_key = psm_df["peptidoform"].astype(str).str.replace(CHARGE_PATTERN, "", n=1, regex=True)
-    psm_df = psm_df.assign(_peptidoform_key=join_key)
     for result, suffix in ((before, "before"), (after, "after")):
-        columns = result.psms[["spectrum_id", "peptidoform", "score", "qvalue", "pep"]].rename(
+        columns = result.psms[["run", "spectrum_id", "score", "qvalue", "pep"]].rename(
             columns={
-                "peptidoform": "_peptidoform_key",
                 "score": f"score_{suffix}",
                 "qvalue": f"qvalue_{suffix}",
                 "pep": f"pep_{suffix}",
             }
         )
-        psm_df = psm_df.merge(columns, how="left", on=["spectrum_id", "_peptidoform_key"])
-    psm_df = psm_df.drop(columns="_peptidoform_key")
+        psm_df = psm_df.merge(columns, how="left", on=["run", "spectrum_id"])
 
     # Add rescoring features - vectorized extraction
     if psm_list[0].rescoring_features:

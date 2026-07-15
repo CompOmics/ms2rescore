@@ -13,6 +13,7 @@ import plotly.subplots
 import pyteomics.auxiliary
 from numpy.typing import ArrayLike
 from psm_utils.psm_list import PSMList
+from ristretto import RescoreResult
 
 # Fixed color per feature generator (ColorBrewer "Dark2", colorblind-safe and mutually distinct).
 # Used both for the feature-generator overview charts and for the generator-specific charts, so a
@@ -802,17 +803,25 @@ def fdr_plot_comparison(
 
 
 def identification_overlap(
-    psm_df: pd.DataFrame,
+    before: RescoreResult,
+    after: RescoreResult,
     fdr_threshold: float = 0.01,
 ) -> go.Figure:
     """
-    Plot stacked bar charts of removed, retained, and gained PSMs and peptides from dataframe.
+    Plot stacked bar charts of removed, retained, and gained IDs at each rollup level.
+
+    Compares ristretto's own before/after rollup tables directly -- spectrum, peptidoform,
+    peptide, and (optionally) protein -- rather than re-deriving sets from a merged per-PSM
+    dataframe. The latter would only be correct at the peptidoform/peptide/protein level if
+    every spectrum kept the same winning peptidoform between before and after, which is
+    exactly what rescoring is expected to change for at least some spectra.
 
     Parameters
     ----------
-    psm_df
-        Dataframe with PSM information including qvalue_before, qvalue_after,
-        is_decoy, and peptidoform columns.
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
     fdr_threshold
         FDR threshold for counting identifications.
 
@@ -820,51 +829,53 @@ def identification_overlap(
     -------
     go.Figure
         Plotly figure with identification overlap.
+
     """
-    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+    levels = [
+        ("spectra", before.psms, after.psms, "spectrum_id"),
+        ("peptidoforms", before.peptidoforms, after.peptidoforms, "peptidoform"),
+    ]
+    if before.peptides is not None and after.peptides is not None:
+        levels.append(("peptides", before.peptides, after.peptides, "peptide"))
+    if before.proteins is not None and after.proteins is not None:
+        levels.append(("protein groups", before.proteins, after.proteins, "protein"))
+
+    overlap_data = defaultdict(dict)
+    for level_name, before_df, after_df, group_col in levels:
+        if before_df.empty or after_df.empty:
+            continue
+        ids_before = set(
+            before_df.loc[
+                (before_df["qvalue"] <= fdr_threshold) & ~before_df["is_decoy"], group_col
+            ]
+        )
+        ids_after = set(
+            after_df.loc[(after_df["qvalue"] <= fdr_threshold) & ~after_df["is_decoy"], group_col]
+        )
+        overlap_data["removed"][level_name] = -len(ids_before - ids_after)
+        overlap_data["retained"][level_name] = len(ids_after & ids_before)
+        overlap_data["gained"][level_name] = len(ids_after - ids_before)
+
+    if not overlap_data["retained"]:
         figure = go.Figure()
         figure.add_annotation(
-            text="No before/after q-value data available for comparison.",
+            text="No before/after data available for comparison.",
             showarrow=False,
         )
         return _style(figure)
 
-    overlap_data = defaultdict(dict)
-
-    # PSM level
-    targets = psm_df[~psm_df["is_decoy"]]
-    psms_before = set(targets[targets["qvalue_before"] <= fdr_threshold].index)
-    psms_after = set(targets[targets["qvalue_after"] <= fdr_threshold].index)
-
-    overlap_data["removed"]["psms"] = -len(psms_before - psms_after)
-    overlap_data["retained"]["psms"] = len(psms_after.intersection(psms_before))
-    overlap_data["gained"]["psms"] = len(psms_after - psms_before)
-
-    # Peptide level
-    if "peptidoform" in psm_df.columns:
-        peptides_before = set(
-            targets[targets["qvalue_before"] <= fdr_threshold]["peptidoform"].unique()
-        )
-        peptides_after = set(
-            targets[targets["qvalue_after"] <= fdr_threshold]["peptidoform"].unique()
-        )
-
-        overlap_data["removed"]["peptides"] = -len(peptides_before - peptides_after)
-        overlap_data["retained"]["peptides"] = len(peptides_after.intersection(peptides_before))
-        overlap_data["gained"]["peptides"] = len(peptides_after - peptides_before)
-
     colors = [_COLOR_DECOY, _COLOR_TARGET, "#24a143"]
-    levels = list(overlap_data["retained"].keys())
-    fig = plotly.subplots.make_subplots(rows=len(levels), cols=1)
+    level_names = list(overlap_data["retained"].keys())
+    fig = plotly.subplots.make_subplots(rows=len(level_names), cols=1)
 
-    for i, level in enumerate(levels):
+    for i, level_name in enumerate(level_names):
         for (item, data), color in zip(overlap_data.items(), colors):
-            if level not in data:
+            if level_name not in data:
                 continue
             fig.add_trace(
                 go.Bar(
-                    y=[level],
-                    x=[data[level]],
+                    y=[level_name],
+                    x=[data[level_name]],
                     marker={"color": color},
                     orientation="h",
                     width=0.4,
