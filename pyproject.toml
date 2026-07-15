@@ -101,8 +101,6 @@ module-root = ""
 [tool.uv]
 
 [tool.uv.sources]
-mumble = { path = "../mumble", editable = true }
-im2deep = { path = "../IM2Deep", editable = true }
 
 [tool.pytest.ini_options]
 markers = [
