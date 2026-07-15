@@ -43,7 +43,6 @@ def test_psm_id_pattern_success(default_config, psm_list_factory):
     config.update(
         {
             "psm_id_pattern": r"scan:(\d+):.*",
-            "lower_score_is_better": True,
             "psm_file": [],
             "psm_reader_kwargs": {},
             "id_decoy_pattern": None,
@@ -60,7 +59,6 @@ def test_psm_id_pattern_collapses_unique_ids(default_config, psm_list_factory):
     config.update(
         {
             "psm_id_pattern": r"scan:(\d+):.*",
-            "lower_score_is_better": True,
             "psm_file": [],
             "psm_reader_kwargs": {},
             "id_decoy_pattern": None,

@@ -8,14 +8,20 @@ from typing import List, Optional
 
 import pandas as pd
 import psm_utils
+from ristretto import RescoreResult
 
 from ms2rescore.constants import CHARGE_PATTERN
-from mokapot import LinearPsmDataset, read_fasta
 
 logger = logging.getLogger(__name__)
 
 # Stat card background color, one per identification level
-_STAT_CARD_COLORS = {"psms": "card-bg-blue", "peptides": "card-bg-green", "proteins": "card-bg-red"}
+_STAT_CARD_COLORS = {
+    "psms": "card-bg-blue",
+    "peptides": "card-bg-green",
+    "proteins": "card-bg-red",
+}
+
+_FDR_THRESHOLD = 0.01
 
 
 def read_feature_names(feature_names_path: Optional[Path]) -> dict:
@@ -35,52 +41,53 @@ def read_feature_names(feature_names_path: Optional[Path]) -> dict:
     return feature_names
 
 
-def compute_protein_stats(psm_df: pd.DataFrame, fasta_file: Optional[str]) -> Optional[List[dict]]:
+def _n_identified(df: pd.DataFrame, fdr_threshold: float) -> int:
+    """Count target rows passing the FDR threshold (decoys are never identifications)."""
+    return int(((df["qvalue"] <= fdr_threshold) & ~df["is_decoy"]).sum())
+
+
+def compute_protein_stats(
+    before: RescoreResult, after: RescoreResult, fdr_threshold: float = _FDR_THRESHOLD
+) -> Optional[List[dict]]:
     """
-    Compute protein-group-level statistics before and after rescoring.
+    Compare protein-group-level identifications before and after rescoring.
 
-    This is the only report function that relies on mokapot's protein inference. It builds a
-    :py:class:`~mokapot.dataset.LinearPsmDataset`, adds proteins from ``fasta_file``, and assigns
-    confidence on the before- and after-rescoring scores to count accepted protein groups at 1%
-    FDR. Returns a single-element list with a stat card, or ``None`` if no fasta is given or
-    mokapot fails to assign confidence.
+    Returns a single-element list with a stat card, or ``None`` if either `RescoreResult` has no
+    protein-level rollup (i.e. no ``protein_col`` was available) or no proteins pass the FDR
+    threshold.
     """
-    if not fasta_file:
-        return None
-    if "score_before" not in psm_df.columns or "score_after" not in psm_df.columns:
-        logger.warning("Before/after scores not found. Skipping protein-group statistics.")
+    if before.proteins is None or after.proteins is None:
         return None
 
-    # Build mokapot dataset with protein inference from the fasta
-    peptide = psm_df["peptidoform"].astype(str).str.replace(CHARGE_PATTERN, "", n=1, regex=True)
-    psms = pd.DataFrame({"peptide": peptide, "is_target": ~psm_df["is_decoy"]}).reset_index()
-    dataset = LinearPsmDataset(
-        psms=psms,
-        target_column="is_target",
-        spectrum_columns="index",
-        peptide_column="peptide",
-    )
-    try:
-        dataset.add_proteins(read_fasta(fasta_file))
-    except (FileNotFoundError, ValueError) as e:
-        logger.warning("Could not add proteins from fasta: %s. Skipping protein statistics.", e)
+    n_before = _n_identified(before.proteins, fdr_threshold)
+    n_after = _n_identified(after.proteins, fdr_threshold)
+    if n_before == 0 or n_after == 0:
         return None
 
-    # Count accepted protein groups on before- and after-rescoring scores
-    counts = {}
-    for when, score_column in [("before", "score_before"), ("after", "score_after")]:
-        try:
-            confidence = dataset.assign_confidence(scores=list(psm_df[score_column].astype(float)))
-            counts[when] = confidence.accepted["proteins"]
-        except (RuntimeError, IndexError, KeyError):
-            logger.warning("Could not assign protein confidence for %s rescoring.", when)
-            counts[when] = None
+    return [build_stat_card("Protein groups", "proteins", n_before, n_after)]
 
-    before, after = counts["before"], counts["after"]
-    if not before or not after:
-        return None
 
-    return [build_stat_card("Protein groups", "proteins", before, after)]
+def compute_id_stats(
+    before: RescoreResult, after: RescoreResult, fdr_threshold: float = _FDR_THRESHOLD
+) -> List[dict]:
+    """Build the PSM/peptide/(optional) protein overview stat cards from before/after results."""
+    stats = []
+
+    n_before_psms = _n_identified(before.psms, fdr_threshold)
+    n_after_psms = _n_identified(after.psms, fdr_threshold)
+    if n_before_psms > 0:
+        stats.append(build_stat_card("PSMs", "psms", n_before_psms, n_after_psms))
+
+    n_before_peptides = _n_identified(before.peptidoforms, fdr_threshold)
+    n_after_peptides = _n_identified(after.peptidoforms, fdr_threshold)
+    if n_before_peptides > 0:
+        stats.append(build_stat_card("Peptides", "peptides", n_before_peptides, n_after_peptides))
+
+    protein_stats = compute_protein_stats(before, after, fdr_threshold)
+    if protein_stats:
+        stats.extend(protein_stats)
+
+    return stats
 
 
 def build_stat_card(item: str, level: str, before: int, after: int) -> dict:
@@ -98,51 +105,51 @@ def build_stat_card(item: str, level: str, before: int, after: int) -> dict:
     }
 
 
-def create_psm_dataframe(psm_list: psm_utils.PSMList) -> pd.DataFrame:
+def create_psm_dataframe(
+    psm_list: psm_utils.PSMList, before: RescoreResult, after: RescoreResult
+) -> pd.DataFrame:
     """
-    Create a comprehensive dataframe from PSM list with all necessary information.
+    Create a comprehensive dataframe from a PSM list with all information needed for the report.
 
     This dataframe includes:
-    - Basic PSM information (peptide, score, qvalue, is_decoy, etc.)
-    - Before rescoring scores from provenance data
-    - All rescoring features
+    - Basic PSM information (peptidoform, score, qvalue, is_decoy, etc.)
+    - Before/after rescoring score, q-value, and PEP, merged in from ristretto's `RescoreResult`s
+      by (spectrum_id, charge-stripped peptidoform) -- not by row position, since `before` was
+      computed on the PSM list as it stood right after parsing, which may differ in length or
+      order from the final, post-rescoring PSM list.
+    - All rescoring features.
 
     Parameters
     ----------
     psm_list
-        PSM list to convert to dataframe.
+        Final (post-rescoring) PSM list to convert to a dataframe.
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
 
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe with all PSM information.
     """
-    # Start with basic PSM dataframe
     psm_df = psm_list.to_dataframe()
 
-    # Add before rescoring scores from provenance data
-    try:
-        provenance_df = pd.DataFrame.from_records(psm_list["provenance_data"])
-        if "before_rescoring_score" in provenance_df.columns:
-            psm_df["score_before"] = provenance_df["before_rescoring_score"].astype(float)
-        if "before_rescoring_qvalue" in provenance_df.columns:
-            psm_df["qvalue_before"] = provenance_df["before_rescoring_qvalue"].astype(float)
-    except (KeyError, ValueError) as e:
-        logger.warning("Could not extract before rescoring scores from provenance data: %s", e)
-        psm_df["score_before"] = None
-        psm_df["qvalue_before"] = None
+    join_key = psm_df["peptidoform"].astype(str).str.replace(CHARGE_PATTERN, "", n=1, regex=True)
+    psm_df = psm_df.assign(_peptidoform_key=join_key)
+    for result, suffix in ((before, "before"), (after, "after")):
+        columns = result.psms[["spectrum_id", "peptidoform", "score", "qvalue", "pep"]].rename(
+            columns={
+                "peptidoform": "_peptidoform_key",
+                "score": f"score_{suffix}",
+                "qvalue": f"qvalue_{suffix}",
+                "pep": f"pep_{suffix}",
+            }
+        )
+        psm_df = psm_df.merge(columns, how="left", on=["spectrum_id", "_peptidoform_key"])
+    psm_df = psm_df.drop(columns="_peptidoform_key")
 
     # Add rescoring features - vectorized extraction
     if psm_list[0].rescoring_features:
-        # Extract all rescoring_features dicts at once (much faster than looping)
         features_df = pd.DataFrame.from_records(psm_list["rescoring_features"]).astype("float32")
-        # Merge features with PSM dataframe (they should have same index)
-        psm_df = pd.concat([psm_df, features_df], axis=1)
+        psm_df = pd.concat([psm_df.reset_index(drop=True), features_df], axis=1)
         # Remove duplicate columns (keep last, i.e., from features_df)
         psm_df = psm_df.loc[:, ~psm_df.columns.duplicated(keep="last")]
-
-    # Rename current score/qvalue to score_after/qvalue_after for clarity
-    psm_df["score_after"] = psm_df["score"]
-    psm_df["qvalue_after"] = psm_df["qvalue"]
 
     return psm_df

@@ -1,0 +1,218 @@
+"""
+Rescore PSMs with ristretto.
+
+:py:mod:`ristretto` is a lean, dependency-light (numpy/scikit-learn/pandas only)
+reimplementation of the Percolator/Käll 2007 semi-supervised rescoring algorithm, purpose-built
+to serve MS²Rescore. It takes a plain :py:class:`pandas.DataFrame` in and returns a
+:py:class:`~ristretto.result.RescoreResult` of plain DataFrames out.
+
+"""
+
+import logging
+from concurrent.futures import BrokenExecutor
+from pathlib import Path
+from typing import Dict, Set, Tuple
+
+import numpy as np
+import pandas as pd
+import ristretto
+from psm_utils import PSMList
+from ristretto import RescoreResult
+
+from ms2rescore.constants import CHARGE_PATTERN
+from ms2rescore.exceptions import RescoringError
+from ms2rescore.parse_psms import infer_score_direction
+
+logger = logging.getLogger(__name__)
+
+
+def build_features_dataframe(
+    psm_list: PSMList,
+    feature_names: Set[str],
+    lower_score_is_better: bool,
+) -> pd.DataFrame:
+    """
+    Build the plain identifier + feature DataFrame that ristretto expects.
+
+    Identifier columns are the real ``spectrum_id`` (for true spectrum-grouped CV, not an
+    artificial per-row index), a charge-stripped ``peptidoform`` string, a bare (no
+    modifications, no charge) ``peptide`` string, and a semicolon-joined ``protein`` string
+    (only added if every PSM has a non-empty ``protein_list``). ``score`` is negated if
+    ``lower_score_is_better``, so ristretto always sees "higher is better".
+
+    """
+    psm_df = psm_list.to_dataframe().reset_index(drop=True)
+
+    features_df = pd.DataFrame(
+        {
+            "spectrum_id": psm_df["spectrum_id"],
+            "is_decoy": psm_df["is_decoy"],
+            "peptidoform": psm_df["peptidoform"]
+            .astype(str)
+            .str.replace(CHARGE_PATTERN, "", n=1, regex=True),
+            "peptide": psm_df["peptidoform"].apply(lambda p: p.sequence),
+            "score": -psm_df["score"] if lower_score_is_better else psm_df["score"],
+        }
+    )
+
+    if psm_df["protein_list"].apply(lambda p: bool(p)).all():
+        features_df["protein"] = psm_df["protein_list"].apply(";".join)
+
+    if feature_names:
+        feature_df = pd.DataFrame(list(psm_df["rescoring_features"]))[sorted(feature_names)]
+        feature_df = feature_df.astype(float).fillna(0.0)
+        features_df = pd.concat([features_df, feature_df], axis=1)
+
+    return features_df
+
+
+def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
+    """
+    Evaluate the PSMs' current (pre-rescoring) score with ristretto, for report baselines.
+
+    Called right after :py:func:`~ms2rescore.parse_psms.parse_psms`, before any feature
+    generator runs. Uses the same competition mode as the final rescoring result
+    (``max_psm_rank_output == 1``) so before/after counts are directly comparable.
+
+    """
+    features_df = build_features_dataframe(psm_list, set(), infer_score_direction(psm_list))
+    return ristretto.evaluate(
+        features_df,
+        peptide_col="peptide",
+        protein_col="protein" if "protein" in features_df.columns else None,
+        decoy_pattern=config["id_decoy_pattern"],
+        multi_rank_rescoring=config["max_psm_rank_output"] != 1,
+    )
+
+
+def rescore(
+    psm_list: PSMList, config: Dict, output_file_root: str
+) -> Tuple[PSMList, RescoreResult]:
+    """
+    Rescore PSMs with ristretto and write the new scores, q-values, and PEPs back to ``psm_list``.
+
+    Always scores every candidate rank with ristretto's semi-supervised model
+    (``multi_rank_rescoring=True``), then runs the actual competition/FDR/PEP step
+    separately via :py:func:`ristretto.evaluate`, competing down to one PSM per spectrum
+    unless ``max_psm_rank_output > 1`` (mirroring the existing rank-based config options).
+
+    Returns
+    -------
+    tuple[PSMList, RescoreResult]
+        The (possibly filtered) PSMList with updated scores, and the final
+        competition/FDR result.
+
+    """
+    feature_names = {f for psm in psm_list for f in psm.rescoring_features}
+    lower_score_is_better = infer_score_direction(psm_list)
+    features_df = build_features_dataframe(psm_list, feature_names, lower_score_is_better)
+
+    peptide_col = "peptide"
+    protein_col = "protein" if "protein" in features_df.columns else None
+    decoy_pattern = config["id_decoy_pattern"]
+
+    try:
+        ml_result = ristretto.rescore(
+            features_df,
+            peptide_col=peptide_col,
+            protein_col=protein_col,
+            feature_cols=sorted(feature_names),
+            decoy_pattern=decoy_pattern,
+            train_fdr=config["rescoring"]["train_fdr"],
+            n_jobs=int(config["processes"]),
+            multi_rank_rescoring=True,
+        )
+        # For max_psm_rank_output > 1, trim to the top-N ranks (by ML score) *before* the
+        # final FDR calculation, so q-values/PEP are computed over exactly the population
+        # that ends up in the output -- not recomputed after the fact on a subset.
+        ml_psms = ml_result.psms
+        if config["max_psm_rank_output"] > 1:
+            output_rank = ml_psms.groupby("spectrum_id")["score"].rank(
+                method="first", ascending=False
+            )
+            ml_psms = ml_psms[output_rank <= config["max_psm_rank_output"]]
+
+        final_result = ristretto.evaluate(
+            ml_psms,
+            peptide_col=peptide_col,
+            protein_col=protein_col,
+            decoy_pattern=decoy_pattern,
+            multi_rank_rescoring=config["max_psm_rank_output"] != 1,
+        )
+    except (RuntimeError, BrokenExecutor, ValueError) as e:
+        raise RescoringError("Ristretto could not be run. Please check the input data.") from e
+
+    keep_mask = np.zeros(len(psm_list), dtype=bool)
+    keep_mask[final_result.psms.index.to_numpy()] = True
+    psm_list = psm_list[keep_mask]
+
+    psm_list["score"] = final_result.psms["score"].to_numpy()
+    psm_list["qvalue"] = final_result.psms["qvalue"].to_numpy()
+    psm_list["pep"] = final_result.psms["pep"].to_numpy()
+    psm_list.set_ranks(lower_score_better=False)
+
+    _write_group_metadata(psm_list, final_result.psms, final_result.peptidoforms, "peptidoform")
+    if final_result.peptides is not None:
+        _write_group_metadata(psm_list, final_result.psms, final_result.peptides, "peptide")
+    if final_result.proteins is not None:
+        _write_group_metadata(psm_list, final_result.psms, final_result.proteins, "protein")
+
+    return psm_list, final_result
+
+
+def _write_group_metadata(
+    psm_list: PSMList, psms: pd.DataFrame, rollup: pd.DataFrame, group_col: str
+) -> None:
+    """Write a rollup's score/qvalue/pep onto each PSM's metadata, keyed by ``group_col``."""
+    lookup = rollup.set_index(group_col)[["score", "qvalue", "pep"]].to_dict(orient="index")
+    for psm, group_key in zip(psm_list, psms[group_col]):
+        values = lookup[group_key]
+        psm.metadata.update(
+            {
+                f"{group_col}_score": values["score"],
+                f"{group_col}_qvalue": values["qvalue"],
+                f"{group_col}_pep": values["pep"],
+            }
+        )
+
+
+def write_rescoring_tables(
+    before: RescoreResult, after: RescoreResult, output_file_root: str
+) -> None:
+    """Write before/after rescoring result tables to Parquet files."""
+    _write_result_tables(before, output_file_root, "before")
+    _write_result_tables(after, output_file_root, "after")
+    after.feature_weights.to_parquet(f"{output_file_root}.ristretto.weights.parquet")
+
+
+def _write_result_tables(result: RescoreResult, output_file_root: str, suffix: str) -> None:
+    """Write one RescoreResult's psms/peptidoforms/peptides/proteins tables to Parquet."""
+    result.psms.to_parquet(Path(f"{output_file_root}.ristretto.psms_{suffix}.parquet"))
+    result.peptidoforms.to_parquet(
+        Path(f"{output_file_root}.ristretto.peptidoforms_{suffix}.parquet")
+    )
+    if result.peptides is not None:
+        result.peptides.to_parquet(Path(f"{output_file_root}.ristretto.peptides_{suffix}.parquet"))
+    if result.proteins is not None:
+        result.proteins.to_parquet(Path(f"{output_file_root}.ristretto.proteins_{suffix}.parquet"))
+
+
+def fix_constant_pep(psm_list: PSMList) -> PSMList:
+    """Workaround for broken PEP calculation if the best-scoring PSM is a decoy."""
+    if not all(psm_list["pep"] == 1.0):
+        return psm_list
+
+    logger.warning(
+        "Attempting to fix constant PEP values by removing decoy PSMs that score higher than the "
+        "best target PSM."
+    )
+    max_target_score = psm_list["score"][~psm_list["is_decoy"]].max()
+    higher_scoring_decoys = psm_list["is_decoy"] & (psm_list["score"] > max_target_score)
+
+    if not higher_scoring_decoys.any():
+        logger.warning("No decoys scoring higher than the best target found. Skipping fix.")
+    else:
+        psm_list = psm_list[~higher_scoring_decoys]
+        logger.warning(f"Removed {higher_scoring_decoys.sum()} decoy PSMs.")
+
+    return psm_list

@@ -36,27 +36,36 @@ Log and configuration files:
 |                                      | used to resume processing with ``-p <prefix>.intermediate.psms.tsv -t tsv``.         |
 +--------------------------------------+--------------------------------------------------------------------------------------+
 
-Rescoring engine files:
+Rescoring result tables (written if ``write_rescoring_tables`` is enabled, the default),
+one pair of before/after files per identification level. The peptide- and protein-level tables are
+only written if the PSM file provides the corresponding information (a stripped peptide sequence
+and a ``protein_list``, respectively):
 
-+-----------------------------------------+-------------------------------------------------------------+
-| File                                    | Description                                                 |
-+=========================================+=============================================================+
-| ``<prefix>.mokapot.psms.txt``           | PSMs and their new scores at PSM-level FDR.                 |
-+-----------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.mokapot.peptides.txt``       | Peptides and their new scores at peptide-level FDR.         |
-+-----------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.mokapot.proteins.txt``       | Proteins and their new scores at protein-level FDR.         |
-+-----------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.mokapot.decoy.psms.txt``     | Decoy PSMs and their new scores at PSM-level FDR.           |
-+-----------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.mokapot.decoy.peptides.txt`` | Decoy peptides and their new scores at peptide-level FDR.   |
-+-----------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.mokapot.decoy.proteins.txt`` | Decoy proteins and their new scores at protein-level FDR.   |
-+-----------------------------------------+-------------------------------------------------------------+
-| ``<prefix>.mokapot.weights.txt``        | Feature weights, showing feature usage in the rescoring run |
-+-----------------------------------------+-------------------------------------------------------------+
++---------------------------------------------------+----------------------------------------------------------------+
+| File                                               | Description                                                     |
++=====================================================+==================================================================+
+| ``<prefix>.ristretto.psms_before.parquet``          | PSMs and their pre-rescoring score, at PSM-level FDR.            |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.psms_after.parquet``           | PSMs and their new scores at PSM-level FDR.                      |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.peptidoforms_before.parquet``  | Peptidoforms and their pre-rescoring score, at peptidoform-level |
+|                                                      | FDR.                                                              |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.peptidoforms_after.parquet``   | Peptidoforms and their new scores at peptidoform-level FDR.      |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.peptides_before.parquet``      | Peptides and their pre-rescoring score, at peptide-level FDR.    |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.peptides_after.parquet``       | Peptides and their new scores at peptide-level FDR.              |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.proteins_before.parquet``      | Proteins and their pre-rescoring score, at protein-level FDR.    |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.proteins_after.parquet``       | Proteins and their new scores at protein-level FDR.              |
++-----------------------------------------------------+------------------------------------------------------------------+
+| ``<prefix>.ristretto.weights.parquet``              | Feature weights, showing feature usage in the rescoring run.     |
++-----------------------------------------------------+------------------------------------------------------------------+
 
-If no rescoring engine is selected or in DEBUG mode, the following files will also be written:
+If rescoring is disabled (``"rescoring": null``) or in DEBUG mode, the following files will also
+be written:
 
 +-------------------------------------------------------------+-----------------------------------------------------------+
 | File                                                        | Description                                               |

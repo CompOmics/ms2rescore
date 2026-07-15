@@ -35,16 +35,19 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
             " for more information."
         )
 
+    # Remove invalid AAs and find decoys first, so score direction can be inferred from them
+    psm_list = _remove_invalid_aa(psm_list)
+    _find_decoys(psm_list, config["id_decoy_pattern"])
+    lower_score_is_better = infer_score_direction(psm_list)
+
     # Filter by PSM rank
-    psm_list.set_ranks(config["lower_score_is_better"])
+    psm_list.set_ranks(lower_score_is_better)
     rank_filter = psm_list["rank"] <= config["max_psm_rank_input"]
     psm_list = psm_list[rank_filter]
     logger.info(f"Removed {sum(~rank_filter)} PSMs with rank >= {config['max_psm_rank_input']}.")
 
-    # Remove invalid AAs, find decoys, calculate q-values
-    psm_list = _remove_invalid_aa(psm_list)
-    _find_decoys(psm_list, config["id_decoy_pattern"])
-    _calculate_qvalues(psm_list, config["lower_score_is_better"])
+    # Calculate q-values
+    _calculate_qvalues(psm_list, lower_score_is_better)
 
     # Parse retention time and/or ion mobility from spectrum_id if patterns provided
     if config["psm_id_rt_pattern"] or config["psm_id_im_pattern"]:
@@ -161,6 +164,22 @@ def _read_psms(config, psm_list):
             logger.debug(f"Read {len(psm_list)} PSMs from '{psm_file}'.")
 
         return PSMList(psm_list=psm_list)
+
+
+def infer_score_direction(psm_list: PSMList) -> bool:
+    """Infer whether a lower search engine score is better by comparing target/decoy scores."""
+    scores = psm_list["score"].astype(float)
+    is_decoy = psm_list["is_decoy"]
+    target_score = np.nanmean(scores[~is_decoy])
+    decoy_score = np.nanmean(scores[is_decoy])
+    lower_score_is_better = bool(decoy_score > target_score)
+    logger.debug(
+        "Inferred score direction: %s (mean target score %.4g, mean decoy score %.4g)",
+        "lower is better" if lower_score_is_better else "higher is better",
+        target_score,
+        decoy_score,
+    )
+    return lower_score_is_better
 
 
 def _find_decoys(psm_list: PSMList, id_decoy_pattern: Optional[str] = None):

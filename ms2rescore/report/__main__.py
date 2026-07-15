@@ -24,7 +24,6 @@ def main(psm_file, output):
 
     PSM_FILE: Path to the PSM TSV file (e.g., output.psms.tsv)
     """
-    logging.getLogger("mokapot").setLevel(logging.WARNING)
     logging.basicConfig(
         level=logging.INFO,
         handlers=[RichHandler(rich_tracebacks=True)],

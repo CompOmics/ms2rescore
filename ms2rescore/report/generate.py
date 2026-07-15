@@ -17,7 +17,6 @@ import ms2rescore
 import ms2rescore.report.charts as charts
 import ms2rescore.report.templates as templates
 from ms2rescore.report.data import ReportData
-from ms2rescore.report.utils import build_stat_card
 
 logger = logging.getLogger(__name__)
 
@@ -59,16 +58,7 @@ def generate_report(
         Path to the output HTML file. Defaults to ``output_path_prefix + ".report.html"``.
     """
     psm_df = data.psm_df
-
-    # Pre-compute filtered subsets shared across charts
-    targets = psm_df[~psm_df["is_decoy"]]
     is_decoy = psm_df["is_decoy"]
-    if "qvalue_before" in psm_df.columns and "qvalue_after" in psm_df.columns:
-        targets_before_fdr = targets[targets["qvalue_before"] <= 0.01]
-        targets_after_fdr = targets[targets["qvalue_after"] <= 0.01]
-    else:
-        targets_before_fdr = None
-        targets_after_fdr = None
 
     context = {
         "plotlyjs_version": get_plotlyjs_version(),
@@ -82,9 +72,7 @@ def generate_report(
                 "id": "main_tab_comparison",
                 "title": "Overview",
                 "template": "overview.html",
-                "context": _get_overview_context(
-                    psm_df, targets_before_fdr, targets_after_fdr, data.protein_stats
-                ),
+                "context": _get_overview_context(psm_df, data.id_stats),
             },
             {
                 "id": "main_tab_target_decoy",
@@ -126,48 +114,11 @@ def _get_psm_filenames(data: ReportData) -> str:
     return "Unknown"
 
 
-def _get_stats_context(
-    psm_df: pd.DataFrame,
-    targets_before_fdr: Optional[pd.DataFrame],
-    targets_after_fdr: Optional[pd.DataFrame],
-    protein_stats: Optional[list],
-) -> list:
-    """Return the overview stat cards for PSM, peptide, and (if available) protein levels."""
-    if targets_before_fdr is None or targets_after_fdr is None:
-        logger.warning("Before/after q-values not found. Overview statistics will be empty.")
-        return []
-
-    stats = []
-
-    # PSM level
-    psms_before, psms_after = len(targets_before_fdr), len(targets_after_fdr)
-    if psms_before > 0:
-        stats.append(build_stat_card("PSMs", "psms", psms_before, psms_after))
-
-    # Peptide level
-    if "peptidoform" in psm_df.columns:
-        peptides_before = targets_before_fdr["peptidoform"].nunique()
-        peptides_after = targets_after_fdr["peptidoform"].nunique()
-        if peptides_before > 0:
-            stats.append(build_stat_card("Peptides", "peptides", peptides_before, peptides_after))
-
-    # Protein-group level (only present when a fasta was provided)
-    if protein_stats:
-        stats.extend(protein_stats)
-
-    return stats
-
-
-def _get_overview_context(
-    psm_df: pd.DataFrame,
-    targets_before_fdr: Optional[pd.DataFrame],
-    targets_after_fdr: Optional[pd.DataFrame],
-    protein_stats: Optional[list],
-) -> dict:
+def _get_overview_context(psm_df: pd.DataFrame, id_stats: list) -> dict:
     """Return context for the overview tab."""
     logger.debug("Generating overview charts...")
     return {
-        "stats": _get_stats_context(psm_df, targets_before_fdr, targets_after_fdr, protein_stats),
+        "stats": id_stats,
         "charts": [
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
@@ -225,7 +176,7 @@ def _get_features_context(
     feature_names_inv = {name: gen for gen, names in feature_names.items() for name in names}
     color_map = {gen: FEATURE_GENERATOR_COLORS.get(gen, "#FFFFFF") for gen in feature_names}
 
-    # Feature weights (only when the mokapot linear model provided them)
+    # Feature weights (empty only when rescoring was skipped)
     if feature_weights is not None and not feature_weights.empty:
         _add_feature_weights_chart(context, feature_weights, feature_names_inv, color_map)
 
@@ -268,8 +219,10 @@ def _get_features_context(
 def _add_feature_weights_chart(context, feature_weights, feature_names_inv, color_map):
     """Append the feature-weights charts to the features context."""
     try:
-        weights = feature_weights.melt(var_name="feature", value_name="weight")
-        weights["feature"] = weights["feature"].str.replace(r"^(feature:)?", "", regex=True)
+        # `feature_weights` is indexed by feature name, one column per CV fold
+        weights = feature_weights.reset_index(names="feature").melt(
+            id_vars="feature", var_name="fold", value_name="weight"
+        )
         weights["feature_generator"] = weights["feature"].map(feature_names_inv)
         context["charts"].append(
             {

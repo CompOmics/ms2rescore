@@ -2,7 +2,6 @@
     "ms2rescore": {
         "psm_file": "examples/data/search/sage/results.sage.tsv",
         "psm_file_type": "sage",
-        "spectrum_path": "examples/data/spectra/qExactive01819.mzML",
-        "fasta_file": "examples/data/fasta/uniprot-human-reviewed-trypsin-june-2021_concatenated_target_decoy.fasta"
+        "spectrum_path": "examples/data/spectra/qExactive01819.mzML"
     }
 }

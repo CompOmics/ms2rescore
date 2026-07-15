@@ -284,32 +284,33 @@ the following configuration can be used:
     max_psm_rank_output = 1
 
 
-Configuring rescoring engines
-=============================
+Configuring rescoring
+=====================
 
-MS²Rescore uses Mokapot as its rescoring engine. It can be configured with the
-``rescoring_engine`` option. For example, to use Mokapot with a custom train_fdr of 0.1%, the
-following configuration can be used:
+MS²Rescore uses `ristretto <https://github.com/CompOmics/ristretto>`_, a lean semi-supervised
+rescoring implementation, as its rescoring engine. It can be configured with the ``rescoring``
+option, which currently exposes a single option, ``train_fdr``. For example, to use a custom
+``train_fdr`` of 0.1%, the following configuration can be used:
 
 .. tab:: JSON
 
   .. code-block:: json
 
-    "rescoring_engine": {
-      "mokapot": {
-        "train_fdr": 0.001
-      }
+    "rescoring": {
+      "train_fdr": 0.001
+    }
 
 .. tab:: TOML
 
     .. code-block:: toml
 
-      [ms2rescore.rescoring_engine.mokapot]
+      [ms2rescore.rescoring]
       train_fdr = 0.001
 
+Set ``rescoring`` to ``null`` to skip rescoring entirely and only write the engineered features
+(e.g. to a Percolator PIN file).
 
-All options for the rescoring engines can be found in the :ref:`ms2rescore.rescoring_engines`
-section.
+See the :ref:`ms2rescore.rescoring` section for the module used to interface with ristretto.
 
 
 

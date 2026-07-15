@@ -3,7 +3,6 @@ psm_file = "examples/data/search/maxquant/msms.txt"
 psm_file_type = "msms"
 spectrum_path = "examples/data/spectra"
 spectrum_id_pattern = '.*scan=(\d+)$'                                        # Single quotes for literal regex string
-fasta_file = "examples/data/fasta/uniprot-proteome-human-contaminants.fasta"
 
 [ms2rescore.modification_mapping]
 "gl" = "Gln->pyro-Glu"

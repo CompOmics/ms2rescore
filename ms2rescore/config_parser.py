@@ -93,7 +93,6 @@ def _validate_regular_expressions(config: Dict) -> Dict:
         "psm_id_im_pattern",
     ]:
         if config["ms2rescore"][field]:
-
             # Check if valid regex
             try:
                 pattern = re.compile(config["ms2rescore"][field])
@@ -158,7 +157,7 @@ def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]
                 cascade_conf.add_dict(dict(tomllib.load(Path(config).open("rb"))))
             else:
                 raise MS2RescoreConfigurationError(
-                    "Unknown file extension for configuration file. Should be `json` or " "`toml`."
+                    "Unknown file extension for configuration file. Should be `json` or `toml`."
                 )
         elif isinstance(config, Namespace):
             cascade_conf.add_namespace(config, subkey="ms2rescore")
@@ -176,12 +175,9 @@ def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]
     config = _validate_processes(config)
     config = _validate_regular_expressions(config)
 
-    # Convert feature_generators and rescoring_engine names to lowercase
+    # Convert feature_generator names to lowercase
     config["ms2rescore"]["feature_generators"] = {
         k.lower(): v for k, v in config["ms2rescore"]["feature_generators"].items()
-    }
-    config["ms2rescore"]["rescoring_engine"] = {
-        k.lower(): v for k, v in config["ms2rescore"]["rescoring_engine"].items()
     }
 
     return config

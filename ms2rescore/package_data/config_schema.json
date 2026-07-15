@@ -40,20 +40,10 @@
                         "deeplc": {}
                     }
                 },
-                "rescoring_engine": {
-                    "description": "Rescoring engine to use and its configuration. Leave empty to skip rescoring and write features to file.",
-                    "type": "object",
-                    "minProperties": 0,
-                    "maxProperties": 1,
-                    "patternProperties": {
-                        ".*": { "$ref": "#/definitions/rescoring_engine" },
-                        "mokapot": {
-                            "$ref": "#/definitions/mokapot"
-                        }
-                    },
-                    "default": {
-                        "mokapot": {}
-                    }
+                "rescoring": {
+                    "description": "Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features.",
+                    "oneOf": [{ "$ref": "#/definitions/rescoring" }, { "type": "null" }],
+                    "default": { "train_fdr": 0.01 }
                 },
                 "psm_generator": {
                     "description": "PSM generator and their configuration.",
@@ -131,11 +121,6 @@
                     "default": null,
                     "format": "regex"
                 },
-                "lower_score_is_better": {
-                    "description": "Bool indicating if lower score is better",
-                    "type": "boolean",
-                    "default": false
-                },
                 "max_psm_rank_input": {
                     "description": "Maximum rank of PSMs to use as input for rescoring",
                     "type": "number",
@@ -170,14 +155,15 @@
                     "description": "Convert spectrum IDs to their universal spectrum identifier",
                     "type": "boolean"
                 },
-                "fasta_file": {
-                    "description": "Path to FASTA file with protein sequences to use for protein inference",
-                    "oneOf": [{ "type": "string" }, { "type": "null" }]
-                },
                 "write_flashlfq": {
                     "description": "Write results to a FlashLFQ-compatible file",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": false
+                },
+                "write_rescoring_tables": {
+                    "description": "Write ristretto's before/after rescoring result tables (PSMs, peptidoforms, peptides, proteins, feature weights) to Parquet files",
+                    "oneOf": [{ "type": "boolean" }, { "type": "null" }],
+                    "default": true
                 },
                 "write_report": {
                     "description": "Write an HTML report with various QC metrics and charts",
@@ -221,10 +207,19 @@
             "type": "object",
             "additionalProperties": true
         },
-        "rescoring_engine": {
-            "description": "Rescoring engine configuration",
+        "rescoring": {
+            "description": "Ristretto rescoring configuration.",
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+                "train_fdr": {
+                    "description": "FDR threshold used during ristretto's semi-supervised training",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.01
+                }
+            }
         },
         "psm_generator": {
             "description": "Additional PSM feature generator configuration",
@@ -308,32 +303,6 @@
                     "description": "mass error in Da",
                     "type": "number",
                     "default": 0.2
-                }
-            }
-        },
-
-        "mokapot": {
-            "$ref": "#/definitions/rescoring_engine",
-            "description": "Mokapot rescoring engine configuration. Additional properties are passed to the Mokapot brew function.",
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-                "train_fdr": {
-                    "description": "FDR threshold for training Mokapot",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "default": 0.01
-                },
-                "write_weights": {
-                    "description": "Write Mokapot weights to a text file",
-                    "type": "boolean",
-                    "default": false
-                },
-                "write_txt": {
-                    "description": "Write Mokapot results to a text file",
-                    "type": "boolean",
-                    "default": false
                 }
             }
         }

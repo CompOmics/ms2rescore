@@ -140,15 +140,6 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="number of parallel processes available to MS²Rescore",
     )
     parser.add_argument(
-        "-f",
-        "--fasta-file",
-        metavar="FILE",
-        action="store",
-        type=str,
-        dest="fasta_file",
-        help="path to FASTA file",
-    )
-    parser.add_argument(
         "--write-report",
         action="store_true",
         default=None,

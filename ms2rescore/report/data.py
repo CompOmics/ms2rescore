@@ -10,10 +10,11 @@ from typing import Dict, List, Optional
 import pandas as pd
 import psm_utils
 import psm_utils.io
+from ristretto import RescoreResult
 
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.report.utils import (
-    compute_protein_stats,
+    compute_id_stats,
     create_psm_dataframe,
     read_feature_names,
 )
@@ -43,9 +44,14 @@ _NON_FEATURE_COLUMNS = {
     "is_decoy",
     "score_before",
     "qvalue_before",
+    "pep_before",
     "score_after",
     "qvalue_after",
+    "pep_after",
 }
+
+_EMPTY_PSMS_COLUMNS = ["spectrum_id", "is_decoy", "peptidoform", "score", "qvalue", "pep"]
+_EMPTY_ROLLUP_COLUMNS = ["peptidoform", "score", "qvalue", "pep", "is_decoy", "n_psms"]
 
 
 @dataclass
@@ -63,7 +69,7 @@ class ReportData:
     feature_names: Dict[str, List[str]]
     config: dict = field(default_factory=lambda: {"ms2rescore": {}})
     feature_weights: Optional[pd.DataFrame] = None
-    protein_stats: Optional[List[dict]] = None
+    id_stats: List[dict] = field(default_factory=list)
     log_html: Optional[str] = None
 
     @classmethod
@@ -72,19 +78,21 @@ class ReportData:
         psm_list: psm_utils.PSMList,
         feature_names: Optional[Dict[str, set]] = None,
         config: Optional[dict] = None,
-        feature_weights: Optional[pd.DataFrame] = None,
+        before: Optional[RescoreResult] = None,
+        after: Optional[RescoreResult] = None,
     ) -> "ReportData":
         """Build report data from an in-memory MS²Rescore run."""
         config = config or {"ms2rescore": {}}
-        psm_df = create_psm_dataframe(psm_list)
+        before = before or _empty_result()
+        after = after or _empty_result()
+        psm_df = create_psm_dataframe(psm_list, before, after)
         feature_names = _normalize_feature_names(feature_names) or _infer_feature_names(psm_df)
-        protein_stats = compute_protein_stats(psm_df, _resolve_fasta(config))
         return cls(
             psm_df=psm_df,
             feature_names=feature_names,
             config=config,
-            feature_weights=feature_weights,
-            protein_stats=protein_stats,
+            feature_weights=after.feature_weights,
+            id_stats=compute_id_stats(before, after),
         )
 
     @classmethod
@@ -96,20 +104,21 @@ class ReportData:
 
         logger.info("Reading PSMs from %s...", psm_file.as_posix())
         psm_list = psm_utils.io.read_file(psm_file, filetype="tsv", show_progressbar=True)
-        psm_df = create_psm_dataframe(psm_list)
+
+        before = _read_rescore_result(output_path_prefix, "before")
+        after = _read_rescore_result(output_path_prefix, "after")
+        psm_df = create_psm_dataframe(psm_list, before, after)
 
         config = _read_config(Path(output_path_prefix + ".full-config.json"))
         feature_names = _read_feature_names_or_infer(
             Path(output_path_prefix + ".feature_names.tsv"), psm_df
         )
-        feature_weights = _read_feature_weights(Path(output_path_prefix + ".mokapot.weights.tsv"))
-        protein_stats = compute_protein_stats(psm_df, _resolve_fasta(config))
         return cls(
             psm_df=psm_df,
             feature_names=feature_names,
             config=config,
-            feature_weights=feature_weights,
-            protein_stats=protein_stats,
+            feature_weights=after.feature_weights,
+            id_stats=compute_id_stats(before, after),
         )
 
 
@@ -162,24 +171,45 @@ def _read_config(path: Path) -> dict:
         return {"ms2rescore": {}}
 
 
-def _read_feature_weights(path: Path) -> Optional[pd.DataFrame]:
-    """Read mokapot feature weights (one row per fold), or None if the file is absent."""
-    if not path.is_file():
-        logger.info("Feature weights file not found. Skipping feature weights.")
-        return None
-    try:
-        return pd.read_csv(path, sep="\t")
-    except (OSError, pd.errors.ParserError) as e:
-        logger.warning("Could not read feature weights file: %s", e)
-        return None
+def _empty_result() -> RescoreResult:
+    """A placeholder `RescoreResult` used when a before/after result is unavailable."""
+    return RescoreResult(
+        psms=pd.DataFrame(columns=_EMPTY_PSMS_COLUMNS),
+        peptidoforms=pd.DataFrame(columns=_EMPTY_ROLLUP_COLUMNS),
+        peptides=None,
+        proteins=None,
+        pi0=float("nan"),
+        n_iterations=[],
+        feature_weights=pd.DataFrame(),
+    )
 
 
-def _resolve_fasta(config: dict) -> Optional[str]:
-    """Resolve the fasta path from config, checking the known locations in order."""
-    ms2rescore_config = config.get("ms2rescore", {})
-    engine_config = ms2rescore_config.get("rescoring_engine", {}).get("mokapot", {})
-    return (
-        ms2rescore_config.get("fasta_file")
-        or config.get("fasta_file")
-        or engine_config.get("fasta_file")
+def _read_rescore_result(output_path_prefix: str, suffix: str) -> RescoreResult:
+    """Reconstruct a `RescoreResult` from the Parquet tables written by `write_rescoring_tables`."""
+    psms_path = Path(f"{output_path_prefix}.ristretto.psms_{suffix}.parquet")
+    if not psms_path.is_file():
+        logger.info(
+            "Ristretto '%s' tables not found. Before/after comparisons will be empty.", suffix
+        )
+        return _empty_result()
+
+    peptidoforms_path = Path(f"{output_path_prefix}.ristretto.peptidoforms_{suffix}.parquet")
+    peptides_path = Path(f"{output_path_prefix}.ristretto.peptides_{suffix}.parquet")
+    proteins_path = Path(f"{output_path_prefix}.ristretto.proteins_{suffix}.parquet")
+    weights_path = Path(f"{output_path_prefix}.ristretto.weights.parquet")
+
+    return RescoreResult(
+        psms=pd.read_parquet(psms_path),
+        peptidoforms=(
+            pd.read_parquet(peptidoforms_path)
+            if peptidoforms_path.is_file()
+            else pd.DataFrame(columns=_EMPTY_ROLLUP_COLUMNS)
+        ),
+        peptides=pd.read_parquet(peptides_path) if peptides_path.is_file() else None,
+        proteins=pd.read_parquet(proteins_path) if proteins_path.is_file() else None,
+        pi0=float("nan"),
+        n_iterations=[],
+        feature_weights=pd.read_parquet(weights_path)
+        if weights_path.is_file()
+        else pd.DataFrame(),
     )

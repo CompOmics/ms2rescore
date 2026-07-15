@@ -4,8 +4,7 @@ psm_file_type = "percolator"
 psm_reader_kwargs = { "score_column" = "PSMScore" }
 log_level = "debug"
 processes = 16
+write_rescoring_tables = true
 
-[ms2rescore.rescoring_engine.mokapot]
-fasta_file = "examples/proteins/uniprot-proteome-human-contaminants.fasta"
-write_weights = true
-write_txt = true
+[ms2rescore.rescoring]
+train_fdr = 0.01

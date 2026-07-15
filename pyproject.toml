@@ -39,7 +39,6 @@ dependencies = [
     "im2deep>=2.0.0",
     "jinja2>=3",
     "lxml>=4.5",
-    "mokapot==0.10",                     # 0.11.0 will introduce API changes
     "ms2pip>=4.2.0",
     "ms2rescore_rs>=0.5.0",
     "numpy>=1.25,<3.0",
@@ -47,8 +46,10 @@ dependencies = [
     "pandas>=1",
     "plotly>=5",
     "psm_utils>=1.1",
+    "pyarrow>=14",
     "pyteomics>=4.7.2",
     "rich>=12",
+    "ristretto-ms>=0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -68,6 +69,8 @@ docs = [
     "sphinx-argparse",
     "sphinx-autobuild",
 ]
+nb = ["ipykernel", "ipywidgets", "plotly"]
+# TODO: Update upon stable release
 installer = [
     # Pinned dependencies for reproducible Windows installer builds
     "cbor2",
@@ -101,6 +104,8 @@ module-root = ""
 [tool.uv]
 
 [tool.uv.sources]
+# TODO: remove once ristretto-ms>=0.2.0 (with `evaluate()`) is published to PyPI.
+ristretto-ms = { path = "../ironbrew", editable = true }
 
 [tool.pytest.ini_options]
 markers = [

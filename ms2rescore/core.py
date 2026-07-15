@@ -3,23 +3,15 @@ import logging
 from multiprocessing import cpu_count
 from typing import Dict, Optional
 
-import numpy as np
 import psm_utils.io
-from mokapot.dataset import LinearPsmDataset
 from psm_utils import PSMList
 
-from ms2rescore import exceptions
-from ms2rescore.constants import CHARGE_PATTERN
+from ms2rescore import exceptions, rescoring
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.parse_psms import parse_psms
 from ms2rescore.parse_spectra import MSDataType, add_precursor_values, annotate_spectra
 from ms2rescore.report import generate
 from ms2rescore.report.data import ReportData
-from ms2rescore.rescoring_engines import mokapot
-from ms2rescore.rescoring_engines.mokapot import (
-    add_peptide_confidence,
-    add_psm_confidence,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +45,10 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     # Parse PSMs
     psm_list = parse_psms(config, psm_list)
 
-    # Log #PSMs identified before rescoring
-    id_psms_before = _log_id_psms_before(psm_list, max_rank=config["max_psm_rank_output"])
+    # Evaluate PSMs' pre-rescoring score with ristretto, for report baselines
+    before_result = rescoring.evaluate_before(psm_list, config)
+    n_id_before = ((before_result.psms["qvalue"] <= 0.01) & ~before_result.psms["is_decoy"]).sum()
+    logger.info(f"Found {n_id_before} identified PSMs at 1% FDR before rescoring.")
 
     # Define feature names; get existing feature names from PSM file
     feature_names = dict()
@@ -180,8 +174,8 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         logging.debug(f"Creating USIs for {len(psm_list)} PSMs")
         psm_list["spectrum_id"] = [psm.get_usi(as_url=False) for psm in psm_list]
 
-    # If no rescoring engine is specified or DEBUG, write PSMs and features to PIN file
-    if not config["rescoring_engine"] or config["log_level"] == "debug":
+    # If no rescoring is configured or DEBUG, write PSMs and features to PIN file
+    if config["rescoring"] is None or config["log_level"] == "debug":
         logger.info(f"Writing added features to PIN file: {output_file_root}.psms.pin")
         psm_utils.io.write_file(
             psm_list,
@@ -190,27 +184,13 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             feature_names=all_feature_names,
         )
 
-    if not config["rescoring_engine"]:
-        logger.info("No rescoring engine specified. Skipping rescoring.")
+    if config["rescoring"] is None:
+        logger.info("No rescoring configured. Skipping rescoring.")
         return None
 
     # Rescore PSMs
-    feature_weights = None
     try:
-        if "mokapot" in config["rescoring_engine"]:
-            if "fasta_file" not in config["rescoring_engine"]["mokapot"]:
-                config["rescoring_engine"]["mokapot"]["fasta_file"] = config["fasta_file"]
-            if "protein_kwargs" in config["rescoring_engine"]["mokapot"]:
-                protein_kwargs = config["rescoring_engine"]["mokapot"].pop("protein_kwargs")
-            else:
-                protein_kwargs = dict()
-
-            feature_weights = mokapot.rescore(
-                psm_list,
-                output_file_root=output_file_root,
-                protein_kwargs=protein_kwargs,
-                **config["rescoring_engine"]["mokapot"],
-            )
+        psm_list, after_result = rescoring.rescore(psm_list, config, output_file_root)
     except (
         Exception,
         KeyboardInterrupt,
@@ -225,11 +205,17 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         raise
 
     # Post-rescoring processing
-    if all(psm_list["pep"] == 1.0):
-        psm_list = _fix_constant_pep(psm_list)
-    psm_list = _filter_by_rank(psm_list, config["max_psm_rank_output"], False)
-    psm_list = _calculate_confidence(psm_list)
-    _ = _log_id_psms_after(psm_list, id_psms_before, max_rank=config["max_psm_rank_output"])
+    psm_list = rescoring.fix_constant_pep(psm_list)
+    n_after = ((after_result.psms["qvalue"] <= 0.01) & ~after_result.psms["is_decoy"]).sum()
+    n_before = n_id_before
+    diff = n_after - n_before
+    diff_perc = f" ({diff / n_before:.2%})" if n_before > 0 else ""
+    logger.info(
+        f"Identified {diff:+d}{diff_perc} PSMs at 1% FDR after rescoring, compared to before."
+    )
+
+    if config["write_rescoring_tables"]:
+        rescoring.write_rescoring_tables(before_result, after_result, output_file_root)
 
     # Write output
     logger.info(f"Writing output to {output_file_root}.psms.tsv...")
@@ -249,19 +235,11 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     if config["write_report"]:
         try:
             report_data = ReportData.from_run(
-                psm_list, feature_names, configuration, feature_weights
+                psm_list, feature_names, configuration, before_result, after_result
             )
             generate.generate_report(output_file_root, report_data)
         except exceptions.ReportGenerationError as e:
             logger.exception(e)
-
-
-def _filter_by_rank(psm_list: PSMList, max_rank: int, lower_score_better: bool) -> PSMList:
-    """Filter PSMs by rank."""
-    psm_list.set_ranks(lower_score_better=lower_score_better)
-    rank_filter = psm_list["rank"] <= max_rank
-    logger.info(f"Removed {sum(~rank_filter)} PSMs with rank >= {max_rank}.")
-    return psm_list[rank_filter]
 
 
 def _write_feature_names(feature_names, output_file_root):
@@ -271,88 +249,3 @@ def _write_feature_names(feature_names, output_file_root):
         for fgen, fgen_features in feature_names.items():
             for feature in fgen_features:
                 f.write(f"{fgen}\t{feature}\n")
-
-
-def _log_id_psms_before(psm_list: PSMList, fdr: float = 0.01, max_rank: int = 1) -> int:
-    """Log #PSMs identified before rescoring."""
-    id_psms_before = (
-        (psm_list["qvalue"] <= fdr)
-        & (psm_list["rank"] <= max_rank)
-        & (~psm_list["is_decoy"])
-        & np.array(
-            [(metadata or {}).get("original_psm", True) for metadata in psm_list["metadata"]]
-        )
-    ).sum()
-    logger.info(
-        f"Found {id_psms_before} identified PSMs with rank <= {max_rank} at {fdr} FDR before "
-        "rescoring."
-    )
-    return id_psms_before
-
-
-def _log_id_psms_after(
-    psm_list: PSMList, id_psms_before: int, fdr: float = 0.01, max_rank: int = 1
-) -> int:
-    """Log #PSMs identified after rescoring."""
-    id_psms_after = (
-        (psm_list["qvalue"] <= 0.01) & (psm_list["rank"] <= max_rank) & (~psm_list["is_decoy"])
-    ).sum()
-    diff = id_psms_after - id_psms_before
-    diff_perc = diff / id_psms_before if id_psms_before > 0 else None
-
-    diff_numbers = f"{diff} ({diff_perc:.2%})" if diff_perc is not None else str(diff)
-    diff_word = "more" if diff > 0 else "less"
-    logger.info(
-        f"Identified {diff_numbers} {diff_word} PSMs with rank <= {max_rank} at {fdr} FDR after "
-        "rescoring."
-    )
-
-    return id_psms_after
-
-
-def _fix_constant_pep(psm_list: PSMList) -> PSMList:
-    """Workaround for broken PEP calculation if best PSM is decoy."""
-    logger.warning(
-        "Attempting to fix constant PEP values by removing decoy PSMs that score higher than the "
-        "best target PSM."
-    )
-    max_target_score = psm_list["score"][~psm_list["is_decoy"]].max()
-    higher_scoring_decoys = psm_list["is_decoy"] & (psm_list["score"] > max_target_score)
-
-    if not higher_scoring_decoys.any():
-        logger.warning("No decoys scoring higher than the best target found. Skipping fix.")
-    else:
-        psm_list = psm_list[~higher_scoring_decoys]
-        logger.warning(f"Removed {higher_scoring_decoys.sum()} decoy PSMs.")
-
-    return psm_list
-
-
-def _calculate_confidence(psm_list: PSMList) -> PSMList:
-    """
-    Calculate scores, q-values, and PEPs for PSMs and peptides and add them to PSMList.
-    """
-    # Minimal conversion to LinearPsmDataset
-    psm_df = psm_list.to_dataframe()
-    psm_df = psm_df.reset_index(drop=True).reset_index()
-    psm_df["peptide"] = (
-        psm_df["peptidoform"].astype(str).str.replace(CHARGE_PATTERN, "", n=1, regex=True)
-    )
-    psm_df["is_target"] = ~psm_df["is_decoy"]
-    lin_psm_data = LinearPsmDataset(
-        psms=psm_df[["index", "peptide", "is_target"]],
-        target_column="is_target",
-        spectrum_columns="index",  # Use artificial index to allow multi-rank rescoring
-        peptide_column="peptide",
-    )
-
-    # Recalculate confidence
-    new_confidence = lin_psm_data.assign_confidence(
-        scores=list(psm_list["score"])
-    )  # explicity make it a list to avoid TypingError: Failed in nopython mode pipeline (step: nopython frontend) in mokapot
-
-    # Add new confidence estimations to PSMList
-    add_psm_confidence(psm_list, new_confidence)
-    add_peptide_confidence(psm_list, new_confidence)
-
-    return psm_list

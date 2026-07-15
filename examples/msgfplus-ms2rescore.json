@@ -7,12 +7,9 @@
         },
         "log_level": "debug",
         "processes": 16,
-        "rescoring_engine": {
-            "mokapot": {
-                "fasta_file": "examples/proteins/uniprot-proteome-human-contaminants.fasta",
-                "write_weights": true,
-                "write_txt": true
-            }
+        "write_rescoring_tables": true,
+        "rescoring": {
+            "train_fdr": 0.01
         }
     }
 }

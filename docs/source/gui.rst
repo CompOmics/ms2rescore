@@ -77,12 +77,6 @@ folder with spectrum files, click the "Browse directories" button.
    Spectrum file selection
 
 
-Optionally, for protein inference information, a FASTA file can also be provided. Ensure that
-this file contains the same protein sequences as the search database used for the search engine.
-If a FASTA file is provided, protein digestion settings may need to be configured in the rescoring
-engine configuration.
-
-
 Number of processes
 ^^^^^^^^^^^^^^^^^^^
 
