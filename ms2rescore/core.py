@@ -237,7 +237,9 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     )
 
     if config["write_rescoring_tables"]:
-        rescoring.write_rescoring_tables(before_result, after_result, output_file_root)
+        rescoring.write_rescoring_tables(
+            before_result, after_result, output_file_root, after_report_result
+        )
 
     # Write output
     logger.info(f"Writing output to {output_file_root}.psms.tsv...")

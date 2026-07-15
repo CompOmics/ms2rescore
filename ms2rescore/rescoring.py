@@ -68,6 +68,20 @@ def build_features_dataframe(
     return features_df
 
 
+def _attach_run(psm_list: PSMList, result: RescoreResult) -> RescoreResult:
+    """
+    Attach each PSM's ``run`` onto ``result.psms``.
+
+    ``ristretto``'s output schema has no room for extra passthrough columns, so this is
+    added afterwards, using the same original-row-order-preserving index that
+    ``result.psms`` is guaranteed to carry. Lets the report merge PSMs by ``(run,
+    spectrum_id)`` instead of ``spectrum_id`` alone, which can collide across input files.
+
+    """
+    runs = [psm.run for psm in psm_list]
+    return replace(result, psms=result.psms.assign(run=[runs[i] for i in result.psms.index]))
+
+
 def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     """
     Evaluate the PSMs' current (pre-rescoring) score with ristretto, for report baselines.
@@ -80,13 +94,14 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     """
     train_fdr = config["rescoring"]["train_fdr"] if config["rescoring"] else 0.01
     features_df = build_features_dataframe(psm_list, set(), infer_score_direction(psm_list, train_fdr))
-    return ristretto.evaluate(
+    result = ristretto.evaluate(
         features_df,
         peptide_col="peptide",
         protein_col="protein" if "protein" in features_df.columns else None,
         decoy_pattern=config["id_decoy_pattern"],
         multi_rank_rescoring=False,
     )
+    return _attach_run(psm_list, result)
 
 
 def rescore(
@@ -111,6 +126,7 @@ def rescore(
         ``max_psm_rank_output == 1``.
 
     """
+    original_psm_list = psm_list
     feature_names = {f for psm in psm_list for f in psm.rescoring_features}
     lower_score_is_better = infer_score_direction(psm_list, config["rescoring"]["train_fdr"])
     features_df = build_features_dataframe(psm_list, feature_names, lower_score_is_better)
@@ -174,10 +190,13 @@ def rescore(
     psm_list.set_ranks(lower_score_better=False)
 
     psm_list, final_result = fix_constant_pep(psm_list, final_result)
+    final_result = _attach_run(original_psm_list, final_result)
     if report_result is None:
         # max_psm_rank_output == 1: the report view is the same competition as the final
         # result, so it must reflect the same fix_constant_pep filtering.
         report_result = final_result
+    else:
+        report_result = _attach_run(original_psm_list, report_result)
 
     _write_group_metadata(psm_list, final_result.psms, final_result.peptidoforms, "peptidoform")
     if final_result.peptides is not None:
@@ -230,11 +249,25 @@ def _write_group_metadata(
 
 
 def write_rescoring_tables(
-    before: RescoreResult, after: RescoreResult, output_file_root: str
+    before: RescoreResult,
+    after: RescoreResult,
+    output_file_root: str,
+    after_report: Optional[RescoreResult] = None,
 ) -> None:
-    """Write before/after rescoring result tables to Parquet files."""
+    """
+    Write before/after rescoring result tables to Parquet files.
+
+    ``after_report`` is only written (as a separate ``after_report`` suffix) when it differs
+    from ``after`` -- i.e. when ``max_psm_rank_output > 1`` and the real output is a
+    multi-rank result, but the report needs its own always-rank-1 view. When
+    ``max_psm_rank_output == 1``, ``after`` already *is* the report view, so no extra files
+    are written.
+
+    """
     _write_result_tables(before, output_file_root, "before")
     _write_result_tables(after, output_file_root, "after")
+    if after_report is not None and after_report is not after:
+        _write_result_tables(after_report, output_file_root, "after_report")
     after.feature_weights.to_parquet(f"{output_file_root}.ristretto.weights.parquet")
 
 
