@@ -3,6 +3,7 @@ import logging
 from multiprocessing import cpu_count
 from typing import Dict, Optional
 
+import numpy as np
 import psm_utils.io
 from psm_utils import PSMList
 
@@ -12,6 +13,7 @@ from ms2rescore.parse_psms import parse_psms
 from ms2rescore.parse_spectra import MSDataType, add_precursor_values, annotate_spectra
 from ms2rescore.report import generate
 from ms2rescore.report.data import ReportData
+from ms2rescore.utils import spectrum_usi
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,23 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Evaluate PSMs' pre-rescoring score with ristretto, for report baselines
     before_result = rescoring.evaluate_before(psm_list, config)
-    n_id_before = ((before_result.psms["qvalue"] <= 0.01) & ~before_result.psms["is_decoy"]).sum()
+    if config["rename_to_usi"]:
+        # rename_to_usi hasn't run yet (must stay after spectrum-file matching below, which
+        # needs the native spectrum_id) -- but before_result's spectrum_id must end up in the
+        # same representation the final psm_list/report will use, or the report merge can't
+        # match rows by spectrum. Remap it now, while psm_list is still natively-identified.
+        usi_by_position = [spectrum_usi(psm) for psm in psm_list]
+        before_result.psms["spectrum_id"] = [
+            usi_by_position[i] for i in before_result.psms.index
+        ]
+    original_psm_mask = np.array(
+        [psm.metadata.get("original_psm", True) for psm in psm_list]
+    )
+    n_id_before = (
+        (before_result.psms["qvalue"] <= 0.01)
+        & ~before_result.psms["is_decoy"]
+        & original_psm_mask[before_result.psms.index.to_numpy()]
+    ).sum()
     logger.info(f"Found {n_id_before} identified PSMs at 1% FDR before rescoring.")
 
     # Define feature names; get existing feature names from PSM file
@@ -172,7 +190,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     # Rename PSMs to USIs if requested
     if config["rename_to_usi"]:
         logging.debug(f"Creating USIs for {len(psm_list)} PSMs")
-        psm_list["spectrum_id"] = [psm.get_usi(as_url=False) for psm in psm_list]
+        psm_list["spectrum_id"] = [spectrum_usi(psm) for psm in psm_list]
 
     # If no rescoring is configured or DEBUG, write PSMs and features to PIN file
     if config["rescoring"] is None or config["log_level"] == "debug":
@@ -190,7 +208,9 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Rescore PSMs
     try:
-        psm_list, after_result = rescoring.rescore(psm_list, config, output_file_root)
+        psm_list, after_result, after_report_result = rescoring.rescore(
+            psm_list, config, output_file_root
+        )
     except (
         Exception,
         KeyboardInterrupt,
@@ -204,9 +224,11 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         # Reraise exception
         raise
 
-    # Post-rescoring processing
-    psm_list = rescoring.fix_constant_pep(psm_list)
-    n_after = ((after_result.psms["qvalue"] <= 0.01) & ~after_result.psms["is_decoy"]).sum()
+    # Post-rescoring processing. Rank-1-competed counts (after_report_result), so this is
+    # directly comparable to n_id_before regardless of max_psm_rank_output.
+    n_after = (
+        (after_report_result.psms["qvalue"] <= 0.01) & ~after_report_result.psms["is_decoy"]
+    ).sum()
     n_before = n_id_before
     diff = n_after - n_before
     diff_perc = f" ({diff / n_before:.2%})" if n_before > 0 else ""
@@ -231,11 +253,12 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             only_target=True,  # TODO: Make FDR threshold configurable
         )
 
-    # Write report
+    # Write report. Always uses the rank-1-competed before/after results (after_report_result),
+    # even if max_psm_rank_output > 1: the report is a single-best-PSM-per-spectrum view.
     if config["write_report"]:
         try:
             report_data = ReportData.from_run(
-                psm_list, feature_names, configuration, before_result, after_result
+                psm_list, feature_names, configuration, before_result, after_report_result
             )
             generate.generate_report(output_file_root, report_data)
         except exceptions.ReportGenerationError as e:

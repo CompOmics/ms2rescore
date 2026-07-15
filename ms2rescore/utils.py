@@ -6,11 +6,28 @@ from typing import Optional, Union
 import numpy as np
 
 from ms2rescore_rs import is_supported_file_type
-from psm_utils import PSMList
+from psm_utils import PSM, PSMList
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError
 
 logger = logging.getLogger(__name__)
+
+
+def spectrum_usi(psm: PSM) -> str:
+    """
+    Build a spectrum-only USI, without the peptidoform/charge section.
+
+    Unlike :py:meth:`psm_utils.psm.PSM.get_usi`, this omits the peptidoform, so the result
+    stays the same for every candidate PSM of the same physical spectrum. Still a legal,
+    resolvable (uninterpreted) USI per the PSI spec -- just referencing the spectrum rather
+    than one specific peptide-spectrum-match interpretation of it.
+
+    Baking the peptidoform into ``spectrum_id`` would break ristretto's spectrum-grouped
+    competition (keyed on ``spectrum_id``), which would then see every candidate
+    peptidoform for a spectrum as its own singleton group.
+
+    """
+    return f"mzspec:{psm.collection}:{psm.run}:scan:{psm.spectrum_id}"
 
 
 def infer_spectrum_path(

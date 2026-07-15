@@ -11,6 +11,7 @@ to serve MS²Rescore. It takes a plain :py:class:`pandas.DataFrame` in and retur
 import logging
 import re
 from concurrent.futures import BrokenExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, Optional, Set, Tuple
 
@@ -72,8 +73,9 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     Evaluate the PSMs' current (pre-rescoring) score with ristretto, for report baselines.
 
     Called right after :py:func:`~ms2rescore.parse_psms.parse_psms`, before any feature
-    generator runs. Uses the same competition mode as the final rescoring result
-    (``max_psm_rank_output == 1``) so before/after counts are directly comparable.
+    generator runs. Always competes to one best PSM per spectrum, regardless of
+    ``max_psm_rank_output``: the report is always a rank-1, one-row-per-spectrum view, so
+    this is directly comparable to :py:func:`rescore`'s ``report_result``.
 
     """
     train_fdr = config["rescoring"]["train_fdr"] if config["rescoring"] else 0.01
@@ -83,13 +85,13 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
         peptide_col="peptide",
         protein_col="protein" if "protein" in features_df.columns else None,
         decoy_pattern=config["id_decoy_pattern"],
-        multi_rank_rescoring=config["max_psm_rank_output"] != 1,
+        multi_rank_rescoring=False,
     )
 
 
 def rescore(
     psm_list: PSMList, config: Dict, output_file_root: str
-) -> Tuple[PSMList, RescoreResult]:
+) -> Tuple[PSMList, RescoreResult, RescoreResult]:
     """
     Rescore PSMs with ristretto and write the new scores, q-values, and PEPs back to ``psm_list``.
 
@@ -100,9 +102,13 @@ def rescore(
 
     Returns
     -------
-    tuple[PSMList, RescoreResult]
-        The (possibly filtered) PSMList with updated scores, and the final
-        competition/FDR result.
+    tuple[PSMList, RescoreResult, RescoreResult]
+        The (possibly filtered) PSMList with updated scores; the final competition/FDR
+        result respecting ``max_psm_rank_output`` (matches ``psm_list`` and the written
+        output files); and a report-view result always competed to one PSM per spectrum,
+        for the HTML report and identification counts, regardless of
+        ``max_psm_rank_output``. The two results are the same object when
+        ``max_psm_rank_output == 1``.
 
     """
     feature_names = {f for psm in psm_list for f in psm.rescoring_features}
@@ -132,15 +138,29 @@ def rescore(
             output_rank = ml_psms.groupby("spectrum_id")["score"].rank(
                 method="first", ascending=False
             )
-            ml_psms = ml_psms[output_rank <= config["max_psm_rank_output"]]
+            output_ml_psms = ml_psms[output_rank <= config["max_psm_rank_output"]]
+        else:
+            output_ml_psms = ml_psms
 
         final_result = ristretto.evaluate(
-            ml_psms,
+            output_ml_psms,
             peptide_col=peptide_col,
             protein_col=protein_col,
             decoy_pattern=decoy_pattern,
             multi_rank_rescoring=config["max_psm_rank_output"] != 1,
         )
+        report_result = None
+        if config["max_psm_rank_output"] > 1:
+            # Separate, always-rank-1 competition on the full (pre-trim) ML scores, purely
+            # for the report -- independent of how many ranks per spectrum the user wants
+            # in the actual output.
+            report_result = ristretto.evaluate(
+                ml_psms,
+                peptide_col=peptide_col,
+                protein_col=protein_col,
+                decoy_pattern=decoy_pattern,
+                multi_rank_rescoring=False,
+            )
     except (RuntimeError, BrokenExecutor, ValueError) as e:
         raise RescoringError("Ristretto could not be run. Please check the input data.") from e
 
@@ -152,6 +172,12 @@ def rescore(
     psm_list["qvalue"] = final_result.psms["qvalue"].to_numpy()
     psm_list["pep"] = final_result.psms["pep"].to_numpy()
     psm_list.set_ranks(lower_score_better=False)
+
+    psm_list, final_result = fix_constant_pep(psm_list, final_result)
+    if report_result is None:
+        # max_psm_rank_output == 1: the report view is the same competition as the final
+        # result, so it must reflect the same fix_constant_pep filtering.
+        report_result = final_result
 
     _write_group_metadata(psm_list, final_result.psms, final_result.peptidoforms, "peptidoform")
     if final_result.peptides is not None:
@@ -169,7 +195,7 @@ def rescore(
             psm_list, final_result.psms, final_result.proteins, "protein", decoy_pattern
         )
 
-    return psm_list, final_result
+    return psm_list, final_result, report_result
 
 
 def _write_group_metadata(
@@ -224,10 +250,19 @@ def _write_result_tables(result: RescoreResult, output_file_root: str, suffix: s
         result.proteins.to_parquet(Path(f"{output_file_root}.ristretto.proteins_{suffix}.parquet"))
 
 
-def fix_constant_pep(psm_list: PSMList) -> PSMList:
-    """Workaround for broken PEP calculation if the best-scoring PSM is a decoy."""
+def fix_constant_pep(
+    psm_list: PSMList, result: RescoreResult
+) -> Tuple[PSMList, RescoreResult]:
+    """
+    Workaround for broken PEP calculation if the best-scoring PSM is a decoy.
+
+    Filters ``psm_list`` and ``result.psms`` together (same length, same row order) so they
+    never desync -- callers (parquet tables, report, 1%-FDR counts) all keep seeing the same
+    PSM population as the returned ``psm_list``.
+
+    """
     if not all(psm_list["pep"] == 1.0):
-        return psm_list
+        return psm_list, result
 
     logger.warning(
         "Attempting to fix constant PEP values by removing decoy PSMs that score higher than the "
@@ -238,8 +273,8 @@ def fix_constant_pep(psm_list: PSMList) -> PSMList:
 
     if not higher_scoring_decoys.any():
         logger.warning("No decoys scoring higher than the best target found. Skipping fix.")
-    else:
-        psm_list = psm_list[~higher_scoring_decoys]
-        logger.warning(f"Removed {higher_scoring_decoys.sum()} decoy PSMs.")
+        return psm_list, result
 
-    return psm_list
+    keep = ~higher_scoring_decoys
+    logger.warning(f"Removed {higher_scoring_decoys.sum()} decoy PSMs.")
+    return psm_list[keep], replace(result, psms=result.psms[keep])
