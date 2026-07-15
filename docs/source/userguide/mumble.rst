@@ -129,7 +129,7 @@ How Mumble PSMs are filtered
 Adding candidate PSMs for every matching modification can introduce many low-quality
 candidates, especially with a larger ``combination_length`` or ``all_unimod_modifications``
 enabled. To limit this, MS²Rescore removes any Mumble-generated candidate PSM whose fraction of
-matched fragment ions (``matched_ions_pct``) drops more than 25% below that of the original,
+matched fragment ions (``matched_ions_pct``) drops more than 50% below that of the original,
 unmodified PSM, *before* rescoring. This keeps the candidate set focused on modifications that
 are actually well-supported by the fragmentation spectrum, without requiring extra
 configuration.
