@@ -670,16 +670,17 @@ class RescoringConfiguration(ctk.CTkFrame):
         self.train_fdr.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
         row_n += 1
 
-        self.write_rescoring_tables = widgets.LabeledSwitch(
+        self.model = widgets.LabeledOptionMenu(
             self,
-            label="Write rescoring result tables",
+            label="Rescoring model",
             description=(
-                "Write ristretto's before/after PSM, peptide, and (optional) protein result "
-                "tables, plus feature weights, to Parquet files."
+                "'svm': iterative Percolator-style SVM (default). 'lda': single-pass Fisher "
+                "LDA, faster but less powerful on hard-to-separate datasets."
             ),
-            default=True,
+            values=["svm", "lda"],
+            default_value="svm",
         )
-        self.write_rescoring_tables.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
+        self.model.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
         row_n += 1
 
     def get(self) -> Dict:
@@ -694,10 +695,7 @@ class RescoringConfiguration(ctk.CTkFrame):
         else:
             train_fdr = float(train_fdr_str)
 
-        return {
-            "rescoring": {"train_fdr": train_fdr},
-            "write_rescoring_tables": self.write_rescoring_tables.get(),
-        }
+        return {"rescoring": {"train_fdr": train_fdr, "model": self.model.get()}}
 
 
 class UpdateDialog(PopupWindow):

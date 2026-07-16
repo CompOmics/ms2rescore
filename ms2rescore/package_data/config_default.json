@@ -14,7 +14,8 @@
         },
         "psm_generator": {},
         "rescoring": {
-            "train_fdr": 0.01
+            "train_fdr": 0.01,
+            "model": "svm"
         },
         "config_file": null,
         "psm_file": null,
@@ -35,7 +36,6 @@
         "processes": -1,
         "rename_to_usi": false,
         "write_flashlfq": false,
-        "write_rescoring_tables": true,
         "write_report": false,
         "fragmentation_model": "cidhcd",
         "tolerance_value": 0.02,

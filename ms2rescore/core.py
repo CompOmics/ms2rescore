@@ -226,8 +226,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         f"Identified {diff:+d}{diff_perc} PSMs at 1% FDR after rescoring, compared to before."
     )
 
-    if config["write_rescoring_tables"]:
-        rescoring.write_rescoring_tables(after_result, output_file_root)
+    rescoring.write_rescoring_tables(after_result, output_file_root)
 
     # Write output
     logger.info(f"Writing output to {output_file_root}.psms.tsv...")

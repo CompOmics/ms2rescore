@@ -212,6 +212,7 @@ def rescore(psm_list: PSMList, config: Dict, output_file_root: str) -> Tuple[PSM
             protein_col=protein_col,
             feature_cols=sorted(feature_names),
             decoy_pattern=decoy_pattern,
+            model=config["rescoring"]["model"],
             train_fdr=config["rescoring"]["train_fdr"],
             n_jobs=int(config["processes"]),
             multi_rank_rescoring=True,

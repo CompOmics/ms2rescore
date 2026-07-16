@@ -10,7 +10,7 @@
     - **`deeplc`**: Refer to *[#/definitions/deeplc](#definitions/deeplc)*.
     - **`im2deep`**: Refer to *[#/definitions/im2deep](#definitions/im2deep)*.
     - **`ms2`**: Refer to *[#/definitions/ms2](#definitions/ms2)*.
-  - **`rescoring`**: Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features. Default: `{"train_fdr": 0.01}`.
+  - **`rescoring`**: Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features. Default: `{"train_fdr": 0.01, "model": "svm"}`.
     - **One of**
       - : Refer to *[#/definitions/rescoring](#definitions/rescoring)*.
       - *null*
@@ -68,10 +68,6 @@
     - **One of**
       - *boolean*
       - *null*
-  - **`write_rescoring_tables`**: Write ristretto's before/after rescoring result tables (PSMs, peptidoforms, peptides, proteins, feature weights) to Parquet files. Default: `true`.
-    - **One of**
-      - *boolean*
-      - *null*
   - **`write_report`**: Write an HTML report with various QC metrics and charts. Default: `true`.
     - **One of**
       - *boolean*
@@ -92,6 +88,7 @@
 - <a id="definitions/feature_generator"></a>**`feature_generator`** *(object)*: Feature generator configuration. Can contain additional properties.
 - <a id="definitions/rescoring"></a>**`rescoring`** *(object)*: Ristretto rescoring configuration. Cannot contain additional properties.
   - **`train_fdr`** *(number)*: FDR threshold used during ristretto's semi-supervised training. Minimum: `0`. Maximum: `1`. Default: `0.01`.
+  - **`model`** *(string)*: Model used for ristretto's semi-supervised rescoring: 'svm' (iterative Percolator-style SVM, default) or 'lda' (single-pass Fisher LDA, faster but less powerful on hard datasets). Must be one of: `["svm", "lda"]`. Default: `"svm"`.
 - <a id="definitions/psm_generator"></a>**`psm_generator`** *(object)*: Additional PSM feature generator configuration. Can contain additional properties.
 - <a id="definitions/basic"></a>**`basic`** *(object)*: Basic feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/ms2pip"></a>**`ms2pip`** *(object)*: MS²PIP feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.

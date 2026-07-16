@@ -14,7 +14,8 @@
             "ms2": {}
         },
         "rescoring": {
-            "train_fdr": 0.01
+            "train_fdr": 0.01,
+            "model": "svm"
         },
         "psm_file": null
     }

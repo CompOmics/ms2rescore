@@ -36,7 +36,7 @@ Log and configuration files:
 |                                      | used to resume processing with ``-p <prefix>.intermediate.psms.tsv -t tsv``.         |
 +--------------------------------------+--------------------------------------------------------------------------------------+
 
-Rescoring result tables (written if ``write_rescoring_tables`` is enabled, the default): the
+Rescoring result tables (always written): the
 post-rescoring score, q-value, and PEP at each identification level, as plain TSV files --
 convenient to open directly (e.g. in Excel), unlike the full PSM list output above, which also
 includes rescoring features and other provenance data. The protein-level table is only written

@@ -7,7 +7,6 @@
         },
         "log_level": "debug",
         "processes": 16,
-        "write_rescoring_tables": true,
         "rescoring": {
             "train_fdr": 0.01
         }

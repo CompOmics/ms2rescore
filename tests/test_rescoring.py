@@ -11,8 +11,7 @@ BASE_CONFIG = {
     "id_decoy_pattern": None,
     "max_psm_rank_output": 1,
     "processes": 1,
-    "rescoring": {"train_fdr": 0.1},
-    "write_rescoring_tables": True,
+    "rescoring": {"train_fdr": 0.1, "model": "svm"},
 }
 
 
@@ -181,6 +180,17 @@ def test_rescore_writes_scores_and_metadata():
         assert "peptidoform_score" in psm.metadata
         assert "peptidoform_qvalue" in psm.metadata
         assert "protein_score" in psm.metadata  # protein_list present in fixture
+
+
+def test_rescore_respects_configured_model():
+    psm_list = _make_psm_list(n_spectra=30, seed=18)
+    config = {**BASE_CONFIG, "rescoring": {"train_fdr": 0.1, "model": "lda"}}
+
+    new_psm_list, after_result = rescoring.rescore(psm_list, config, "unused-output-root")
+
+    assert len(new_psm_list) == len(after_result.psms)
+    q = after_result.psms["qvalue"].to_numpy()
+    assert ((q >= 0) & (q <= 1)).all()
 
 
 def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():

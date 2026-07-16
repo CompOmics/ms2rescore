@@ -43,7 +43,7 @@
                 "rescoring": {
                     "description": "Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features.",
                     "oneOf": [{ "$ref": "#/definitions/rescoring" }, { "type": "null" }],
-                    "default": { "train_fdr": 0.01 }
+                    "default": { "train_fdr": 0.01, "model": "svm" }
                 },
                 "psm_generator": {
                     "description": "PSM generator and their configuration.",
@@ -160,11 +160,6 @@
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": false
                 },
-                "write_rescoring_tables": {
-                    "description": "Write ristretto's before/after rescoring result tables (PSMs, peptidoforms, peptides, proteins, feature weights) to Parquet files",
-                    "oneOf": [{ "type": "boolean" }, { "type": "null" }],
-                    "default": true
-                },
                 "write_report": {
                     "description": "Write an HTML report with various QC metrics and charts",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -218,6 +213,12 @@
                     "minimum": 0,
                     "maximum": 1,
                     "default": 0.01
+                },
+                "model": {
+                    "description": "Model used for ristretto's semi-supervised rescoring: 'svm' (iterative Percolator-style SVM, default) or 'lda' (single-pass Fisher LDA, faster but less powerful on hard datasets)",
+                    "type": "string",
+                    "enum": ["svm", "lda"],
+                    "default": "svm"
                 }
             }
         },
