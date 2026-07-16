@@ -64,6 +64,15 @@ and a ``protein_list``, respectively):
 | ``<prefix>.ristretto.weights.parquet``             | Feature weights, showing feature usage in the rescoring run.     |
 +----------------------------------------------------+------------------------------------------------------------------+
 
+If ``max_psm_rank_output`` is set to more than 1, the ``..._psms_after.parquet``,
+``..._peptidoforms_after.parquet``, ``..._peptides_after.parquet``, and
+``..._proteins_after.parquet`` files above reflect the full multi-rank output. In that case,
+an additional set of ``..._after_report.parquet`` files is also written, holding the
+same identification levels but always competed down to one PSM per spectrum -- this is the
+view used by ``<prefix>.report.html``, so that the report stays comparable to the
+``max_psm_rank_output: 1`` case regardless of how many ranks per spectrum are kept in the
+main output.
+
 If rescoring is disabled (``"rescoring": null``) or in DEBUG mode, the following files will also
 be written:
 
