@@ -27,6 +27,22 @@ Or, in a fresh `conda environment <https://docs.conda.io/projects/conda/en/lates
 Bioconda packages are only available for Linux and macOS.
 
 
+Optional dependencies
+=====================
+
+Some features require additional dependencies that are not installed by default. Install them
+with the relevant extra, for example:
+
+.. code-block:: bash
+
+    pip install ms2rescore[mumble]
+
+- ``mumble``: enables the `Mumble <https://github.com/compomics/mumble>`_ PSM generator, which
+  proposes candidate modifications for PSMs with an unresolved precursor mass shift. Mumble is
+  **beta** software; see :ref:`Open modification searching with Mumble` before enabling it.
+- ``idxml``: enables reading OpenMS idXML PSM files.
+
+
 Windows installer
 =================
 

@@ -293,24 +293,44 @@
         },
         "mumble": {
             "$ref": "#/definitions/psm_generator",
-            "description": "Mumble PSM generator configuration",
+            "description": "Mumble PSM generator configuration. Mumble proposes candidate Unimod modifications that explain each PSM's precursor mass shift (open-modification-search style). Requires the optional `mumble` dependency (`pip install ms2rescore[mumble]`). Mumble is still under active development (beta): review results and expect occasional errors, especially on unusual input.",
             "type": "object",
             "additionalProperties": true,
             "properties": {
                 "aa_combinations": {
-                    "description": "Additional amino acid combinations to consider as mass shift",
+                    "description": "Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low.",
                     "type": "integer",
                     "default": 0
                 },
-                "fasta_file": {
-                    "description": "Maximum number of modifications per peptide",
-                    "oneOf": [{ "type": "string" }, { "type": "null" }],
+                "combination_length": {
+                    "description": "Maximum number of modifications to combine per mass shift. Lower combination lengths are always included as well.",
+                    "type": "integer",
+                    "default": 1
+                },
+                "exclude_mutations": {
+                    "description": "Exclude candidate modifications classified as amino acid substitutions.",
+                    "type": "boolean",
                     "default": false
                 },
+                "fasta_file": {
+                    "description": "Path to a FASTA file with protein sequences, used to validate amino acid combination candidates. Required if `aa_combinations` is greater than 0.",
+                    "oneOf": [{ "type": "string" }, { "type": "null" }],
+                    "default": null
+                },
                 "mass_error": {
-                    "description": "mass error in Da",
+                    "description": "Mass error tolerance in Da used to match a PSM's mass shift to a candidate modification.",
                     "type": "number",
-                    "default": 0.2
+                    "default": 0.02
+                },
+                "modification_file": {
+                    "description": "Path to a restriction list of Unimod modifications to consider (TSV with `unimod_id`/`name`, and optionally `residue`, columns). Defaults to a curated subset bundled with Mumble. Ignored if `all_unimod_modifications` is true.",
+                    "oneOf": [{ "type": "string" }, { "type": "null" }],
+                    "default": null
+                },
+                "all_unimod_modifications": {
+                    "description": "Consider all Unimod modifications instead of the restricted default/`modification_file` list. Substantially increases runtime and the risk of false-positive candidate modifications.",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         }

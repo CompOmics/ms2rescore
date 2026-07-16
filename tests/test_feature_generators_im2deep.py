@@ -105,3 +105,28 @@ def test_no_target_psms_raises_on_calibration():
     psm_list = _make_psm_list(is_decoy=True)
     with pytest.raises(ValueError, match="no target PSMs"):
         IM2DeepFeatureGenerator(processes=1).add_features(psm_list)
+
+
+def test_get_im_calibration_data_excludes_mumble_psms():
+    """Mumble-generated candidate PSMs (original_psm=False) are unconfirmed and must never enter
+    the calibration set, even if they carry a high-confidence qvalue copied from the original
+    hit."""
+    import pandas as pd
+
+    run_df = pd.DataFrame(
+        {
+            "peptidoform": ["A", "B", "C"],
+            "ccs_observed_im2deep": [500.0, 999.0, 520.0],
+            "qvalue": [0.001, 0.001, 0.005],
+            "is_decoy": [False, False, False],
+            # "B" is a Mumble mass-shift candidate sharing the original's qvalue.
+            "original_psm": [True, False, True],
+        }
+    )
+
+    gen = IM2DeepFeatureGenerator()
+    gen.calibration_set_size = None
+    calibration_df = gen._get_im_calibration_data(run_df)
+
+    assert list(calibration_df["peptidoform"]) == ["A", "C"]
+    assert list(calibration_df["CCS"]) == [500.0, 520.0]

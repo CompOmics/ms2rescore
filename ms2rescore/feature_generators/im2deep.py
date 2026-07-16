@@ -20,6 +20,7 @@ from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
+from ms2rescore.utils import get_original_hit_mask
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         Parameters
         ----------
         processes : int, optional
-            Number of parallel processes to use for IM2Deep predictions. Default is 1.
+            Number of threads to use for IM2Deep predictions. Default is 1.
         **kwargs : dict, optional
             Additional keyword arguments to `im2deep.predict_ccs`.
 
@@ -65,9 +66,11 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
         # Prepare IM2Deep predict kwargs
         self.predict_kwargs = {
-            k: v for k, v in self.im2deep_kwargs.items() if k in ["device", "batch_size"]
+            k: v
+            for k, v in self.im2deep_kwargs.items()
+            if k in ["device", "batch_size", "num_threads"]
         }
-        self.predict_kwargs["num_workers"] = processes
+        self.predict_kwargs["num_threads"] = processes if processes > 0 else None
 
     @property
     def feature_names(self) -> List[str]:
@@ -84,7 +87,11 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
         logger.info("Adding IM2Deep-derived features to PSMs")
 
+        # Mumble-generated candidate PSMs are unconfirmed mass-shift explanations and must never
+        # be used to calibrate IM2Deep, only the original search engine hits can.
+        original_hit_mask = get_original_hit_mask(psm_list)
         psm_list_df = psm_list.to_dataframe()
+        psm_list_df["original_psm"] = original_hit_mask
         psm_list_df = psm_list_df[
             [
                 "peptidoform",
@@ -94,6 +101,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
                 "qvalue",
                 "is_decoy",
                 "metadata",
+                "original_psm",
             ]
         ]
 
@@ -164,21 +172,22 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
     def _get_im_calibration_data(self, run_df) -> pd.DataFrame:
         """Get calibration data (observed and predicted CCS values) from run dataframe.
 
-        Only target (non-decoy) PSMs are used for calibration.
+        Only target (non-decoy), original (non-Mumble) PSMs are used for calibration.
 
         Parameters
         ----------
         run_df : pd.DataFrame
             Dataframe containing PSMs for a single run, with columns:
-            'ccs_observed_im2deep', 'ccs_predicted_im2deep', 'qvalue', 'is_decoy'
+            'ccs_observed_im2deep', 'ccs_predicted_im2deep', 'qvalue', 'is_decoy', 'original_psm'
 
         Returns
         -------
         pd.DataFrame
             DataFrame with 'peptidoform' and 'CCS' columns for calibration.
         """
-        # Filter to target PSMs only
-        target_df = run_df[~run_df["is_decoy"]].copy()
+        # Filter to target, original-hit PSMs only. Mumble candidates are unconfirmed mass-shift
+        # explanations and must not calibrate the model.
+        target_df = run_df[~run_df["is_decoy"] & run_df["original_psm"]].copy()
         target_df = target_df.sort_values("qvalue", ascending=True)
 
         # Determine number of calibration PSMs

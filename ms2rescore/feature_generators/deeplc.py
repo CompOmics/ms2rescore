@@ -29,6 +29,7 @@ from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
+from ms2rescore.utils import get_original_hit_mask
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,11 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         warnings.filterwarnings("ignore", category=UserWarning, module="deeplc._features")
 
         logger.info("Adding DeepLC-derived features to PSMs.")
+        # Mumble-generated candidate PSMs are unconfirmed mass-shift explanations and must never
+        # be used to calibrate or fine-tune DeepLC, only the original search engine hits can.
+        original_hit_mask = get_original_hit_mask(psm_list)
         psm_list_df = psm_list.to_dataframe()
+        psm_list_df["original_psm"] = original_hit_mask
         psm_list_df = psm_list_df[
             [
                 "peptidoform",
@@ -136,13 +141,16 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
                 "run",
                 "qvalue",
                 "is_decoy",
+                "original_psm",
             ]
         ]
         psm_list_df["sequence"] = psm_list_df["peptidoform"].apply(lambda x: x.modified_sequence)
 
         if self.deeplc_kwargs["deeplc_retrain"]:
             # Filter high-confidence target PSMs once for transfer learning
-            target_mask = (psm_list["qvalue"] <= 0.01) & (~psm_list["is_decoy"])
+            target_mask = (
+                (psm_list["qvalue"] <= 0.01) & (~psm_list["is_decoy"]) & original_hit_mask
+            )
             target_psms = psm_list[target_mask]
 
             # Determine best run for transfer learning
@@ -244,22 +252,23 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
     def _get_calibration_data(self, run_df) -> tuple[np.ndarray, np.ndarray]:
         """Get calibration data (pred_matrix row indices and observed RTs) from run dataframe.
 
-        Only target (non-decoy) PSMs are used for calibration.
+        Only target (non-decoy), original (non-Mumble) PSMs are used for calibration.
 
         Parameters
         ----------
         run_df : pd.DataFrame
             Dataframe containing PSMs for a single run, pre-sorted by qvalue ascending, with a
             positional index into the prediction matrix and columns: 'retention_time', 'qvalue',
-            'is_decoy'
+            'is_decoy', 'original_psm'
 
         Returns
         -------
         tuple[np.ndarray, np.ndarray]
             Row indices (into pred_matrix) and observed retention times for calibration
         """
-        # Filter to target PSMs only (run_df is pre-sorted by qvalue)
-        target_df = run_df[~run_df["is_decoy"]]
+        # Filter to target, original-hit PSMs only (run_df is pre-sorted by qvalue). Mumble
+        # candidates are unconfirmed mass-shift explanations and must not calibrate the model.
+        target_df = run_df[~run_df["is_decoy"] & run_df["original_psm"]]
 
         # Determine number of calibration PSMs
         if isinstance(self.calibration_set_size, float):

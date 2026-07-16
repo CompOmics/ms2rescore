@@ -1122,7 +1122,7 @@ wheels = [
 
 [[package]]
 name = "im2deep"
-version = "2.0.0"
+version = "2.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1134,9 +1134,9 @@ dependencies = [
     { name = "rich" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/64/0ce3b325dbbf9730f1f70aa4fd70e071c1fcd4c132f96d552580e1f58ef0/im2deep-2.0.0.tar.gz", hash = "sha256:e7d09fd13200d7f9da69e12f5a3de4d980bf68589edd739d7c7b80728fa173ba", size = 70314614, upload-time = "2026-07-13T14:05:12.716Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/de/b2d9316b96921e7edb02bf43499292930c30869fc4f3a30dcb127e7856d9/im2deep-2.0.1.tar.gz", hash = "sha256:61eb57ab7a6b9c3ab78a0ddabafc82ec3665c9fe75d529142acc64f942093651", size = 70314037, upload-time = "2026-07-15T14:55:12.791Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/b1/b947c423715f9ebeacbf5e94a9188ac7f555f9686a8737b612bb690588b1/im2deep-2.0.0-py3-none-any.whl", hash = "sha256:a603f7b1ffa6539c527b136ae81113031c488feb142dafe1e4415402063aff1e", size = 70315338, upload-time = "2026-07-13T14:05:06.974Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/bf/8ed48c85e473a857e98c29560bd7c48f95e8d57b6bbc107499fb0dbf3fdc/im2deep-2.0.1-py3-none-any.whl", hash = "sha256:5af1693e54e86515dbbd62ecf7fbae9a0c9db6a9ebfe1de61fb9badc218e6657", size = 70315825, upload-time = "2026-07-15T14:55:09.256Z" },
 ]
 
 [[package]]
@@ -1919,12 +1919,12 @@ requires-dist = [
     { name = "click", specifier = ">=7" },
     { name = "customtkinter", specifier = ">=5,<6" },
     { name = "deeplc", specifier = ">=4.0.0b1" },
-    { name = "im2deep", specifier = ">=2.0.0" },
+    { name = "im2deep", specifier = ">=2.0.1" },
     { name = "jinja2", specifier = ">=3" },
     { name = "lxml", specifier = ">=4.5" },
     { name = "ms2pip", specifier = ">=4.2.0" },
     { name = "ms2rescore-rs", specifier = ">=0.5.0" },
-    { name = "mumble", marker = "extra == 'mumble'", specifier = ">=0.2.0" },
+    { name = "mumble", marker = "extra == 'mumble'", specifier = ">=0.3.0" },
     { name = "numpy", specifier = ">=1.25,<3.0" },
     { name = "packaging", specifier = ">=25.0" },
     { name = "pandas", specifier = ">=1" },
@@ -1960,7 +1960,7 @@ docs = [
 installer = [
     { name = "cbor2" },
     { name = "deeplc", specifier = "==4.0.0b1" },
-    { name = "im2deep", specifier = "==2.0.0" },
+    { name = "im2deep", specifier = "==2.0.1" },
     { name = "ms2rescore-rs", specifier = "==0.5.0" },
     { name = "psm-utils", specifier = "==1.5.2" },
     { name = "pyopenms", specifier = "==3.5" },
@@ -2130,20 +2130,21 @@ wheels = [
 
 [[package]]
 name = "mumble"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "platformdirs" },
     { name = "psm-utils" },
     { name = "pyteomics" },
     { name = "rich" },
     { name = "rustyms" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/d4/6c25f3a04830c13ea5de395722faf567dea53bbb3ff9afc23dfda0a975b7/mumble-0.2.0.tar.gz", hash = "sha256:be62befe66e68b9db82285a28061a917db81bf0fb164b72f214208b26c6a3c39", size = 28065, upload-time = "2025-02-11T15:34:35.102Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/51/bb3c28fc0c802baba035cdc88e74cbdc86e2d2ee8588022f8bdca60c3815/mumble-0.3.0.tar.gz", hash = "sha256:2b03e738a5782e8261a39c979eefb7c6a82c450d0402a3c82717befa66cc8645", size = 627664, upload-time = "2026-07-15T15:44:52.039Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/2e/963baa2f937ca0e43acb556d7996a3e284f6b98953030caab7099aab6d0b/mumble-0.2.0-py3-none-any.whl", hash = "sha256:0a822efe46f84a5b1d673c3ffa68808d36865f80fdcd4bb52e3e1ecddf9868c1", size = 24403, upload-time = "2025-02-11T15:34:32.304Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/c8/50a721978b11511362294394d7b6ad3029933e7edf94865ab5101887a07e/mumble-0.3.0-py3-none-any.whl", hash = "sha256:3e3fbade1ca9d88a2ec24d5ff855c4b5cc4acb977a9a6d9616735d4a5e4cf799", size = 618287, upload-time = "2026-07-15T15:44:50.114Z" },
 ]
 
 [[package]]
