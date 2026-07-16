@@ -176,7 +176,15 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         from ms2rescore.utils import filter_mumble_psms
 
         # Remove PSMs where matched_ions_pct drops 25% below the original hit
-        psm_list = filter_mumble_psms(psm_list, threshold=0.75)
+        psm_list = filter_mumble_psms(psm_list, threshold=0.50)
+
+        if config["max_psm_rank_output"] == 1:
+            logger.warning(
+                "Mumble adds multiple candidate PSMs per spectrum, some of which can end up "
+                "with an identical rescoring score. With `max_psm_rank_output` set to 1, only "
+                "one PSM per spectrum is kept, and which candidate 'wins' a tie is not "
+                "deterministic. See the Mumble user guide for details."
+            )
 
     # Write feature names to file
     _write_feature_names(feature_names, output_file_root)

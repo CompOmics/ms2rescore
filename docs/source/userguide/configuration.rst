@@ -284,6 +284,39 @@ the following configuration can be used:
     max_psm_rank_output = 1
 
 
+Configuring PSM generators
+===========================
+
+In addition to feature generators and rescoring engines, MS²Rescore supports optional *PSM
+generators*, configured through the ``psm_generator`` option. A PSM generator adds candidate
+PSMs to the input before feature generation and rescoring, for example to propose modifications
+that explain an otherwise unresolved precursor mass shift.
+
+Currently, `Mumble <https://github.com/compomics/mumble>`_ is the only available PSM generator:
+
+.. tab:: JSON
+
+  .. code-block:: json
+
+    "psm_generator": {
+      "mumble": {
+        "mass_error": 0.02
+      }
+    }
+
+.. tab:: TOML
+
+  .. code-block:: toml
+
+    [ms2rescore.psm_generator.mumble]
+    mass_error = 0.02
+
+.. warning::
+  Mumble is beta software: it is usable, but occasional errors can still occur, especially on
+  unusual input. See :ref:`Open modification searching with Mumble` for the full configuration
+  reference, integration details, and known limitations.
+
+
 Configuring rescoring
 =====================
 

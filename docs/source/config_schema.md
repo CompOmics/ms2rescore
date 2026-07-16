@@ -105,10 +105,21 @@
 - <a id="definitions/ms2"></a>**`ms2`** *(object)*: MS2 spectrum-based feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/im2deep"></a>**`im2deep`** *(object)*: Ion mobility feature generator configuration using IM2Deep. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`reference_dataset`** *(string)*: Path to IM2Deep reference dataset file. Default: `"Meier_unimod.parquet"`.
-- <a id="definitions/mumble"></a>**`mumble`** *(object)*: Mumble PSM generator configuration. Can contain additional properties. Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
-  - **`aa_combinations`** *(integer)*: Additional amino acid combinations to consider as mass shift. Default: `0`.
-  - **`fasta_file`**: Maximum number of modifications per peptide. Default: `false`.
+- <a id="definitions/mumble"></a>**`mumble`** *(object)*: Mumble PSM generator configuration. Mumble proposes candidate Unimod modifications that explain each PSM's precursor mass shift (open-modification-search style). Requires the optional `mumble` dependency (`pip install ms2rescore[mumble]`). Mumble is still under active development (beta): review results and expect occasional errors, especially on unusual input. Can contain additional properties. Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
+  - **`aa_combinations`** *(integer)*: Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low. Default: `0`.
+  - **`combination_length`** *(integer)*: Maximum number of modifications to combine per mass shift. Lower combination lengths are always included as well. Default: `1`.
+  - **`exclude_mutations`** *(boolean)*: Exclude candidate modifications classified as amino acid substitutions. Default: `false`.
+  - **`fasta_file`**: Path to a FASTA file with protein sequences, used to validate amino acid combination candidates. Required if `aa_combinations` is greater than 0.
     - **One of**
       - *string*
       - *null*
-  - **`mass_error`** *(number)*: mass error in Da. Default: `0.2`.
+  - **`mass_error`** *(number)*: Mass error tolerance in Da used to match a PSM's mass shift to a candidate modification. Default: `0.02`.
+  - **`modification_file`**: Path to a restriction list of Unimod modifications to consider (TSV with `unimod_id`/`name`, and optionally `residue`, columns). Defaults to a curated subset bundled with Mumble. Ignored if `all_unimod_modifications` is true.
+    - **One of**
+      - *string*
+      - *null*
+  - **`all_unimod_modifications`** *(boolean)*: Consider all Unimod modifications instead of the restricted default/`modification_file` list. Substantially increases runtime and the risk of false-positive candidate modifications. Default: `false`.
+- <a id="definitions/mokapot"></a>**`mokapot`** *(object)*: Mokapot rescoring engine configuration. Additional properties are passed to the Mokapot brew function. Can contain additional properties. Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
+  - **`train_fdr`** *(number)*: FDR threshold for training Mokapot. Minimum: `0`. Maximum: `1`. Default: `0.01`.
+  - **`write_weights`** *(boolean)*: Write Mokapot weights to a text file. Default: `false`.
+  - **`write_txt`** *(boolean)*: Write Mokapot results to a text file. Default: `false`.
