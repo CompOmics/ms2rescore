@@ -201,10 +201,6 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         logging.debug(f"Creating USIs for {len(psm_list)} PSMs")
         psm_list["spectrum_id"] = [usi_by_native_id[(psm.run, psm.spectrum_id)] for psm in psm_list]
 
-    if config["rescoring"] is None:
-        logger.info("No rescoring configured. Skipping rescoring.")
-        return None
-
     # Rescore PSMs
     logger.info(f"Rescoring {len(psm_list)} PSMs with ristretto...")
     try:

@@ -40,7 +40,7 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
     # Remove invalid AAs and find decoys first, so score direction can be inferred from them
     psm_list = _remove_invalid_aa(psm_list)
     _find_decoys(psm_list, config["id_decoy_pattern"])
-    train_fdr = config["rescoring"].get("train_fdr", 0.01) if config["rescoring"] else 0.01
+    train_fdr = config["rescoring"].get("train_fdr", 0.01)
     lower_score_is_better = infer_score_direction(psm_list, train_fdr)
 
     # Filter by PSM rank
@@ -185,6 +185,7 @@ def infer_score_direction(psm_list: PSMList, train_fdr: float = 0.01) -> bool:
     features_df = pd.DataFrame(
         {
             "spectrum_id": psm_list["spectrum_id"],
+            "run": psm_list["run"],
             "is_decoy": psm_list["is_decoy"],
             "peptidoform": [str(p) for p in psm_list["peptidoform"]],
             "score": psm_list["score"].astype(float),
@@ -199,7 +200,9 @@ def infer_score_direction(psm_list: PSMList, train_fdr: float = 0.01) -> bool:
         return False
 
     def _n_identified(score: pd.Series) -> int:
-        result = ristretto.evaluate(features_df.assign(score=score), multi_rank_rescoring=False)
+        result = ristretto.evaluate(
+            features_df.assign(score=score), run_col="run", multi_rank_rescoring=False
+        )
         return int(((result.psms["qvalue"] <= train_fdr) & ~result.psms["is_decoy"]).sum())
 
     n_higher_better = _n_identified(features_df["score"])

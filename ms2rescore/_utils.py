@@ -296,7 +296,7 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     original_mask = np.array([_is_original_psm(psm) for psm in psm_list])
     psm_list = psm_list[original_mask]
 
-    train_fdr = config["rescoring"].get("train_fdr", 0.01) if config["rescoring"] else 0.01
+    train_fdr = config["rescoring"].get("train_fdr", 0.01)
     features_df = _build_features_dataframe(
         psm_list, set(), infer_score_direction(psm_list, train_fdr)
     )

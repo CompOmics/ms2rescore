@@ -10,10 +10,7 @@
     - **`deeplc`**: Refer to *[#/definitions/deeplc](#definitions/deeplc)*.
     - **`im2deep`**: Refer to *[#/definitions/im2deep](#definitions/im2deep)*.
     - **`ms2`**: Refer to *[#/definitions/ms2](#definitions/ms2)*.
-  - **`rescoring`**: Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features. Set to {} to use the defaults below. Default: `{"train_fdr": 0.01, "model": "svm"}`.
-    - **One of**
-      - : Refer to *[#/definitions/rescoring](#definitions/rescoring)*.
-      - *null*
+  - **`rescoring`**: Ristretto rescoring configuration. Set to {} to use the defaults below. Refer to *[#/definitions/rescoring](#definitions/rescoring)*. Default: `{"train_fdr": 0.01, "model": "svm"}`.
   - **`psm_generator`** *(object)*: PSM generator and their configuration.
     - **`.*`**: Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
     - **`mumble`**: Refer to *[#/definitions/mumble](#definitions/mumble)*.
@@ -117,7 +114,3 @@
       - *string*
       - *null*
   - **`all_unimod_modifications`** *(boolean)*: Consider all Unimod modifications instead of the restricted default/`modification_file` list. Substantially increases runtime and the risk of false-positive candidate modifications. Default: `false`.
-- <a id="definitions/mokapot"></a>**`mokapot`** *(object)*: Mokapot rescoring engine configuration. Additional properties are passed to the Mokapot brew function. Can contain additional properties. Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
-  - **`train_fdr`** *(number)*: FDR threshold for training Mokapot. Minimum: `0`. Maximum: `1`. Default: `0.01`.
-  - **`write_weights`** *(boolean)*: Write Mokapot weights to a text file. Default: `false`.
-  - **`write_txt`** *(boolean)*: Write Mokapot results to a text file. Default: `false`.

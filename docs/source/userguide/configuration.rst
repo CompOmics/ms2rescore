@@ -341,8 +341,7 @@ accepted PSMs for ristretto's semi-supervised training, a higher value such as 1
       [ms2rescore.rescoring]
       train_fdr = 0.1
 
-Set ``rescoring`` to ``null`` to skip rescoring entirely and only write the engineered features
-to the main PSM list output. Set it to ``{}`` to use the defaults shown above.
+Set ``rescoring`` to ``{}`` to use the defaults shown above.
 
 
 

@@ -41,8 +41,8 @@
                     }
                 },
                 "rescoring": {
-                    "description": "Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features. Set to {} to use the defaults below.",
-                    "oneOf": [{ "$ref": "#/definitions/rescoring" }, { "type": "null" }],
+                    "description": "Ristretto rescoring configuration. Set to {} to use the defaults below.",
+                    "allOf": [{ "$ref": "#/definitions/rescoring" }],
                     "default": { "train_fdr": 0.01, "model": "svm" }
                 },
                 "psm_generator": {
