@@ -101,12 +101,6 @@ build-backend = "uv_build"
 module-name = "ms2rescore"
 module-root = ""
 
-[tool.uv]
-
-[tool.uv.sources]
-# TODO: remove once ristretto-ms>=0.3.0 (with `evaluate()` and `run_col`) is published to PyPI.
-ristretto-ms = { path = "../ironbrew", editable = true }
-
 [tool.pytest.ini_options]
 markers = [
     "integration: slow end-to-end tests requiring example data (deselect with '-m not integration')",

@@ -1934,7 +1934,7 @@ requires-dist = [
     { name = "pyopenms", marker = "extra == 'idxml'", specifier = ">=3.3" },
     { name = "pyteomics", specifier = ">=4.7.2" },
     { name = "rich", specifier = ">=12" },
-    { name = "ristretto-ms", editable = "../ironbrew" },
+    { name = "ristretto-ms", specifier = ">=0.3.0" },
 ]
 provides-extras = ["mumble", "idxml"]
 
@@ -3543,27 +3543,16 @@ wheels = [
 [[package]]
 name = "ristretto-ms"
 version = "0.3.0"
-source = { editable = "../ironbrew" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "scikit-learn" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "ipykernel", marker = "extra == 'nb'" },
-    { name = "ipywidgets", marker = "extra == 'nb'" },
-    { name = "matplotlib", marker = "extra == 'nb'" },
-    { name = "nbformat", marker = "extra == 'nb'" },
-    { name = "numpy", specifier = ">=2.0" },
-    { name = "pandas", specifier = ">=2.0" },
-    { name = "pyarrow", marker = "extra == 'dev'", specifier = ">=14.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "scikit-learn", specifier = ">=1.5" },
-    { name = "seaborn", marker = "extra == 'nb'" },
+sdist = { url = "https://files.pythonhosted.org/packages/c6/24/d4491e6b1143cd7fb45445e7732ae1c0a67d9af21d55d3d519f3b2ecc70b/ristretto_ms-0.3.0.tar.gz", hash = "sha256:d25a899b0ec0e850a1acd33f7703b89208f3a72d1a9122bd6b0483b955264c4a", size = 27629, upload-time = "2026-07-16T12:07:18.139Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/ad/80fe48f1358d596f38deed17a0549c088ba59716725e49a53179f816c00e/ristretto_ms-0.3.0-py3-none-any.whl", hash = "sha256:bd0a569fbe51c8985ac52cf71d5f48b2a700013482e9d85418a9f5ffea4b1010", size = 21900, upload-time = "2026-07-16T12:07:16.929Z" },
 ]
-provides-extras = ["dev", "nb"]
 
 [[package]]
 name = "roman-numerals"
