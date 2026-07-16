@@ -206,6 +206,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         return None
 
     # Rescore PSMs
+    logger.info(f"Rescoring {len(psm_list)} PSMs with ristretto...")
     try:
         psm_list, after_result = _utils.rescore(psm_list, config, output_file_root)
     except (

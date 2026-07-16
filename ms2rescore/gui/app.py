@@ -15,6 +15,8 @@ from joblib import parallel_backend
 from ms2pip.constants import MODELS as ms2pip_models
 from PIL import Image
 from psm_utils.io import FILETYPES
+from rich.console import Console
+from rich.logging import RichHandler
 
 import ms2rescore.gui.widgets as widgets
 import ms2rescore.package_data.img as pkg_data_img
@@ -739,8 +741,8 @@ def _check_updates_sync(root):
         pass
 
 
-def _setup_logging(log_level: str, log_file: str):
-    """Setup file logging for GUI."""
+def _setup_logging(log_level: str, log_file: str) -> Console:
+    """Set up file logging plus a recording Rich console for the HTML log export."""
     log_level_map = {
         "critical": logging.CRITICAL,
         "error": logging.ERROR,
@@ -748,12 +750,24 @@ def _setup_logging(log_level: str, log_file: str):
         "info": logging.INFO,
         "debug": logging.DEBUG,
     }
+    level = log_level_map.get(log_level, logging.INFO)
+
     file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
-    file_handler.setLevel(log_level_map.get(log_level, logging.INFO))
-    logging.getLogger().addHandler(file_handler)
+    file_handler.setLevel(level)
+
+    console = Console(record=True)
+    rich_handler = RichHandler(console=console, rich_tracebacks=True, show_path=False)
+    rich_handler.setLevel(level)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(rich_handler)
+
+    return console
 
 
 def function(config):
@@ -766,11 +780,15 @@ def function(config):
     config = parse_configurations(config_list)
 
     # Set up file logging for GUI
-    _setup_logging(
+    console = _setup_logging(
         config["ms2rescore"]["log_level"], config["ms2rescore"]["output_path"] + ".log.txt"
     )
 
-    rescore(configuration=config)
+    try:
+        rescore(configuration=config)
+    finally:
+        console.save_html(config["ms2rescore"]["output_path"] + ".log.html")
+
     if config["ms2rescore"]["write_report"]:
         webbrowser.open_new_tab(config["ms2rescore"]["output_path"] + ".report.html")
 
