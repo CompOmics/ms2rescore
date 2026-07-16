@@ -12,7 +12,6 @@ import logging
 import re
 from concurrent.futures import BrokenExecutor
 from dataclasses import replace
-from pathlib import Path
 from typing import Dict, Optional, Set, Tuple
 
 import numpy as np
@@ -71,22 +70,66 @@ def build_features_dataframe(
     return features_df
 
 
-def _attach_original_psm_mask(psm_list: PSMList, result: RescoreResult) -> RescoreResult:
+def _trim_and_evaluate(
+    features_df: pd.DataFrame,
+    max_rank: int,
+    *,
+    run_col: str,
+    peptide_col: Optional[str],
+    protein_col: Optional[str],
+    decoy_pattern: Optional[str],
+) -> RescoreResult:
     """
-    Attach a boolean ``original_psm`` column onto ``result.psms``.
+    Compete to at most ``max_rank`` PSMs per spectrum, then compute q-values/PEP/rollups.
 
-    True unless the PSM was mumble-generated (``metadata["original_psm"]`` is ``False``).
-    Lets report/console-log identification counts exclude mumble's alternate mass-shift
-    candidates from the "before" baseline, matching the pre-migration
-    ``_log_id_psms_before`` behavior. Only meaningful for :py:func:`evaluate_before`'s
-    result: once rescoring has run, whichever candidate wins a spectrum's competition
-    (original or mumble-generated) is a legitimate identification.
+    ``max_rank == 1``: proper target-decoy spectrum competition (ristretto's
+    ``multi_rank_rescoring=False``), matching Percolator/mokapot/Sage default behavior.
+
+    ``max_rank > 1``: keep the top ``max_rank`` PSMs per ``(run, spectrum_id)`` by score
+    first (a plain rank cut, not a competition -- ristretto has no "top-N" concept, only
+    "best-1" or "keep-everything"), then compute q-values/PEP over that whole population as
+    independent rows (``multi_rank_rescoring=True``). This is *not* statistically rigorous
+    FDR control -- ``max_psm_rank_output > 1`` is meant for surfacing ambiguous results
+    (e.g. multiple candidate peptidoforms per spectrum from mumble), not for a corrected
+    identification count. That trade-off is intentional and explicit, not a bug.
 
     """
-    mask = [psm.metadata.get("original_psm", True) for psm in psm_list]
-    return replace(
-        result, psms=result.psms.assign(original_psm=[mask[i] for i in result.psms.index])
+    if max_rank == 1:
+        trimmed = features_df
+        multi_rank = False
+    else:
+        rank = features_df.groupby([run_col, "spectrum_id"])["score"].rank(
+            method="first", ascending=False
+        )
+        trimmed = features_df[rank <= max_rank]
+        multi_rank = True
+
+    return ristretto.evaluate(
+        trimmed,
+        run_col=run_col,
+        peptide_col=peptide_col,
+        protein_col=protein_col,
+        decoy_pattern=decoy_pattern,
+        multi_rank_rescoring=multi_rank,
     )
+
+
+def _is_original_psm(psm) -> bool:
+    """
+    Whether a PSM is original (not mumble-generated), robust to metadata's round-trip.
+
+    ``psm_utils.PSM.metadata`` is typed ``dict[str, str]``, so a value written to a TSV file
+    and read back is always a string (e.g. ``"False"``), not the ``bool`` mumble may have set
+    in memory. Plain truthiness would treat that string as truthy (any non-empty string is),
+    silently including mumble candidates in "before" for the standalone-regen path. Only the
+    literal string ``"false"`` (any case) counts as excluded; anything else, including an
+    absent key, is treated as original.
+
+    """
+    value = psm.metadata.get("original_psm", True)
+    if isinstance(value, str):
+        return value.strip().lower() != "false"
+    return bool(value)
 
 
 def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
@@ -94,44 +137,63 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     Evaluate the PSMs' current (pre-rescoring) score with ristretto, for report baselines.
 
     Called right after :py:func:`~ms2rescore.parse_psms.parse_psms`, before any feature
-    generator runs. Always competes to one best PSM per spectrum, regardless of
-    ``max_psm_rank_output``: the report is always a rank-1, one-row-per-spectrum view, so
-    this is directly comparable to :py:func:`rescore`'s ``report_result``.
+    generator runs. Excludes mumble-generated alternate candidates (``metadata
+    ["original_psm"] is False``) entirely -- they're ms2rescore's own addition, not
+    something the original search engine reported, so they shouldn't inflate the "before"
+    baseline. Trimmed to ``max_psm_rank_output`` the same way :py:func:`rescore` trims
+    ``after``, so before/after counts stay comparable at the same rank depth.
 
     """
+    original_mask = np.array([_is_original_psm(psm) for psm in psm_list])
+    psm_list = psm_list[original_mask]
+
     train_fdr = config["rescoring"]["train_fdr"] if config["rescoring"] else 0.01
     features_df = build_features_dataframe(psm_list, set(), infer_score_direction(psm_list, train_fdr))
-    result = ristretto.evaluate(
+    return _trim_and_evaluate(
         features_df,
+        config["max_psm_rank_output"],
         run_col="run",
         peptide_col="peptide",
         protein_col="protein" if "protein" in features_df.columns else None,
         decoy_pattern=config["id_decoy_pattern"],
-        multi_rank_rescoring=False,
     )
-    return _attach_original_psm_mask(psm_list, result)
 
 
-def rescore(
-    psm_list: PSMList, config: Dict, output_file_root: str
-) -> Tuple[PSMList, RescoreResult, RescoreResult]:
+def evaluate_before_from_provenance(psm_list: PSMList, config: Dict) -> RescoreResult:
+    """
+    Rebuild the "before" ``RescoreResult`` for standalone report regeneration.
+
+    Uses each PSM's pre-rescoring score, stashed in ``provenance_data`` by
+    :py:func:`~ms2rescore.parse_psms.parse_psms`, and otherwise delegates to
+    :py:func:`evaluate_before` -- which already excludes mumble-generated candidates and
+    trims to ``max_psm_rank_output`` -- so this reconstructs the same population a live run
+    would have evaluated, without needing a separately persisted table.
+
+    """
+    before_scores = np.array(
+        [float(psm.provenance_data["before_rescoring_score"]) for psm in psm_list]
+    )
+    # Boolean-mask indexing on PSMList makes a new list of the *same* PSM object references,
+    # not copies -- mutating .score below would otherwise corrupt the caller's psm_list too
+    # (e.g. ReportData.from_files uses the same psm_list again afterwards, for "after").
+    psm_list = PSMList(psm_list=[psm.model_copy(deep=True) for psm in psm_list])
+    psm_list["score"] = before_scores
+    return evaluate_before(psm_list, config)
+
+
+def rescore(psm_list: PSMList, config: Dict, output_file_root: str) -> Tuple[PSMList, RescoreResult]:
     """
     Rescore PSMs with ristretto and write the new scores, q-values, and PEPs back to ``psm_list``.
 
     Always scores every candidate rank with ristretto's semi-supervised model
     (``multi_rank_rescoring=True``), then runs the actual competition/FDR/PEP step
-    separately via :py:func:`ristretto.evaluate`, competing down to one PSM per spectrum
-    unless ``max_psm_rank_output > 1`` (mirroring the existing rank-based config options).
+    separately via :py:func:`_trim_and_evaluate`, trimming to ``max_psm_rank_output`` PSMs
+    per spectrum.
 
     Returns
     -------
-    tuple[PSMList, RescoreResult, RescoreResult]
-        The (possibly filtered) PSMList with updated scores; the final competition/FDR
-        result respecting ``max_psm_rank_output`` (matches ``psm_list`` and the written
-        output files); and a report-view result always competed to one PSM per spectrum,
-        for the HTML report and identification counts, regardless of
-        ``max_psm_rank_output``. The two results are the same object when
-        ``max_psm_rank_output == 1``.
+    tuple[PSMList, RescoreResult]
+        The (possibly filtered) PSMList with updated scores, and the competition/FDR result.
 
     """
     feature_names = {f for psm in psm_list for f in psm.rescoring_features}
@@ -154,39 +216,14 @@ def rescore(
             n_jobs=int(config["processes"]),
             multi_rank_rescoring=True,
         )
-        # For max_psm_rank_output > 1, trim to the top-N ranks (by ML score) *before* the
-        # final FDR calculation, so q-values/PEP are computed over exactly the population
-        # that ends up in the output -- not recomputed after the fact on a subset.
-        ml_psms = ml_result.psms
-        if config["max_psm_rank_output"] > 1:
-            output_rank = ml_psms.groupby(["run", "spectrum_id"])["score"].rank(
-                method="first", ascending=False
-            )
-            output_ml_psms = ml_psms[output_rank <= config["max_psm_rank_output"]]
-        else:
-            output_ml_psms = ml_psms
-
-        final_result = ristretto.evaluate(
-            output_ml_psms,
+        final_result = _trim_and_evaluate(
+            ml_result.psms,
+            config["max_psm_rank_output"],
             run_col="run",
             peptide_col=peptide_col,
             protein_col=protein_col,
             decoy_pattern=decoy_pattern,
-            multi_rank_rescoring=config["max_psm_rank_output"] != 1,
         )
-        report_result = None
-        if config["max_psm_rank_output"] > 1:
-            # Separate, always-rank-1 competition on the full (pre-trim) ML scores, purely
-            # for the report -- independent of how many ranks per spectrum the user wants
-            # in the actual output.
-            report_result = ristretto.evaluate(
-                ml_psms,
-                run_col="run",
-                peptide_col=peptide_col,
-                protein_col=protein_col,
-                decoy_pattern=decoy_pattern,
-                multi_rank_rescoring=False,
-            )
     except (RuntimeError, BrokenExecutor, ValueError) as e:
         raise RescoringError("Ristretto could not be run. Please check the input data.") from e
 
@@ -202,16 +239,6 @@ def rescore(
     psm_list, final_result = fix_constant_pep(
         psm_list, final_result, peptide_col, protein_col, decoy_pattern
     )
-    if report_result is None:
-        # max_psm_rank_output == 1: the report view is the same competition as the final
-        # result, so it must reflect the same fix_constant_pep filtering.
-        report_result = final_result
-    else:
-        # report_result is an independent rank-1 competition -- check/fix it separately,
-        # since it can hit the same degenerate constant-PEP case on its own.
-        report_result, _ = _fix_constant_pep_result(
-            report_result, peptide_col, protein_col, decoy_pattern
-        )
 
     _write_group_metadata(psm_list, final_result.psms, final_result.peptidoforms, "peptidoform")
     if final_result.peptides is not None:
@@ -229,7 +256,30 @@ def rescore(
             psm_list, final_result.psms, final_result.proteins, "protein", decoy_pattern
         )
 
-    return psm_list, final_result, report_result
+    return psm_list, final_result
+
+
+def evaluate_after_from_psm_list(psm_list: PSMList, config: Dict) -> RescoreResult:
+    """
+    Rebuild the "after" ``RescoreResult`` for standalone report regeneration.
+
+    Re-competes ``psm_list``'s current (already-rescored) score and identity columns from
+    scratch via ristretto -- reproduces the same result :py:func:`rescore` computed during
+    the live run, without needing a separately persisted rollup table. ``psm_list``'s score
+    is already in ristretto's "higher is better" convention (written back by ``rescore``),
+    and its rows are already trimmed to ``max_psm_rank_output``, so :py:func:`_trim_and_evaluate`
+    applies that trim again as a no-op.
+
+    """
+    features_df = build_features_dataframe(psm_list, set(), lower_score_is_better=False)
+    return _trim_and_evaluate(
+        features_df,
+        config["max_psm_rank_output"],
+        run_col="run",
+        peptide_col="peptide",
+        protein_col="protein" if "protein" in features_df.columns else None,
+        decoy_pattern=config["id_decoy_pattern"],
+    )
 
 
 def _write_group_metadata(
@@ -263,39 +313,25 @@ def _write_group_metadata(
         )
 
 
-def write_rescoring_tables(
-    before: RescoreResult,
-    after: RescoreResult,
-    output_file_root: str,
-    after_report: Optional[RescoreResult] = None,
-) -> None:
+def write_rescoring_tables(after: RescoreResult, output_file_root: str) -> None:
     """
-    Write before/after rescoring result tables to Parquet files.
+    Write the rescoring result tables to TSV.
 
-    ``after_report`` is only written (as a separate ``after_report`` suffix) when it differs
-    from ``after`` -- i.e. when ``max_psm_rank_output > 1`` and the real output is a
-    multi-rank result, but the report needs its own always-rank-1 view. When
-    ``max_psm_rank_output == 1``, ``after`` already *is* the report view, so no extra files
-    are written.
+    The main user-facing rescoring deliverable -- separate from the full PSM list output
+    (which includes rescoring features, provenance data, etc). Only ``after`` is written:
+    "before" is fully reconstructable from the PSM list's provenance data (see
+    :py:func:`evaluate_before_from_provenance`), so it's never persisted.
 
     """
-    _write_result_tables(before, output_file_root, "before")
-    _write_result_tables(after, output_file_root, "after")
-    if after_report is not None and after_report is not after:
-        _write_result_tables(after_report, output_file_root, "after_report")
-    after.feature_weights.to_parquet(f"{output_file_root}.ristretto.weights.parquet")
-
-
-def _write_result_tables(result: RescoreResult, output_file_root: str, suffix: str) -> None:
-    """Write one RescoreResult's psms/peptidoforms/peptides/proteins tables to Parquet."""
-    result.psms.to_parquet(Path(f"{output_file_root}.ristretto.psms_{suffix}.parquet"))
-    result.peptidoforms.to_parquet(
-        Path(f"{output_file_root}.ristretto.peptidoforms_{suffix}.parquet")
+    after.psms.to_csv(f"{output_file_root}.ristretto.psms.tsv", sep="\t", index=False)
+    after.peptidoforms.to_csv(
+        f"{output_file_root}.ristretto.peptidoforms.tsv", sep="\t", index=False
     )
-    if result.peptides is not None:
-        result.peptides.to_parquet(Path(f"{output_file_root}.ristretto.peptides_{suffix}.parquet"))
-    if result.proteins is not None:
-        result.proteins.to_parquet(Path(f"{output_file_root}.ristretto.proteins_{suffix}.parquet"))
+    if after.peptides is not None:
+        after.peptides.to_csv(f"{output_file_root}.ristretto.peptides.tsv", sep="\t", index=False)
+    if after.proteins is not None:
+        after.proteins.to_csv(f"{output_file_root}.ristretto.proteins.tsv", sep="\t", index=False)
+    after.feature_weights.to_csv(f"{output_file_root}.ristretto.weights.tsv", sep="\t")
 
 
 def _fix_constant_pep_result(
@@ -371,7 +407,7 @@ def fix_constant_pep(
     Workaround for broken PEP calculation if the best-scoring PSM is a decoy.
 
     Filters ``psm_list`` and ``result`` together (same length, same row order) so they never
-    desync -- callers (parquet tables, report, 1%-FDR counts) all keep seeing the same PSM
+    desync -- callers (result tables, report, 1%-FDR counts) all keep seeing the same PSM
     population as the returned ``psm_list``, with the same freshly recomputed rollups.
 
     """

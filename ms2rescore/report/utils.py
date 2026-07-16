@@ -43,16 +43,11 @@ def _n_identified(df: pd.DataFrame, fdr_threshold: float) -> int:
     """
     Count target rows passing the FDR threshold (decoys are never identifications).
 
-    If an ``original_psm`` column is present (only ``before.psms`` carries one -- see
-    :py:func:`ms2rescore.rescoring.evaluate_before`), mumble-generated alternate candidates
-    are excluded too, matching the pre-migration ``_log_id_psms_before`` behavior. By the
-    time rescoring has run, whichever candidate wins a spectrum's competition (original or
-    mumble-generated) is a legitimate identification, so ``after``/rollup tables are never
-    masked this way.
+    Mumble-generated alternate candidates are already excluded from ``before`` upstream, in
+    :py:func:`ms2rescore.rescoring.evaluate_before`, so no masking is needed here.
 
     """
-    mask = df["original_psm"] if "original_psm" in df.columns else True
-    return int(((df["qvalue"] <= fdr_threshold) & ~df["is_decoy"] & mask).sum())
+    return int(((df["qvalue"] <= fdr_threshold) & ~df["is_decoy"]).sum())
 
 
 def compute_protein_stats(
@@ -114,47 +109,18 @@ def build_stat_card(item: str, level: str, before: int, after: int) -> dict:
     }
 
 
-def create_psm_dataframe(
-    psm_list: psm_utils.PSMList, before: RescoreResult, after: RescoreResult
-) -> pd.DataFrame:
+def create_psm_dataframe(psm_list: psm_utils.PSMList) -> pd.DataFrame:
     """
     Create a comprehensive dataframe from a PSM list with all information needed for the report.
 
-    The report is always a rank-1, one-row-per-spectrum view, regardless of
-    ``max_psm_rank_output``: ``psm_list`` is first filtered to ``rank == 1``. This dataframe
-    includes:
-
-    - Basic PSM information (peptidoform, score, qvalue, is_decoy, etc.)
-    - Before/after rescoring score, q-value, and PEP, merged in from ristretto's `RescoreResult`s
-      by ``(run, spectrum_id)`` -- not by row position (`before` was computed on the PSM list
-      as it stood right after parsing, which may differ in length or order from the final
-      PSM list) and not by peptidoform (rescoring can legitimately promote a different
-      peptidoform as a spectrum's winner, so the pre-rescoring winner for that spectrum may be
-      a different peptidoform than the post-rescoring one).
-    - All rescoring features.
-
-    Parameters
-    ----------
-    psm_list
-        Final (post-rescoring) PSM list to convert to a dataframe.
-    before
-        Result of evaluating the PSMs' pre-rescoring score with ristretto (rank-1).
-    after
-        Result of rescoring the PSMs with ristretto (rank-1 report view).
+    Includes basic PSM information (peptidoform, score, qvalue, is_decoy, rank, etc.) and all
+    rescoring features. Rows are exactly ``psm_list``'s rows -- may include multiple ranks per
+    spectrum if ``max_psm_rank_output > 1`` was configured; charts that need a single row per
+    spectrum (or a before/after comparison) collapse or look it up themselves, from the
+    before/after ``RescoreResult``s directly, rather than from a merge performed here.
 
     """
-    psm_list = psm_list[psm_list["rank"] == 1]
     psm_df = psm_list.to_dataframe()
-
-    for result, suffix in ((before, "before"), (after, "after")):
-        columns = result.psms[["run", "spectrum_id", "score", "qvalue", "pep"]].rename(
-            columns={
-                "score": f"score_{suffix}",
-                "qvalue": f"qvalue_{suffix}",
-                "pep": f"pep_{suffix}",
-            }
-        )
-        psm_df = psm_df.merge(columns, how="left", on=["run", "spectrum_id"])
 
     # Add rescoring features - vectorized extraction
     if psm_list[0].rescoring_features:

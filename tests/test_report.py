@@ -1,7 +1,9 @@
 """Tests for in-memory report data assembly and HTML generation."""
 
+import json
 import re
 
+import numpy as np
 import pandas as pd
 import psm_utils.io
 import pytest
@@ -92,20 +94,16 @@ def test_from_run_builds_dataframe_in_memory(psm_list, before_after):
     before, after = before_after
     data = ReportData.from_run(psm_list, feature_names=FEATURE_NAMES, before=before, after=after)
 
-    expected_columns = {
-        "score_before",
-        "score_after",
-        "qvalue_before",
-        "qvalue_after",
-        "is_decoy",
-        "feature_a",
-        "feature_b",
-    }
+    # psm_df is just psm_list + features -- no before/after merge performed here anymore;
+    # charts that need before/after go straight to data.before/data.after.
+    expected_columns = {"is_decoy", "score", "qvalue", "feature_a", "feature_b"}
     assert expected_columns.issubset(set(data.psm_df.columns))
     assert len(data.psm_df) == 14
     assert set(data.feature_names) == {"basic"}
     assert set(data.feature_names["basic"]) == {"feature_a", "feature_b"}
     assert data.feature_weights is after.feature_weights
+    assert data.before is before
+    assert data.after is after
 
 
 def test_from_run_infers_feature_names_when_absent(psm_list, before_after):
@@ -130,37 +128,74 @@ def test_generate_report_writes_html_without_input_files(psm_list, before_after,
         assert tab_title in content
 
 
-def test_from_files_roundtrip(psm_list, before_after, tmp_path):
-    before, after = before_after
-    prefix = str(tmp_path / "test.ms2rescore")
+def _write_regen_fixture(tmp_path, prefix_name="test.ms2rescore"):
+    """
+    Write a PSM list + full-config.json for a standalone report-regen test.
+
+    No separate rescoring-result tables are written at all -- ``from_files`` reconstructs
+    ``before``/``after`` entirely from the PSM list's ``provenance_data`` and current
+    score/identity columns.
+
+    """
+    residues = "ACDEFGHIKLMNPQ"
+    psms = []
+    for i in range(14):
+        is_decoy = i >= 10
+        psm = PSM(
+            peptidoform=f"PEPTIDE{residues[i]}K/2",
+            spectrum_id=str(i),
+            run="run1",
+            is_decoy=is_decoy,
+            score=float(20 - i),  # "after" (final, rescored) score
+            qvalue=0.001 * (i + 1),
+            pep=0.5,
+            rank=1,
+            protein_list=[f"PROT{i % 3}"],
+            provenance_data={"before_rescoring_score": str(float(10 - i))},
+            rescoring_features={"feature_a": float(i), "feature_b": float(i * 2)},
+        )
+        psms.append(psm)
+    psm_list = PSMList(psm_list=psms)
+
+    prefix = str(tmp_path / prefix_name)
     psm_utils.io.write_file(psm_list, prefix + ".psms.tsv", filetype="tsv")
-    before.psms.to_parquet(prefix + ".ristretto.psms_before.parquet")
-    before.peptidoforms.to_parquet(prefix + ".ristretto.peptidoforms_before.parquet")
-    after.psms.to_parquet(prefix + ".ristretto.psms_after.parquet")
-    after.peptidoforms.to_parquet(prefix + ".ristretto.peptidoforms_after.parquet")
-    after.feature_weights.to_parquet(prefix + ".ristretto.weights.parquet")
+    config = {
+        "ms2rescore": {
+            "id_decoy_pattern": None,
+            "max_psm_rank_output": 1,
+            "rescoring": {"train_fdr": 0.1},
+        }
+    }
+    with open(prefix + ".full-config.json", "w") as f:
+        json.dump(config, f)
+    return prefix
+
+
+def test_from_files_reconstructs_before_and_after_without_any_table_files(tmp_path):
+    """
+    No *.ristretto.*.tsv/parquet files are written at all -- from_files must still fully
+    reconstruct before/after (scores, q-values, rollups) from just the PSM list.
+    """
+    prefix = _write_regen_fixture(tmp_path)
 
     data = ReportData.from_files(prefix)
 
     assert len(data.psm_df) == 14
-    assert {"score_before", "score_after"}.issubset(set(data.psm_df.columns))
+    assert len(data.before.psms) == 14
+    assert len(data.after.psms) == 14
+    # Reconstructed "before" used provenance_data's score (10-i), not the current one (20-i).
+    assert not np.allclose(
+        data.before.psms.sort_values("spectrum_id")["score"].to_numpy(),
+        data.after.psms.sort_values("spectrum_id")["score"].to_numpy(),
+    )
+    # Rollups also reconstructed, not just the PSM-level table.
+    assert len(data.before.peptidoforms) == 14
+    assert len(data.after.peptidoforms) == 14
 
 
 def test_from_files_missing_psm_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         ReportData.from_files(str(tmp_path / "does_not_exist"))
-
-
-def test_from_files_without_ristretto_tables_degrades_gracefully(psm_list, tmp_path):
-    prefix = str(tmp_path / "test.ms2rescore")
-    psm_utils.io.write_file(psm_list, prefix + ".psms.tsv", filetype="tsv")
-
-    data = ReportData.from_files(prefix)
-
-    assert len(data.psm_df) == 14
-    assert data.psm_df["score_before"].isna().all()
-    assert data.id_stats == []
-    assert data.rescoring_tables_unavailable is True
 
 
 def test_compute_protein_stats_without_protein_col_returns_none(before_after):
@@ -184,21 +219,13 @@ def test_build_stat_card_reports_increase():
     assert card["card_color"] == "card-bg-blue"
 
 
-def test_n_identified_excludes_non_original_psm_when_present():
+def test_n_identified_counts_targets_below_threshold():
+    # Mumble-generated candidates are excluded upstream, in rescoring.evaluate_before, so
+    # _n_identified itself does no masking -- just qvalue/is_decoy.
     df = pd.DataFrame(
-        {
-            "qvalue": [0.001, 0.001, 0.001],
-            "is_decoy": [False, False, False],
-            "original_psm": [True, True, False],  # last one is mumble-generated
-        }
+        {"qvalue": [0.001, 0.001, 0.02], "is_decoy": [False, True, False]}
     )
-    assert _n_identified(df, 0.01) == 2
-
-
-def test_n_identified_counts_all_targets_when_original_psm_absent():
-    """`after`/rollup tables never carry `original_psm`, so nothing is excluded there."""
-    df = pd.DataFrame({"qvalue": [0.001, 0.001, 0.001], "is_decoy": [False, False, False]})
-    assert _n_identified(df, 0.01) == 3
+    assert _n_identified(df, 0.01) == 1
 
 
 _EMPTY_ROLLUP = pd.DataFrame(columns=["peptidoform", "score", "qvalue", "pep", "is_decoy", "n_psms"])

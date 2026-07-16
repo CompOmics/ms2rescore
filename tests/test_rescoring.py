@@ -27,30 +27,43 @@ def _peptide_seq(spec_i: int, rank_i: int) -> str:
     return f"PEPT{a}{b}{c}IDEK"
 
 
-def _make_psm_list(n_spectra=40, ranks_per_spectrum=1, seed=0, with_protein=True, run="run1"):
-    """Separable synthetic PSMList: targets score higher on both `score` and features."""
+def _make_psm_list(
+    n_spectra=40, ranks_per_spectrum=1, seed=0, with_protein=True, run="run1", mumble_ranks=0
+):
+    """
+    Separable synthetic PSMList: targets score higher on both `score` and features.
+
+    `mumble_ranks` extra candidates per spectrum are tagged as mumble-generated
+    (metadata["original_psm"] = False), scoring the same as rank 0's decoy-ness.
+    """
     rng = np.random.default_rng(seed)
     psms = []
     for spec_i in range(n_spectra):
         is_decoy_spectrum = rng.random() < 0.3
-        for rank_i in range(ranks_per_spectrum):
+        for rank_i in range(ranks_per_spectrum + mumble_ranks):
+            is_original = rank_i < ranks_per_spectrum
             is_decoy = is_decoy_spectrum or rank_i > 0
             shift = 0.0 if is_decoy else 8.0
-            psms.append(
-                PSM(
-                    peptidoform=f"{_peptide_seq(spec_i, rank_i)}/2",
-                    spectrum_id=str(spec_i),
-                    run=run,
-                    is_decoy=is_decoy,
-                    score=float(rng.normal(0, 1) + shift),
-                    qvalue=float("nan"),
-                    protein_list=(["PROT" + str(spec_i % 5)] if with_protein else None),
-                    rescoring_features={
-                        "feature_a": float(rng.normal(0, 1) + shift),
-                        "feature_b": float(rng.normal(0, 1) + shift),
-                    },
-                )
+            psm = PSM(
+                peptidoform=f"{_peptide_seq(spec_i, rank_i)}/2",
+                spectrum_id=str(spec_i),
+                run=run,
+                is_decoy=is_decoy,
+                score=float(rng.normal(0, 1) + shift),
+                qvalue=float("nan"),
+                protein_list=(["PROT" + str(spec_i % 5)] if with_protein else None),
+                rescoring_features={
+                    "feature_a": float(rng.normal(0, 1) + shift),
+                    "feature_b": float(rng.normal(0, 1) + shift),
+                },
             )
+            if not is_original:
+                # psm_utils' metadata field is typed dict[str, str], so passing a bool via
+                # the constructor fails validation -- but mutating the dict in place after
+                # construction bypasses that check, which is presumably how mumble itself
+                # sets this flag (a real bool, not a string).
+                psm.metadata["original_psm"] = False
+            psms.append(psm)
     return PSMList(psm_list=psms)
 
 
@@ -120,12 +133,36 @@ def test_evaluate_before_disambiguates_spectrum_id_across_runs():
     assert set(result.psms["run"]) == {"runA", "runB"}
 
 
+def test_evaluate_before_excludes_mumble_generated_candidates():
+    # 1 original + 1 mumble-tagged candidate per spectrum.
+    psm_list = _make_psm_list(n_spectra=20, seed=14, mumble_ranks=1)
+    assert len(psm_list) == 40
+
+    result = rescoring.evaluate_before(psm_list, BASE_CONFIG)
+
+    # Only the 20 original candidates ever entered the competition.
+    assert len(result.psms) == 20
+
+
+def test_evaluate_before_mirrors_max_psm_rank_output():
+    psm_list = _make_psm_list(n_spectra=20, ranks_per_spectrum=3, seed=15)
+    config = {**BASE_CONFIG, "max_psm_rank_output": 2}
+
+    result = rescoring.evaluate_before(psm_list, config)
+
+    # Trimmed to top 2 (by raw score) per spectrum, not competed down to 1.
+    assert len(result.psms) <= 40
+    counts = result.psms["spectrum_id"].value_counts()
+    assert (counts <= 2).all()
+    assert (counts == 2).any()
+
+
 def test_rescore_disambiguates_spectrum_id_across_runs():
     psm_list_a = _make_psm_list(n_spectra=30, seed=12, run="runA")
     psm_list_b = _make_psm_list(n_spectra=30, seed=13, run="runB")
     psm_list = PSMList(psm_list=list(psm_list_a) + list(psm_list_b))
 
-    new_psm_list, after_result, _ = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    new_psm_list, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
     assert len(new_psm_list) == 60
     assert len(after_result.psms) == 60
@@ -135,12 +172,8 @@ def test_rescore_disambiguates_spectrum_id_across_runs():
 def test_rescore_writes_scores_and_metadata():
     psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=1, seed=5)
 
-    new_psm_list, after_result, after_report_result = rescoring.rescore(
-        psm_list, BASE_CONFIG, "unused-output-root"
-    )
+    new_psm_list, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
-    # max_psm_rank_output == 1: the report view is the same competition as the final result.
-    assert after_report_result is after_result
     assert len(new_psm_list) == len(after_result.psms)
     assert set(new_psm_list["qvalue"]) == set(after_result.psms["qvalue"])
     assert "run" in after_result.psms.columns
@@ -154,9 +187,7 @@ def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():
     psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=2, seed=6)
     config = {**BASE_CONFIG, "max_psm_rank_output": 2}
 
-    new_psm_list, after_result, after_report_result = rescoring.rescore(
-        psm_list, config, "unused-output-root"
-    )
+    new_psm_list, after_result = rescoring.rescore(psm_list, config, "unused-output-root")
 
     new_psm_list.set_ranks(lower_score_better=False)
     assert (new_psm_list["rank"] <= 2).all()
@@ -164,11 +195,35 @@ def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():
     counts = pd.Series(list(new_psm_list["spectrum_id"])).value_counts()
     assert (counts == 2).any()
 
-    # The report view is always rank-1: one row per spectrum, distinct from the multi-rank
-    # final result.
-    assert after_report_result is not after_result
-    assert len(after_report_result.psms) == 30
-    assert after_report_result.psms["spectrum_id"].is_unique
+    # after_result IS the multi-rank population -- no separate rank-1-only view exists.
+    assert len(after_result.psms) == len(new_psm_list)
+
+
+def test_evaluate_after_from_psm_list_reproduces_rescore_result():
+    psm_list = _make_psm_list(n_spectra=25, seed=16)
+    new_psm_list, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+
+    reconstructed = rescoring.evaluate_after_from_psm_list(new_psm_list, BASE_CONFIG)
+
+    assert len(reconstructed.psms) == len(after_result.psms)
+    assert np.allclose(
+        reconstructed.psms.sort_values("spectrum_id")["qvalue"].to_numpy(),
+        after_result.psms.sort_values("spectrum_id")["qvalue"].to_numpy(),
+    )
+
+
+def test_evaluate_before_from_provenance_uses_stashed_score():
+    psm_list = _make_psm_list(n_spectra=20, seed=17)
+    # Simulate parse_psms()'s provenance stash with a score distinguishable from the current one.
+    stashed_scores = list(psm_list["score"])
+    for psm, stashed in zip(psm_list, stashed_scores):
+        psm.provenance_data["before_rescoring_score"] = stashed
+        psm.score = -999.0  # current score must NOT be used
+
+    result = rescoring.evaluate_before_from_provenance(psm_list, BASE_CONFIG)
+
+    assert len(result.psms) == 20
+    assert not (result.psms["score"] == -999.0).any()
 
 
 def _toy_peptidoform(i: int) -> str:
@@ -274,29 +329,30 @@ def test_fix_constant_pep_is_noop_when_pep_not_constant():
 
 def test_write_rescoring_tables(tmp_path):
     psm_list = _make_psm_list(n_spectra=30, seed=7)
-    before = rescoring.evaluate_before(psm_list, BASE_CONFIG)
-    _, after, after_report = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    _, after = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
     prefix = str(tmp_path / "test")
-    rescoring.write_rescoring_tables(before, after, prefix, after_report)
+    rescoring.write_rescoring_tables(after, prefix)
 
-    for suffix in ("before", "after"):
-        assert (tmp_path / f"test.ristretto.psms_{suffix}.parquet").is_file()
-        assert (tmp_path / f"test.ristretto.peptidoforms_{suffix}.parquet").is_file()
-        assert (tmp_path / f"test.ristretto.proteins_{suffix}.parquet").is_file()
-    assert (tmp_path / "test.ristretto.weights.parquet").is_file()
-    # max_psm_rank_output == 1: after_report is after, so no extra files are written.
-    assert not (tmp_path / "test.ristretto.psms_after_report.parquet").is_file()
+    for level in ("psms", "peptidoforms", "proteins"):
+        assert (tmp_path / f"test.ristretto.{level}.tsv").is_file()
+    assert (tmp_path / "test.ristretto.weights.tsv").is_file()
+
+    # TSV, not parquet, and human-readable (has a header row with expected columns).
+    psms_tsv = pd.read_csv(tmp_path / "test.ristretto.psms.tsv", sep="\t")
+    assert {"spectrum_id", "run", "score", "qvalue", "pep"}.issubset(psms_tsv.columns)
 
 
-def test_write_rescoring_tables_writes_after_report_when_multi_rank(tmp_path):
-    psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=2, seed=8)
-    config = {**BASE_CONFIG, "max_psm_rank_output": 2}
-    before = rescoring.evaluate_before(psm_list, config)
-    _, after, after_report = rescoring.rescore(psm_list, config, "unused-output-root")
+def test_write_rescoring_tables_no_peptides_file_when_no_peptide_col(tmp_path):
+    # BASE_CONFIG's build_features_dataframe never sets a peptide_col in `after` (peptide_col
+    # is always "peptide" in rescore(), so peptides IS present -- this documents that proteins
+    # can be absent when protein_list isn't, by using a fixture without proteins).
+    psm_list = _make_psm_list(n_spectra=30, seed=9, with_protein=False)
+    _, after = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    assert after.proteins is None
 
     prefix = str(tmp_path / "test")
-    rescoring.write_rescoring_tables(before, after, prefix, after_report)
+    rescoring.write_rescoring_tables(after, prefix)
 
-    assert (tmp_path / "test.ristretto.psms_after_report.parquet").is_file()
-    assert (tmp_path / "test.ristretto.peptidoforms_after_report.parquet").is_file()
+    assert not (tmp_path / "test.ristretto.proteins.tsv").is_file()
+    assert (tmp_path / "test.ristretto.peptides.tsv").is_file()

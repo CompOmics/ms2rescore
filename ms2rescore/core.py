@@ -58,9 +58,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             usi_by_position[i] for i in before_result.psms.index
         ]
     n_id_before = (
-        (before_result.psms["qvalue"] <= 0.01)
-        & ~before_result.psms["is_decoy"]
-        & before_result.psms["original_psm"]
+        (before_result.psms["qvalue"] <= 0.01) & ~before_result.psms["is_decoy"]
     ).sum()
     logger.info(f"Found {n_id_before} identified PSMs at 1% FDR before rescoring.")
 
@@ -204,9 +202,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Rescore PSMs
     try:
-        psm_list, after_result, after_report_result = rescoring.rescore(
-            psm_list, config, output_file_root
-        )
+        psm_list, after_result = rescoring.rescore(psm_list, config, output_file_root)
     except (
         Exception,
         KeyboardInterrupt,
@@ -220,11 +216,9 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         # Reraise exception
         raise
 
-    # Post-rescoring processing. Rank-1-competed counts (after_report_result), so this is
-    # directly comparable to n_id_before regardless of max_psm_rank_output.
-    n_after = (
-        (after_report_result.psms["qvalue"] <= 0.01) & ~after_report_result.psms["is_decoy"]
-    ).sum()
+    # Post-rescoring processing. before_result was already trimmed to max_psm_rank_output,
+    # same as after_result, so this comparison stays fair regardless of its value.
+    n_after = ((after_result.psms["qvalue"] <= 0.01) & ~after_result.psms["is_decoy"]).sum()
     n_before = n_id_before
     diff = n_after - n_before
     diff_perc = f" ({diff / n_before:.2%})" if n_before > 0 else ""
@@ -233,9 +227,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     )
 
     if config["write_rescoring_tables"]:
-        rescoring.write_rescoring_tables(
-            before_result, after_result, output_file_root, after_report_result
-        )
+        rescoring.write_rescoring_tables(after_result, output_file_root)
 
     # Write output
     logger.info(f"Writing output to {output_file_root}.psms.tsv...")
@@ -251,12 +243,11 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             only_target=True,  # TODO: Make FDR threshold configurable
         )
 
-    # Write report. Always uses the rank-1-competed before/after results (after_report_result),
-    # even if max_psm_rank_output > 1: the report is a single-best-PSM-per-spectrum view.
+    # Write report
     if config["write_report"]:
         try:
             report_data = ReportData.from_run(
-                psm_list, feature_names, configuration, before_result, after_report_result
+                psm_list, feature_names, configuration, before_result, after_result
             )
             generate.generate_report(output_file_root, report_data)
         except exceptions.ReportGenerationError as e:

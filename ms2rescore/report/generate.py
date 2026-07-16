@@ -73,9 +73,7 @@ def generate_report(
                 "id": "main_tab_comparison",
                 "title": "Overview",
                 "template": "overview.html",
-                "context": _get_overview_context(
-                    psm_df, data.id_stats, data.before, data.after, data.rescoring_tables_unavailable
-                ),
+                "context": _get_overview_context(data.id_stats, data.before, data.after),
             },
             {
                 "id": "main_tab_target_decoy",
@@ -117,28 +115,21 @@ def _get_psm_filenames(data: ReportData) -> str:
     return "Unknown"
 
 
-def _get_overview_context(
-    psm_df: pd.DataFrame,
-    id_stats: list,
-    before: RescoreResult,
-    after: RescoreResult,
-    rescoring_tables_unavailable: bool,
-) -> dict:
+def _get_overview_context(id_stats: list, before: RescoreResult, after: RescoreResult) -> dict:
     """Return context for the overview tab."""
     logger.debug("Generating overview charts...")
     return {
         "stats": id_stats,
-        "rescoring_tables_unavailable": rescoring_tables_unavailable,
         "charts": [
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
                 "description": TEXTS["charts"]["score_comparison"]["description"],
-                "chart": charts.score_scatter_plot(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.score_scatter_plot(before, after).to_html(**PLOTLY_HTML_KWARGS),
             },
             {
                 "title": TEXTS["charts"]["fdr_comparison"]["title"],
                 "description": TEXTS["charts"]["fdr_comparison"]["description"],
-                "chart": charts.fdr_plot_comparison(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.fdr_plot_comparison(before, after).to_html(**PLOTLY_HTML_KWARGS),
             },
             {
                 "title": TEXTS["charts"]["identification_overlap"]["title"],
