@@ -147,7 +147,7 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     original_mask = np.array([_is_original_psm(psm) for psm in psm_list])
     psm_list = psm_list[original_mask]
 
-    train_fdr = config["rescoring"]["train_fdr"] if config["rescoring"] else 0.01
+    train_fdr = config["rescoring"].get("train_fdr", 0.01) if config["rescoring"] else 0.01
     features_df = build_features_dataframe(psm_list, set(), infer_score_direction(psm_list, train_fdr))
     return _trim_and_evaluate(
         features_df,
@@ -197,7 +197,9 @@ def rescore(psm_list: PSMList, config: Dict, output_file_root: str) -> Tuple[PSM
 
     """
     feature_names = {f for psm in psm_list for f in psm.rescoring_features}
-    lower_score_is_better = infer_score_direction(psm_list, config["rescoring"]["train_fdr"])
+    lower_score_is_better = infer_score_direction(
+        psm_list, config["rescoring"].get("train_fdr", 0.01)
+    )
     features_df = build_features_dataframe(psm_list, feature_names, lower_score_is_better)
 
     peptide_col = "peptide"
@@ -212,10 +214,11 @@ def rescore(psm_list: PSMList, config: Dict, output_file_root: str) -> Tuple[PSM
             protein_col=protein_col,
             feature_cols=sorted(feature_names),
             decoy_pattern=decoy_pattern,
-            model=config["rescoring"]["model"],
-            train_fdr=config["rescoring"]["train_fdr"],
             n_jobs=int(config["processes"]),
             multi_rank_rescoring=True,
+            # train_fdr/model; ristretto's own kwarg defaults apply to any key a partial
+            # user-provided rescoring dict omitted.
+            **config["rescoring"],
         )
         final_result = _trim_and_evaluate(
             ml_result.psms,

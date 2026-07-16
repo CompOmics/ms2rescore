@@ -40,7 +40,7 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
     # Remove invalid AAs and find decoys first, so score direction can be inferred from them
     psm_list = _remove_invalid_aa(psm_list)
     _find_decoys(psm_list, config["id_decoy_pattern"])
-    train_fdr = config["rescoring"]["train_fdr"] if config["rescoring"] else 0.01
+    train_fdr = config["rescoring"].get("train_fdr", 0.01) if config["rescoring"] else 0.01
     lower_score_is_better = infer_score_direction(psm_list, train_fdr)
 
     # Filter by PSM rank

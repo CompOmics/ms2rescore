@@ -1,5 +1,7 @@
 """Tests for ms2rescore.rescoring: the ristretto integration layer."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 from psm_utils import PSM, PSMList
@@ -191,6 +193,38 @@ def test_rescore_respects_configured_model():
     assert len(new_psm_list) == len(after_result.psms)
     q = after_result.psms["qvalue"].to_numpy()
     assert ((q >= 0) & (q <= 1)).all()
+
+
+def test_rescore_handles_partial_rescoring_config():
+    """A partial rescoring dict (e.g. only `model` or only `train_fdr`, as produced by the
+    config cascade for a user override of just one key) must not KeyError on the other."""
+    psm_list = _make_psm_list(n_spectra=30, seed=19)
+
+    for rescoring_config in ({"model": "lda"}, {"train_fdr": 0.1}):
+        config = {**BASE_CONFIG, "rescoring": rescoring_config}
+        new_psm_list, after_result = rescoring.rescore(psm_list, config, "unused-output-root")
+        assert len(new_psm_list) == len(after_result.psms)
+
+
+def test_rescore_empty_rescoring_config_falls_back_to_ristretto_defaults():
+    """An empty rescoring dict (the config cascade's result for `"rescoring": {}`) must not
+    KeyError -- train_fdr/model should simply be omitted from the ristretto.rescore() call, so
+    ristretto's own defaults (train_fdr=0.01, model="svm") apply. Whether ristretto's fit
+    itself converges on this tiny fixture at the (stricter) default train_fdr is irrelevant
+    here -- only that the right kwargs reach it.
+    """
+    psm_list = _make_psm_list(n_spectra=30, seed=19)
+    config = {**BASE_CONFIG, "rescoring": {}}
+
+    with patch.object(rescoring.ristretto, "rescore", wraps=rescoring.ristretto.rescore) as m:
+        try:
+            rescoring.rescore(psm_list, config, "unused-output-root")
+        except rescoring.RescoringError:
+            pass
+
+    passed_kwargs = m.call_args.kwargs
+    assert "train_fdr" not in passed_kwargs
+    assert "model" not in passed_kwargs
 
 
 def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():
