@@ -27,7 +27,7 @@ def _peptide_seq(spec_i: int, rank_i: int) -> str:
     return f"PEPT{a}{b}{c}IDEK"
 
 
-def _make_psm_list(n_spectra=40, ranks_per_spectrum=1, seed=0, with_protein=True):
+def _make_psm_list(n_spectra=40, ranks_per_spectrum=1, seed=0, with_protein=True, run="run1"):
     """Separable synthetic PSMList: targets score higher on both `score` and features."""
     rng = np.random.default_rng(seed)
     psms = []
@@ -40,7 +40,7 @@ def _make_psm_list(n_spectra=40, ranks_per_spectrum=1, seed=0, with_protein=True
                 PSM(
                     peptidoform=f"{_peptide_seq(spec_i, rank_i)}/2",
                     spectrum_id=str(spec_i),
-                    run="run1",
+                    run=run,
                     is_decoy=is_decoy,
                     score=float(rng.normal(0, 1) + shift),
                     qvalue=float("nan"),
@@ -106,6 +106,30 @@ def test_evaluate_before_returns_result_with_expected_columns():
     assert len(result.psms) == 30  # competed to one best PSM per spectrum
     assert result.peptidoforms is not None
     assert (result.psms["run"] == "run1").all()
+
+
+def test_evaluate_before_disambiguates_spectrum_id_across_runs():
+    # Two runs both using spectrum_id "0".."29" -- must not collapse into 30 total.
+    psm_list_a = _make_psm_list(n_spectra=30, seed=10, run="runA")
+    psm_list_b = _make_psm_list(n_spectra=30, seed=11, run="runB")
+    psm_list = PSMList(psm_list=list(psm_list_a) + list(psm_list_b))
+
+    result = rescoring.evaluate_before(psm_list, BASE_CONFIG)
+
+    assert len(result.psms) == 60
+    assert set(result.psms["run"]) == {"runA", "runB"}
+
+
+def test_rescore_disambiguates_spectrum_id_across_runs():
+    psm_list_a = _make_psm_list(n_spectra=30, seed=12, run="runA")
+    psm_list_b = _make_psm_list(n_spectra=30, seed=13, run="runB")
+    psm_list = PSMList(psm_list=list(psm_list_a) + list(psm_list_b))
+
+    new_psm_list, after_result, _ = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+
+    assert len(new_psm_list) == 60
+    assert len(after_result.psms) == 60
+    assert set(after_result.psms["run"]) == {"runA", "runB"}
 
 
 def test_rescore_writes_scores_and_metadata():

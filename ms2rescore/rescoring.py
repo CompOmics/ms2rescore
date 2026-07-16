@@ -36,11 +36,13 @@ def build_features_dataframe(
     """
     Build the plain identifier + feature DataFrame that ristretto expects.
 
-    Identifier columns are the real ``spectrum_id`` (for true spectrum-grouped CV, not an
-    artificial per-row index), a charge-stripped ``peptidoform`` string, a bare (no
-    modifications, no charge) ``peptide`` string, and a semicolon-joined ``protein`` string
-    (only added if every PSM has a non-empty ``protein_list``). ``score`` is negated if
-    ``lower_score_is_better``, so ristretto always sees "higher is better".
+    Identifier columns are the real ``spectrum_id`` and ``run`` (for true spectrum-grouped
+    CV and competition, not an artificial per-row index -- ``run`` guards against
+    ``spectrum_id`` collisions across multiple input files), a charge-stripped
+    ``peptidoform`` string, a bare (no modifications, no charge) ``peptide`` string, and a
+    semicolon-joined ``protein`` string (only added if every PSM has a non-empty
+    ``protein_list``). ``score`` is negated if ``lower_score_is_better``, so ristretto
+    always sees "higher is better".
 
     """
     psm_df = psm_list.to_dataframe().reset_index(drop=True)
@@ -48,6 +50,7 @@ def build_features_dataframe(
     features_df = pd.DataFrame(
         {
             "spectrum_id": psm_df["spectrum_id"],
+            "run": psm_df["run"],
             "is_decoy": psm_df["is_decoy"],
             "peptidoform": psm_df["peptidoform"]
             .astype(str)
@@ -66,20 +69,6 @@ def build_features_dataframe(
         features_df = pd.concat([features_df, feature_df], axis=1)
 
     return features_df
-
-
-def _attach_run(psm_list: PSMList, result: RescoreResult) -> RescoreResult:
-    """
-    Attach each PSM's ``run`` onto ``result.psms``.
-
-    ``ristretto``'s output schema has no room for extra passthrough columns, so this is
-    added afterwards, using the same original-row-order-preserving index that
-    ``result.psms`` is guaranteed to carry. Lets the report merge PSMs by ``(run,
-    spectrum_id)`` instead of ``spectrum_id`` alone, which can collide across input files.
-
-    """
-    runs = [psm.run for psm in psm_list]
-    return replace(result, psms=result.psms.assign(run=[runs[i] for i in result.psms.index]))
 
 
 def _attach_original_psm_mask(psm_list: PSMList, result: RescoreResult) -> RescoreResult:
@@ -114,12 +103,12 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     features_df = build_features_dataframe(psm_list, set(), infer_score_direction(psm_list, train_fdr))
     result = ristretto.evaluate(
         features_df,
+        run_col="run",
         peptide_col="peptide",
         protein_col="protein" if "protein" in features_df.columns else None,
         decoy_pattern=config["id_decoy_pattern"],
         multi_rank_rescoring=False,
     )
-    result = _attach_run(psm_list, result)
     return _attach_original_psm_mask(psm_list, result)
 
 
@@ -145,7 +134,6 @@ def rescore(
         ``max_psm_rank_output == 1``.
 
     """
-    original_psm_list = psm_list
     feature_names = {f for psm in psm_list for f in psm.rescoring_features}
     lower_score_is_better = infer_score_direction(psm_list, config["rescoring"]["train_fdr"])
     features_df = build_features_dataframe(psm_list, feature_names, lower_score_is_better)
@@ -157,6 +145,7 @@ def rescore(
     try:
         ml_result = ristretto.rescore(
             features_df,
+            run_col="run",
             peptide_col=peptide_col,
             protein_col=protein_col,
             feature_cols=sorted(feature_names),
@@ -170,7 +159,7 @@ def rescore(
         # that ends up in the output -- not recomputed after the fact on a subset.
         ml_psms = ml_result.psms
         if config["max_psm_rank_output"] > 1:
-            output_rank = ml_psms.groupby("spectrum_id")["score"].rank(
+            output_rank = ml_psms.groupby(["run", "spectrum_id"])["score"].rank(
                 method="first", ascending=False
             )
             output_ml_psms = ml_psms[output_rank <= config["max_psm_rank_output"]]
@@ -179,6 +168,7 @@ def rescore(
 
         final_result = ristretto.evaluate(
             output_ml_psms,
+            run_col="run",
             peptide_col=peptide_col,
             protein_col=protein_col,
             decoy_pattern=decoy_pattern,
@@ -191,6 +181,7 @@ def rescore(
             # in the actual output.
             report_result = ristretto.evaluate(
                 ml_psms,
+                run_col="run",
                 peptide_col=peptide_col,
                 protein_col=protein_col,
                 decoy_pattern=decoy_pattern,
@@ -211,7 +202,6 @@ def rescore(
     psm_list, final_result = fix_constant_pep(
         psm_list, final_result, peptide_col, protein_col, decoy_pattern
     )
-    final_result = _attach_run(original_psm_list, final_result)
     if report_result is None:
         # max_psm_rank_output == 1: the report view is the same competition as the final
         # result, so it must reflect the same fix_constant_pep filtering.
@@ -222,7 +212,6 @@ def rescore(
         report_result, _ = _fix_constant_pep_result(
             report_result, peptide_col, protein_col, decoy_pattern
         )
-        report_result = _attach_run(original_psm_list, report_result)
 
     _write_group_metadata(psm_list, final_result.psms, final_result.peptidoforms, "peptidoform")
     if final_result.peptides is not None:
@@ -362,6 +351,7 @@ def _fix_constant_pep_result(
 
     fixed = ristretto.evaluate(
         filtered_psms,
+        run_col="run" if "run" in filtered_psms.columns else None,
         peptide_col=peptide_col,
         protein_col=protein_col,
         decoy_pattern=decoy_pattern,

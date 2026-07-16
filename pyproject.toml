@@ -49,7 +49,7 @@ dependencies = [
     "pyarrow>=14",
     "pyteomics>=4.7.2",
     "rich>=12",
-    "ristretto-ms>=0.2.0",
+    "ristretto-ms>=0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -104,7 +104,7 @@ module-root = ""
 [tool.uv]
 
 [tool.uv.sources]
-# TODO: remove once ristretto-ms>=0.2.0 (with `evaluate()`) is published to PyPI.
+# TODO: remove once ristretto-ms>=0.3.0 (with `evaluate()` and `run_col`) is published to PyPI.
 ristretto-ms = { path = "../ironbrew", editable = true }
 
 [tool.pytest.ini_options]
