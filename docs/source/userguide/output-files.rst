@@ -36,42 +36,36 @@ Log and configuration files:
 |                                      | used to resume processing with ``-p <prefix>.intermediate.psms.tsv -t tsv``.         |
 +--------------------------------------+--------------------------------------------------------------------------------------+
 
-Rescoring result tables (written if ``write_rescoring_tables`` is enabled, the default),
-one pair of before/after files per identification level. The peptide- and protein-level tables are
-only written if the PSM file provides the corresponding information (a stripped peptide sequence
-and a ``protein_list``, respectively):
+Rescoring result tables (written if ``write_rescoring_tables`` is enabled, the default): the
+post-rescoring score, q-value, and PEP at each identification level, as plain TSV files --
+convenient to open directly (e.g. in Excel), unlike the full PSM list output above, which also
+includes rescoring features and other provenance data. The protein-level table is only written
+if the PSM file provides a ``protein_list``.
 
-+----------------------------------------------------+------------------------------------------------------------------+
-| File                                               | Description                                                      |
-+====================================================+==================================================================+
-| ``<prefix>.ristretto.psms_before.parquet``         | PSMs and their pre-rescoring score, at PSM-level FDR.            |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.psms_after.parquet``          | PSMs and their new scores at PSM-level FDR.                      |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.peptidoforms_before.parquet`` | Peptidoforms and their pre-rescoring score, at peptidoform-level |
-|                                                    | FDR.                                                             |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.peptidoforms_after.parquet``  | Peptidoforms and their new scores at peptidoform-level FDR.      |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.peptides_before.parquet``     | Peptides and their pre-rescoring score, at peptide-level FDR.    |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.peptides_after.parquet``      | Peptides and their new scores at peptide-level FDR.              |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.proteins_before.parquet``     | Proteins and their pre-rescoring score, at protein-level FDR.    |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.proteins_after.parquet``      | Proteins and their new scores at protein-level FDR.              |
-+----------------------------------------------------+------------------------------------------------------------------+
-| ``<prefix>.ristretto.weights.parquet``             | Feature weights, showing feature usage in the rescoring run.     |
-+----------------------------------------------------+------------------------------------------------------------------+
+Only the post-rescoring ("after") result is written. The pre-rescoring ("before") result isn't
+persisted at all: it's fully reconstructable from the main PSM list's provenance data, which is
+what the HTML report and ``ms2rescore-report`` use to regenerate it on demand.
 
-If ``max_psm_rank_output`` is set to more than 1, the ``..._psms_after.parquet``,
-``..._peptidoforms_after.parquet``, ``..._peptides_after.parquet``, and
-``..._proteins_after.parquet`` files above reflect the full multi-rank output. In that case,
-an additional set of ``..._after_report.parquet`` files is also written, holding the
-same identification levels but always competed down to one PSM per spectrum -- this is the
-view used by ``<prefix>.report.html``, so that the report stays comparable to the
-``max_psm_rank_output: 1`` case regardless of how many ranks per spectrum are kept in the
-main output.
+If ``max_psm_rank_output`` is set to more than 1, these tables (and the main PSM list output)
+hold multiple ranks per spectrum, and their q-values/PEPs are computed treating each rank as an
+independent row rather than through proper spectrum competition -- not statistically rigorous
+FDR control. ``max_psm_rank_output > 1`` is intended for surfacing ambiguous results (e.g.
+multiple candidate peptidoforms per spectrum from Mumble), not for a corrected identification
+count.
+
++-----------------------------------------+--------------------------------------------------------------+
+| File                                    | Description                                                  |
++=========================================+==============================================================+
+| ``<prefix>.ristretto.psms.tsv``         | PSMs and their rescored score, at PSM-level FDR.             |
++-----------------------------------------+--------------------------------------------------------------+
+| ``<prefix>.ristretto.peptidoforms.tsv`` | Peptidoforms and their score, at peptidoform-level FDR.      |
++-----------------------------------------+--------------------------------------------------------------+
+| ``<prefix>.ristretto.peptides.tsv``     | Peptides and their score, at peptide-level FDR.              |
++-----------------------------------------+--------------------------------------------------------------+
+| ``<prefix>.ristretto.proteins.tsv``     | Proteins and their score, at protein-level FDR.              |
++-----------------------------------------+--------------------------------------------------------------+
+| ``<prefix>.ristretto.weights.tsv``      | Feature weights, showing feature usage in the rescoring run. |
++-----------------------------------------+--------------------------------------------------------------+
 
 If rescoring is disabled (``"rescoring": null``) or in DEBUG mode, the following files will also
 be written:
