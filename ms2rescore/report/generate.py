@@ -73,7 +73,9 @@ def generate_report(
                 "id": "main_tab_comparison",
                 "title": "Overview",
                 "template": "overview.html",
-                "context": _get_overview_context(data.id_stats, data.before, data.after),
+                "context": _get_overview_context(
+                    data.id_stats, data.before, data.after, data.fdr_threshold
+                ),
             },
             {
                 "id": "main_tab_target_decoy",
@@ -86,7 +88,7 @@ def generate_report(
                 "title": "Rescoring features",
                 "template": "features.html",
                 "context": _get_features_context(
-                    psm_df, data.feature_names, data.feature_weights, is_decoy
+                    psm_df, data.feature_names, data.feature_weights, is_decoy, data.fdr_threshold
                 ),
             },
             {
@@ -115,7 +117,9 @@ def _get_psm_filenames(data: ReportData) -> str:
     return "Unknown"
 
 
-def _get_overview_context(id_stats: list, before: RescoreResult, after: RescoreResult) -> dict:
+def _get_overview_context(
+    id_stats: list, before: RescoreResult, after: RescoreResult, fdr_threshold: float
+) -> dict:
     """Return context for the overview tab."""
     logger.debug("Generating overview charts...")
     return {
@@ -124,17 +128,21 @@ def _get_overview_context(id_stats: list, before: RescoreResult, after: RescoreR
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
                 "description": TEXTS["charts"]["score_comparison"]["description"],
-                "chart": charts.score_scatter_plot(before, after).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.score_scatter_plot(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
             {
                 "title": TEXTS["charts"]["fdr_comparison"]["title"],
                 "description": TEXTS["charts"]["fdr_comparison"]["description"],
-                "chart": charts.fdr_plot_comparison(before, after).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.fdr_plot_comparison(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
             {
                 "title": TEXTS["charts"]["identification_overlap"]["title"],
                 "description": TEXTS["charts"]["identification_overlap"]["description"],
-                "chart": charts.identification_overlap(before, after).to_html(
+                "chart": charts.identification_overlap(before, after, fdr_threshold).to_html(
                     **PLOTLY_HTML_KWARGS
                 ),
             },
@@ -166,6 +174,7 @@ def _get_features_context(
     feature_names: dict,
     feature_weights: Optional[pd.DataFrame],
     is_decoy: pd.Series,
+    fdr_threshold: float,
 ) -> dict:
     """Return context for the rescoring-features tab."""
     logger.debug("Generating feature-related charts...")
@@ -210,7 +219,7 @@ def _get_features_context(
         )
 
     # Retention-time and ion-mobility charts on high-confidence targets
-    high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= 0.01)]
+    high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= fdr_threshold)]
     if "deeplc" in feature_names:
         _add_deeplc_chart(context, high_conf_features, color=color_map.get("deeplc"))
     if "im2deep" in feature_names:

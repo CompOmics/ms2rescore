@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,10 @@ import pytest
 from psm_utils import PSM, PSMList
 from ristretto import RescoreResult
 
+from click.testing import CliRunner
+
 from ms2rescore.report import charts
+from ms2rescore.report.__main__ import main as report_main
 from ms2rescore.report.data import ReportData
 from ms2rescore.report.generate import generate_report
 from ms2rescore.report.utils import (
@@ -196,6 +200,58 @@ def test_from_files_reconstructs_before_and_after_without_any_table_files(tmp_pa
 def test_from_files_missing_psm_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         ReportData.from_files(str(tmp_path / "does_not_exist"))
+
+
+def test_from_run_default_fdr_threshold(psm_list, before_after):
+    before, after = before_after
+    data = ReportData.from_run(psm_list, feature_names=FEATURE_NAMES, before=before, after=after)
+    assert data.fdr_threshold == 0.01
+
+
+def test_from_run_respects_custom_fdr_threshold(psm_list, before_after):
+    before, after = before_after
+    data = ReportData.from_run(
+        psm_list, feature_names=FEATURE_NAMES, before=before, after=after, fdr_threshold=0.05
+    )
+    assert data.fdr_threshold == 0.05
+    assert data.id_stats == compute_id_stats(before, after, 0.05)
+
+
+def test_from_files_reads_report_fdr_from_config(tmp_path):
+    prefix = _write_regen_fixture(tmp_path)
+    with open(prefix + ".full-config.json") as f:
+        config = json.load(f)
+    config["ms2rescore"]["report_fdr"] = 0.05
+    with open(prefix + ".full-config.json", "w") as f:
+        json.dump(config, f)
+
+    data = ReportData.from_files(prefix)
+
+    assert data.fdr_threshold == 0.05
+
+
+def test_from_files_fdr_override_takes_precedence_over_config(tmp_path):
+    prefix = _write_regen_fixture(tmp_path)
+    with open(prefix + ".full-config.json") as f:
+        config = json.load(f)
+    config["ms2rescore"]["report_fdr"] = 0.05
+    with open(prefix + ".full-config.json", "w") as f:
+        json.dump(config, f)
+
+    data = ReportData.from_files(prefix, fdr_threshold=0.2)
+
+    assert data.fdr_threshold == 0.2
+
+
+def test_cli_fdr_option_overrides_config(tmp_path):
+    prefix = _write_regen_fixture(tmp_path)
+    psm_file = prefix + ".psms.tsv"
+
+    result = CliRunner().invoke(report_main, [psm_file, "--fdr", "0.2"])
+
+    assert result.exit_code == 0, result.output
+    report_file = Path(prefix + ".report.html")
+    assert report_file.is_file()
 
 
 def test_compute_protein_stats_without_protein_col_returns_none(before_after):

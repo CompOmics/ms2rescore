@@ -37,6 +37,7 @@
         "rename_to_usi": false,
         "write_flashlfq": false,
         "write_report": false,
+        "report_fdr": 0.01,
         "fragmentation_model": "cidhcd",
         "tolerance_value": 0.02,
         "tolerance_mode": "Da"

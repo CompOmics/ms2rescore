@@ -770,7 +770,9 @@ def score_scatter_plot(
     return _style(fig)
 
 
-def fdr_plot_comparison(before: RescoreResult, after: RescoreResult) -> go.Figure:
+def fdr_plot_comparison(
+    before: RescoreResult, after: RescoreResult, fdr_threshold: float = 0.01
+) -> go.Figure:
     """
     Plot number of identified spectra as a function of FDR threshold, before vs. after.
 
@@ -785,6 +787,8 @@ def fdr_plot_comparison(before: RescoreResult, after: RescoreResult) -> go.Figur
         Result of evaluating the PSMs' pre-rescoring score with ristretto.
     after
         Result of rescoring the PSMs with ristretto.
+    fdr_threshold
+        FDR threshold to draw as a reference line.
 
     Returns
     -------
@@ -830,7 +834,7 @@ def fdr_plot_comparison(before: RescoreResult, after: RescoreResult) -> go.Figur
             "after rescoring": "#24a143",
         },
     )
-    fig.add_vline(x=0.01, line_dash="dash", line_color=_COLOR_REFERENCE)
+    fig.add_vline(x=fdr_threshold, line_dash="dash", line_color=_COLOR_REFERENCE)
     fig.update_layout(yaxis_title="Identified spectra")
     return _style(fig)
 

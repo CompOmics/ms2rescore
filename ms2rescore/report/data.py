@@ -65,6 +65,7 @@ class ReportData:
     feature_weights: Optional[pd.DataFrame] = None
     id_stats: List[dict] = field(default_factory=list)
     log_html: Optional[str] = None
+    fdr_threshold: float = 0.01
 
     @classmethod
     def from_run(
@@ -74,6 +75,7 @@ class ReportData:
         config: Optional[dict] = None,
         before: Optional[RescoreResult] = None,
         after: Optional[RescoreResult] = None,
+        fdr_threshold: float = 0.01,
     ) -> "ReportData":
         """Build report data from an in-memory MS²Rescore run."""
         config = config or {"ms2rescore": {}}
@@ -86,11 +88,14 @@ class ReportData:
             after=after,
             config=config,
             feature_weights=after.feature_weights,
-            id_stats=compute_id_stats(before, after),
+            id_stats=compute_id_stats(before, after, fdr_threshold),
+            fdr_threshold=fdr_threshold,
         )
 
     @classmethod
-    def from_files(cls, output_path_prefix: str) -> "ReportData":
+    def from_files(
+        cls, output_path_prefix: str, fdr_threshold: Optional[float] = None
+    ) -> "ReportData":
         """
         Build report data by reading the files written by a previous run.
 
@@ -100,6 +105,10 @@ class ReportData:
         post-rescoring score/identity is simply the PSM's current state -- so no separate
         rescoring-result table needs to be read.
 
+        ``fdr_threshold``, if given, overrides the ``report_fdr`` stored in the run's
+        ``full-config.json`` -- lets a report be regenerated at a different FDR threshold
+        without rerunning rescoring.
+
         """
         psm_file = Path(output_path_prefix + ".psms.tsv")
         if not psm_file.is_file():
@@ -107,6 +116,8 @@ class ReportData:
 
         config = _read_config(Path(output_path_prefix + ".full-config.json"))
         ms2rescore_config = config.get("ms2rescore", {})
+        if fdr_threshold is None:
+            fdr_threshold = ms2rescore_config.get("report_fdr", 0.01)
 
         logger.info("Reading PSMs from %s...", psm_file.as_posix())
         psm_list = psm_utils.io.read_file(psm_file, filetype="tsv", show_progressbar=True)
@@ -125,7 +136,8 @@ class ReportData:
             after=after,
             config=config,
             feature_weights=after.feature_weights,
-            id_stats=compute_id_stats(before, after),
+            id_stats=compute_id_stats(before, after, fdr_threshold),
+            fdr_threshold=fdr_threshold,
         )
 
 

@@ -58,9 +58,11 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             usi_by_position[i] for i in before_result.psms.index
         ]
     n_id_before = (
-        (before_result.psms["qvalue"] <= 0.01) & ~before_result.psms["is_decoy"]
+        (before_result.psms["qvalue"] <= config["report_fdr"]) & ~before_result.psms["is_decoy"]
     ).sum()
-    logger.info(f"Found {n_id_before} identified PSMs at 1% FDR before rescoring.")
+    logger.info(
+        f"Found {n_id_before} identified PSMs at {config['report_fdr']:.2%} FDR before rescoring."
+    )
 
     # Define feature names; get existing feature names from PSM file
     feature_names = dict()
@@ -218,12 +220,15 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Post-rescoring processing. before_result was already trimmed to max_psm_rank_output,
     # same as after_result, so this comparison stays fair regardless of its value.
-    n_after = ((after_result.psms["qvalue"] <= 0.01) & ~after_result.psms["is_decoy"]).sum()
+    n_after = (
+        (after_result.psms["qvalue"] <= config["report_fdr"]) & ~after_result.psms["is_decoy"]
+    ).sum()
     n_before = n_id_before
     diff = n_after - n_before
     diff_perc = f" ({diff / n_before:.2%})" if n_before > 0 else ""
     logger.info(
-        f"Identified {diff:+d}{diff_perc} PSMs at 1% FDR after rescoring, compared to before."
+        f"Identified {diff:+d}{diff_perc} PSMs at {config['report_fdr']:.2%} FDR after "
+        "rescoring, compared to before."
     )
 
     rescoring.write_rescoring_tables(after_result, output_file_root)
@@ -238,15 +243,20 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             psm_list,
             output_file_root + ".flashlfq.tsv",
             filetype="flashlfq",
-            fdr_threshold=0.01,
-            only_target=True,  # TODO: Make FDR threshold configurable
+            fdr_threshold=config["report_fdr"],
+            only_target=True,
         )
 
     # Write report
     if config["write_report"]:
         try:
             report_data = ReportData.from_run(
-                psm_list, feature_names, configuration, before_result, after_result
+                psm_list,
+                feature_names,
+                configuration,
+                before_result,
+                after_result,
+                fdr_threshold=config["report_fdr"],
             )
             generate.generate_report(output_file_root, report_data)
         except exceptions.ReportGenerationError as e:

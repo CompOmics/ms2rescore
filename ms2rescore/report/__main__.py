@@ -19,7 +19,16 @@ logger = logging.getLogger(__name__)
     default=None,
     help="Output path for the report HTML file. If not provided, will be based on PSM file name.",
 )
-def main(psm_file, output):
+@click.option(
+    "--fdr",
+    type=click.FloatRange(0, 1),
+    default=None,
+    help=(
+        "FDR threshold for the report's identification stats/charts. Defaults to the "
+        "report_fdr used in the original run (from its saved full-config.json)."
+    ),
+)
+def main(psm_file, output, fdr):
     """Generate MS²Rescore report from a PSM TSV file.
 
     PSM_FILE: Path to the PSM TSV file (e.g., output.psms.tsv)
@@ -46,7 +55,7 @@ def main(psm_file, output):
             output_path = Path(output_prefix + ".report.html")
 
         logger.info("Generating report...")
-        report_data = ReportData.from_files(output_prefix)
+        report_data = ReportData.from_files(output_prefix, fdr_threshold=fdr)
         generate_report(output_prefix, report_data, output_file=output_path)
 
         logger.info(f"✓ Report generated: {output_path}")

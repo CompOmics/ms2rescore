@@ -165,6 +165,13 @@
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": true
                 },
+                "report_fdr": {
+                    "description": "FDR threshold used for reporting: console log identification counts, the HTML report's identification stats/charts, and FlashLFQ output filtering. Independent of rescoring.train_fdr, which controls ristretto's training instead.",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.01
+                },
                 "disable_update_check": {
                     "description": "Disable the automatic update check",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],

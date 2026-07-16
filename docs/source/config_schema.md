@@ -72,6 +72,7 @@
     - **One of**
       - *boolean*
       - *null*
+  - **`report_fdr`** *(number)*: FDR threshold used for reporting: console log identification counts, the HTML report's identification stats/charts, and FlashLFQ output filtering. Independent of rescoring.train_fdr, which controls ristretto's training instead. Minimum: `0`. Maximum: `1`. Default: `0.01`.
   - **`disable_update_check`**: Disable the automatic update check. Default: `false`.
     - **One of**
       - *boolean*
