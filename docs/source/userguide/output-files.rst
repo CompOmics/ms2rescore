@@ -3,7 +3,8 @@ Output files
 ############
 
 Depending on the options you choose, the following files will be created. All PSMs, peptides, and
-proteins are not yet filtered at any false discovery rate (FDR) level.
+proteins are not yet filtered at any false discovery rate (FDR) level and contain both target and
+decoy identifications.
 
 Main output files:
 
@@ -35,33 +36,27 @@ Log and configuration files:
 |                                      | used to resume processing with ``-p <prefix>.intermediate.tsv -t tsv``.              |
 +--------------------------------------+--------------------------------------------------------------------------------------+
 
-Rescoring result tables (always written): the
-post-rescoring score, q-value, and PEP at each identification level, as plain TSV files --
-convenient to open directly (e.g. in Excel), unlike the full PSM list output above, which also
-includes rescoring features and other provenance data. The protein-level table is only written
-if the PSM file provides a ``protein_list``.
-
-Only the post-rescoring ("after") result is written. The pre-rescoring ("before") result isn't
-persisted at all: it's fully reconstructable from the main PSM list's provenance data, which is
-what the HTML report and ``ms2rescore-report`` use to regenerate it on demand.
+Rescoring result tables: the post-rescoring score, q-value, and PEP at each identification level,
+as plain TSV files, convenient to open directly (e.g. in Excel). The protein-level table is only
+written if the PSM file provides a ``protein_list``.
 
 If ``max_psm_rank_output`` is set to more than 1, these tables (and the main PSM list output)
 hold multiple ranks per spectrum, and their q-values/PEPs are computed treating each rank as an
-independent row rather than through proper spectrum competition -- not statistically rigorous
-FDR control. ``max_psm_rank_output > 1`` is intended for surfacing ambiguous results (e.g.
+independent row rather than through proper spectrum competition (not statistically rigorous
+FDR control). ``max_psm_rank_output > 1`` is intended for surfacing ambiguous results (e.g.
 multiple candidate peptidoforms per spectrum from Mumble), not for a corrected identification
 count.
 
-+-------------------------------+--------------------------------------------------------------+
-| File                          | Description                                                  |
-+===============================+==============================================================+
-| ``<prefix>.psms.tsv``         | PSMs and their rescored score, at PSM-level FDR.             |
-+-------------------------------+--------------------------------------------------------------+
-| ``<prefix>.peptidoforms.tsv`` | Peptidoforms and their score, at peptidoform-level FDR.      |
-+-------------------------------+--------------------------------------------------------------+
-| ``<prefix>.peptides.tsv``     | Peptides and their score, at peptide-level FDR.              |
-+-------------------------------+--------------------------------------------------------------+
-| ``<prefix>.proteins.tsv``     | Proteins and their score, at protein-level FDR.              |
-+-------------------------------+--------------------------------------------------------------+
-| ``<prefix>.weights.tsv``      | Feature weights, showing feature usage in the rescoring run. |
-+-------------------------------+--------------------------------------------------------------+
++-------------------------------+-------------------------------------------------------------------------------------------------+
+| File                          | Description                                                                                     |
++===============================+=================================================================================================+
+| ``<prefix>.psms.tsv``         | PSMs and their rescored score, at PSM-level FDR.                                                |
++-------------------------------+-------------------------------------------------------------------------------------------------+
+| ``<prefix>.peptidoforms.tsv`` | Peptidoforms (sequence and modifications, no charge) and their score, at peptidoform-level FDR. |
++-------------------------------+-------------------------------------------------------------------------------------------------+
+| ``<prefix>.peptides.tsv``     | Peptides (stripped sequence) and their score, at peptide-level FDR.                             |
++-------------------------------+-------------------------------------------------------------------------------------------------+
+| ``<prefix>.proteins.tsv``     | Protein groups and their score, at protein group-level FDR.                                     |
++-------------------------------+-------------------------------------------------------------------------------------------------+
+| ``<prefix>.weights.tsv``      | Feature weights, showing feature usage in the rescoring run.                                    |
++-------------------------------+-------------------------------------------------------------------------------------------------+
