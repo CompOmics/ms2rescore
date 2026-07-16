@@ -189,13 +189,20 @@ def rescore(
     psm_list["pep"] = final_result.psms["pep"].to_numpy()
     psm_list.set_ranks(lower_score_better=False)
 
-    psm_list, final_result = fix_constant_pep(psm_list, final_result)
+    psm_list, final_result = fix_constant_pep(
+        psm_list, final_result, peptide_col, protein_col, decoy_pattern
+    )
     final_result = _attach_run(original_psm_list, final_result)
     if report_result is None:
         # max_psm_rank_output == 1: the report view is the same competition as the final
         # result, so it must reflect the same fix_constant_pep filtering.
         report_result = final_result
     else:
+        # report_result is an independent rank-1 competition -- check/fix it separately,
+        # since it can hit the same degenerate constant-PEP case on its own.
+        report_result, _ = _fix_constant_pep_result(
+            report_result, peptide_col, protein_col, decoy_pattern
+        )
         report_result = _attach_run(original_psm_list, report_result)
 
     _write_group_metadata(psm_list, final_result.psms, final_result.peptidoforms, "peptidoform")
@@ -283,31 +290,88 @@ def _write_result_tables(result: RescoreResult, output_file_root: str, suffix: s
         result.proteins.to_parquet(Path(f"{output_file_root}.ristretto.proteins_{suffix}.parquet"))
 
 
-def fix_constant_pep(
-    psm_list: PSMList, result: RescoreResult
-) -> Tuple[PSMList, RescoreResult]:
+def _fix_constant_pep_result(
+    result: RescoreResult,
+    peptide_col: Optional[str],
+    protein_col: Optional[str],
+    decoy_pattern: Optional[str],
+) -> Tuple[RescoreResult, Optional[np.ndarray]]:
     """
-    Workaround for broken PEP calculation if the best-scoring PSM is a decoy.
+    Detect and fix constant PEP (all 1.0) on a single ``RescoreResult``.
 
-    Filters ``psm_list`` and ``result.psms`` together (same length, same row order) so they
-    never desync -- callers (parquet tables, report, 1%-FDR counts) all keep seeing the same
-    PSM population as the returned ``psm_list``.
+    Removes decoy PSMs that score higher than the best target, then recomputes q-values,
+    PEPs, and the peptidoform/peptide/protein rollups from scratch on the corrected
+    population -- the original per-row values (and rollups derived from them) are products
+    of the broken calibration and must not be carried forward.
+
+    Returns
+    -------
+    tuple[RescoreResult, numpy.ndarray | None]
+        The (possibly fixed) result, and the boolean keep-mask applied to ``result.psms`` --
+        or ``None`` if no fix was needed/possible, in which case ``result`` is unchanged.
 
     """
-    if not all(psm_list["pep"] == 1.0):
-        return psm_list, result
+    psms = result.psms
+    if not (psms["pep"] == 1.0).all():
+        return result, None
 
     logger.warning(
         "Attempting to fix constant PEP values by removing decoy PSMs that score higher than the "
         "best target PSM."
     )
-    max_target_score = psm_list["score"][~psm_list["is_decoy"]].max()
-    higher_scoring_decoys = psm_list["is_decoy"] & (psm_list["score"] > max_target_score)
+    max_target_score = psms["score"][~psms["is_decoy"]].max()
+    higher_scoring_decoys = psms["is_decoy"].to_numpy() & (
+        psms["score"].to_numpy() > max_target_score
+    )
 
     if not higher_scoring_decoys.any():
         logger.warning("No decoys scoring higher than the best target found. Skipping fix.")
-        return psm_list, result
+        return result, None
 
     keep = ~higher_scoring_decoys
     logger.warning(f"Removed {higher_scoring_decoys.sum()} decoy PSMs.")
-    return psm_list[keep], replace(result, psms=result.psms[keep])
+    filtered_psms = psms[keep]
+    if filtered_psms["is_decoy"].nunique() < 2:
+        # No decoys (or no targets) remain to recompute a competition against -- an extreme
+        # edge case of an already-degenerate input. Keep the filtered rows as-is rather than
+        # erroring on ristretto.evaluate()'s target/decoy requirement.
+        logger.warning(
+            "Cannot recompute q-values/PEP/rollups after removing decoys: no decoys remain "
+            "in the corrected population. Keeping filtered rows with their prior values."
+        )
+        return replace(result, psms=filtered_psms), keep
+
+    fixed = ristretto.evaluate(
+        filtered_psms,
+        peptide_col=peptide_col,
+        protein_col=protein_col,
+        decoy_pattern=decoy_pattern,
+        multi_rank_rescoring=True,
+    )
+    return fixed, keep
+
+
+def fix_constant_pep(
+    psm_list: PSMList,
+    result: RescoreResult,
+    peptide_col: Optional[str] = None,
+    protein_col: Optional[str] = None,
+    decoy_pattern: Optional[str] = None,
+) -> Tuple[PSMList, RescoreResult]:
+    """
+    Workaround for broken PEP calculation if the best-scoring PSM is a decoy.
+
+    Filters ``psm_list`` and ``result`` together (same length, same row order) so they never
+    desync -- callers (parquet tables, report, 1%-FDR counts) all keep seeing the same PSM
+    population as the returned ``psm_list``, with the same freshly recomputed rollups.
+
+    """
+    fixed_result, keep = _fix_constant_pep_result(result, peptide_col, protein_col, decoy_pattern)
+    if keep is None:
+        return psm_list, fixed_result
+
+    psm_list = psm_list[keep]
+    psm_list["score"] = fixed_result.psms["score"].to_numpy()
+    psm_list["qvalue"] = fixed_result.psms["qvalue"].to_numpy()
+    psm_list["pep"] = fixed_result.psms["pep"].to_numpy()
+    return psm_list, fixed_result

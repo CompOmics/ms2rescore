@@ -147,15 +147,26 @@ def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():
     assert after_report_result.psms["spectrum_id"].is_unique
 
 
-def test_fix_constant_pep_removes_higher_scoring_decoys():
-    psm_list = PSMList(
-        psm_list=[
-            PSM(peptidoform="AAAK/2", spectrum_id="1", is_decoy=False, score=1.0, pep=1.0),
-            PSM(peptidoform="BBBK/2", spectrum_id="2", is_decoy=True, score=5.0, pep=1.0),
-        ]
-    )
-    result = RescoreResult(
-        psms=pd.DataFrame({"spectrum_id": ["1", "2"], "score": [1.0, 5.0]}),
+def _toy_peptidoform(i: int) -> str:
+    """Valid, distinct peptidoform string for toy fixtures."""
+    return f"PEPT{_RESIDUES[i % len(_RESIDUES)]}IDEK/2"
+
+
+def _toy_result(spectrum_ids, is_decoy, scores, peps):
+    """Minimal RescoreResult.psms with the columns ristretto.evaluate() requires."""
+    return RescoreResult(
+        psms=pd.DataFrame(
+            {
+                "spectrum_id": spectrum_ids,
+                "is_decoy": is_decoy,
+                "peptidoform": [
+                    _toy_peptidoform(i).rsplit("/", 1)[0] for i in range(len(spectrum_ids))
+                ],
+                "score": scores,
+                "qvalue": [0.01] * len(spectrum_ids),
+                "pep": peps,
+            }
+        ),
         peptidoforms=pd.DataFrame(),
         peptides=None,
         proteins=None,
@@ -164,11 +175,61 @@ def test_fix_constant_pep_removes_higher_scoring_decoys():
         feature_weights=pd.DataFrame(),
     )
 
+
+def test_fix_constant_pep_removes_higher_scoring_decoys():
+    # 3 targets (scores 1-3), 2 decoys: one below the best target (0.5), one above it (10.0).
+    # Only the higher-scoring decoy should be removed; one decoy remains, so q-values/PEP are
+    # recomputed rather than falling back to the no-recompute edge case.
+    is_decoy = [False, False, False, True, True]
+    psm_list = PSMList(
+        psm_list=[
+            PSM(
+                peptidoform=_toy_peptidoform(i),
+                spectrum_id=str(i),
+                is_decoy=is_decoy[i],
+                score=score,
+                pep=1.0,
+            )
+            for i, score in enumerate([1.0, 2.0, 3.0, 0.5, 10.0])
+        ]
+    )
+    result = _toy_result(
+        spectrum_ids=["0", "1", "2", "3", "4"],
+        is_decoy=is_decoy,
+        scores=[1.0, 2.0, 3.0, 0.5, 10.0],
+        peps=[1.0] * 5,
+    )
+
+    fixed_psm_list, fixed_result = rescoring.fix_constant_pep(psm_list, result)
+    assert len(fixed_psm_list) == 4
+    assert set(fixed_psm_list["spectrum_id"]) == {"0", "1", "2", "3"}
+    assert len(fixed_result.psms) == 4
+    # Recomputed, no longer stuck at the degenerate constant 1.0.
+    assert not (fixed_result.psms["pep"] == 1.0).all()
+
+
+def test_fix_constant_pep_no_recompute_when_no_decoys_remain():
+    # Removing the higher-scoring decoy leaves zero decoys -- evaluate() can't recompute a
+    # competition against an empty decoy set, so this must fall back to plain filtering
+    # instead of raising.
+    result = _toy_result(
+        spectrum_ids=["0", "1"],
+        is_decoy=[False, True],
+        scores=[1.0, 5.0],
+        peps=[1.0, 1.0],
+    )
+    psm_list = PSMList(
+        psm_list=[
+            PSM(peptidoform="AAAK/2", spectrum_id="0", is_decoy=False, score=1.0, pep=1.0),
+            PSM(peptidoform="BBBK/2", spectrum_id="1", is_decoy=True, score=5.0, pep=1.0),
+        ]
+    )
+
     fixed_psm_list, fixed_result = rescoring.fix_constant_pep(psm_list, result)
     assert len(fixed_psm_list) == 1
     assert not fixed_psm_list[0].is_decoy
     assert len(fixed_result.psms) == 1
-    assert fixed_result.psms["spectrum_id"].tolist() == ["1"]
+    assert fixed_result.psms["spectrum_id"].tolist() == ["0"]
 
 
 def test_fix_constant_pep_is_noop_when_pep_not_constant():
@@ -178,14 +239,8 @@ def test_fix_constant_pep_is_noop_when_pep_not_constant():
             PSM(peptidoform="BBBK/2", spectrum_id="2", is_decoy=True, score=5.0, pep=1.0),
         ]
     )
-    result = RescoreResult(
-        psms=pd.DataFrame({"spectrum_id": ["1", "2"], "score": [1.0, 5.0]}),
-        peptidoforms=pd.DataFrame(),
-        peptides=None,
-        proteins=None,
-        pi0=float("nan"),
-        n_iterations=[],
-        feature_weights=pd.DataFrame(),
+    result = _toy_result(
+        spectrum_ids=["1", "2"], is_decoy=[False, True], scores=[1.0, 5.0], peps=[0.5, 1.0]
     )
 
     fixed_psm_list, fixed_result = rescoring.fix_constant_pep(psm_list, result)
