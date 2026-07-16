@@ -82,6 +82,24 @@ def _attach_run(psm_list: PSMList, result: RescoreResult) -> RescoreResult:
     return replace(result, psms=result.psms.assign(run=[runs[i] for i in result.psms.index]))
 
 
+def _attach_original_psm_mask(psm_list: PSMList, result: RescoreResult) -> RescoreResult:
+    """
+    Attach a boolean ``original_psm`` column onto ``result.psms``.
+
+    True unless the PSM was mumble-generated (``metadata["original_psm"]`` is ``False``).
+    Lets report/console-log identification counts exclude mumble's alternate mass-shift
+    candidates from the "before" baseline, matching the pre-migration
+    ``_log_id_psms_before`` behavior. Only meaningful for :py:func:`evaluate_before`'s
+    result: once rescoring has run, whichever candidate wins a spectrum's competition
+    (original or mumble-generated) is a legitimate identification.
+
+    """
+    mask = [psm.metadata.get("original_psm", True) for psm in psm_list]
+    return replace(
+        result, psms=result.psms.assign(original_psm=[mask[i] for i in result.psms.index])
+    )
+
+
 def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     """
     Evaluate the PSMs' current (pre-rescoring) score with ristretto, for report baselines.
@@ -101,7 +119,8 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
         decoy_pattern=config["id_decoy_pattern"],
         multi_rank_rescoring=False,
     )
-    return _attach_run(psm_list, result)
+    result = _attach_run(psm_list, result)
+    return _attach_original_psm_mask(psm_list, result)
 
 
 def rescore(

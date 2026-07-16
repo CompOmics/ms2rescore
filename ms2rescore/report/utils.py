@@ -40,8 +40,19 @@ def read_feature_names(feature_names_path: Optional[Path]) -> dict:
 
 
 def _n_identified(df: pd.DataFrame, fdr_threshold: float) -> int:
-    """Count target rows passing the FDR threshold (decoys are never identifications)."""
-    return int(((df["qvalue"] <= fdr_threshold) & ~df["is_decoy"]).sum())
+    """
+    Count target rows passing the FDR threshold (decoys are never identifications).
+
+    If an ``original_psm`` column is present (only ``before.psms`` carries one -- see
+    :py:func:`ms2rescore.rescoring.evaluate_before`), mumble-generated alternate candidates
+    are excluded too, matching the pre-migration ``_log_id_psms_before`` behavior. By the
+    time rescoring has run, whichever candidate wins a spectrum's competition (original or
+    mumble-generated) is a legitimate identification, so ``after``/rollup tables are never
+    masked this way.
+
+    """
+    mask = df["original_psm"] if "original_psm" in df.columns else True
+    return int(((df["qvalue"] <= fdr_threshold) & ~df["is_decoy"] & mask).sum())
 
 
 def compute_protein_stats(

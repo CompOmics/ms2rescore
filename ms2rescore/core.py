@@ -3,7 +3,6 @@ import logging
 from multiprocessing import cpu_count
 from typing import Dict, Optional
 
-import numpy as np
 import psm_utils.io
 from psm_utils import PSMList
 
@@ -58,13 +57,10 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         before_result.psms["spectrum_id"] = [
             usi_by_position[i] for i in before_result.psms.index
         ]
-    original_psm_mask = np.array(
-        [psm.metadata.get("original_psm", True) for psm in psm_list]
-    )
     n_id_before = (
         (before_result.psms["qvalue"] <= 0.01)
         & ~before_result.psms["is_decoy"]
-        & original_psm_mask[before_result.psms.index.to_numpy()]
+        & before_result.psms["original_psm"]
     ).sum()
     logger.info(f"Found {n_id_before} identified PSMs at 1% FDR before rescoring.")
 

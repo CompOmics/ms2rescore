@@ -8,9 +8,15 @@ import pytest
 from psm_utils import PSM, PSMList
 from ristretto import RescoreResult
 
+from ms2rescore.report import charts
 from ms2rescore.report.data import ReportData
 from ms2rescore.report.generate import generate_report
-from ms2rescore.report.utils import build_stat_card, compute_id_stats, compute_protein_stats
+from ms2rescore.report.utils import (
+    _n_identified,
+    build_stat_card,
+    compute_id_stats,
+    compute_protein_stats,
+)
 
 FEATURE_NAMES = {"basic": {"feature_a", "feature_b"}}
 _CHARGE_PATTERN = re.compile(r"(/\d+$)")
@@ -176,3 +182,69 @@ def test_build_stat_card_reports_increase():
     assert card["diff"] == "(+50)"
     assert card["is_increase"] is True
     assert card["card_color"] == "card-bg-blue"
+
+
+def test_n_identified_excludes_non_original_psm_when_present():
+    df = pd.DataFrame(
+        {
+            "qvalue": [0.001, 0.001, 0.001],
+            "is_decoy": [False, False, False],
+            "original_psm": [True, True, False],  # last one is mumble-generated
+        }
+    )
+    assert _n_identified(df, 0.01) == 2
+
+
+def test_n_identified_counts_all_targets_when_original_psm_absent():
+    """`after`/rollup tables never carry `original_psm`, so nothing is excluded there."""
+    df = pd.DataFrame({"qvalue": [0.001, 0.001, 0.001], "is_decoy": [False, False, False]})
+    assert _n_identified(df, 0.01) == 3
+
+
+_EMPTY_ROLLUP = pd.DataFrame(columns=["peptidoform", "score", "qvalue", "pep", "is_decoy", "n_psms"])
+
+
+def test_identification_overlap_disambiguates_spectrum_id_by_run():
+    """Two runs reusing the same native spectrum_id must not collide in the overlap counts."""
+    before = RescoreResult(
+        psms=pd.DataFrame(
+            {
+                "spectrum_id": ["1", "2", "1", "2"],
+                "run": ["runA", "runA", "runB", "runB"],
+                "is_decoy": [False, False, False, False],
+                "qvalue": [0.001, 0.001, 0.001, 0.001],
+            }
+        ),
+        peptidoforms=_EMPTY_ROLLUP,
+        peptides=None,
+        proteins=None,
+        pi0=0.1,
+        n_iterations=[],
+        feature_weights=pd.DataFrame(),
+    )
+    # runA's spectrum "1" drops out after rescoring; everything else survives.
+    after = RescoreResult(
+        psms=pd.DataFrame(
+            {
+                "spectrum_id": ["2", "1", "2"],
+                "run": ["runA", "runB", "runB"],
+                "is_decoy": [False, False, False],
+                "qvalue": [0.001, 0.001, 0.001],
+            }
+        ),
+        peptidoforms=_EMPTY_ROLLUP,
+        peptides=None,
+        proteins=None,
+        pi0=0.1,
+        n_iterations=[],
+        feature_weights=pd.DataFrame(),
+    )
+
+    fig = charts.identification_overlap(before, after)
+    values = {(trace.name, trace.y[0]): trace.x[0] for trace in fig.data}
+
+    # With the bug (bare spectrum_id), runA's "1"/"2" and runB's "1"/"2" would collide into
+    # only 2 distinct keys instead of 4, undercounting "removed" and overcounting "retained".
+    assert values[("removed", "spectra")] == -1
+    assert values[("retained", "spectra")] == 3
+    assert values[("gained", "spectra")] == 0

@@ -802,6 +802,13 @@ def fdr_plot_comparison(
     return _style(fig)
 
 
+def _group_keys(df: pd.DataFrame, group_cols: Union[str, List[str]]) -> list:
+    """Build hashable group keys from one column, or a compound key from several."""
+    if isinstance(group_cols, str):
+        return list(df[group_cols])
+    return list(zip(*(df[c] for c in group_cols)))
+
+
 def identification_overlap(
     before: RescoreResult,
     after: RescoreResult,
@@ -832,7 +839,7 @@ def identification_overlap(
 
     """
     levels = [
-        ("spectra", before.psms, after.psms, "spectrum_id"),
+        ("spectra", before.psms, after.psms, ["run", "spectrum_id"]),
         ("peptidoforms", before.peptidoforms, after.peptidoforms, "peptidoform"),
     ]
     if before.peptides is not None and after.peptides is not None:
@@ -841,17 +848,20 @@ def identification_overlap(
         levels.append(("protein groups", before.proteins, after.proteins, "protein"))
 
     overlap_data = defaultdict(dict)
-    for level_name, before_df, after_df, group_col in levels:
+    for level_name, before_df, after_df, group_cols in levels:
         if before_df.empty or after_df.empty:
             continue
-        ids_before = set(
-            before_df.loc[
-                (before_df["qvalue"] <= fdr_threshold) & ~before_df["is_decoy"], group_col
-            ]
-        )
-        ids_after = set(
-            after_df.loc[(after_df["qvalue"] <= fdr_threshold) & ~after_df["is_decoy"], group_col]
-        )
+        before_mask = (before_df["qvalue"] <= fdr_threshold) & ~before_df["is_decoy"]
+        if "original_psm" in before_df.columns:
+            # Excludes mumble-generated alternate candidates from the "before" baseline,
+            # matching the pre-migration _log_id_psms_before behavior. Only before.psms
+            # carries this column -- whichever candidate wins a spectrum's post-rescoring
+            # competition is always a legitimate identification, so `after` is never masked.
+            before_mask &= before_df["original_psm"]
+        after_mask = (after_df["qvalue"] <= fdr_threshold) & ~after_df["is_decoy"]
+
+        ids_before = set(_group_keys(before_df[before_mask], group_cols))
+        ids_after = set(_group_keys(after_df[after_mask], group_cols))
         overlap_data["removed"][level_name] = -len(ids_before - ids_after)
         overlap_data["retained"][level_name] = len(ids_after & ids_before)
         overlap_data["gained"][level_name] = len(ids_after - ids_before)
