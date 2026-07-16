@@ -10,7 +10,7 @@
     - **`deeplc`**: Refer to *[#/definitions/deeplc](#definitions/deeplc)*.
     - **`im2deep`**: Refer to *[#/definitions/im2deep](#definitions/im2deep)*.
     - **`ms2`**: Refer to *[#/definitions/ms2](#definitions/ms2)*.
-  - **`rescoring`**: Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features. Default: `{"train_fdr": 0.01, "model": "svm"}`.
+  - **`rescoring`**: Ristretto rescoring configuration. Set to null to skip rescoring and only write engineered features. Set to {} to use the defaults below. Default: `{"train_fdr": 0.01, "model": "svm"}`.
     - **One of**
       - : Refer to *[#/definitions/rescoring](#definitions/rescoring)*.
       - *null*
