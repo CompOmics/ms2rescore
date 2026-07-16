@@ -7,14 +7,13 @@ proteins are not yet filtered at any false discovery rate (FDR) level.
 
 Main output files:
 
-+-----------------------------------+----------------------------------------------------------------------------------+
-| File                              | Description                                                                      |
-+===================================+==================================================================================+
-| ``<prefix>.psms.tsv``             | Main output file with rescored PSMs and their new scores                         |
-+-----------------------------------+----------------------------------------------------------------------------------+
-| ``<prefix>.report.html``          | HTML report with interactive plots showing the results and some quality control  |
-|                                   | metrics.                                                                         |
-+-----------------------------------+----------------------------------------------------------------------------------+
++--------------------------+------------------------------------------------------------------------------------------+
+| File                     | Description                                                                              |
++==========================+==========================================================================================+
+| ``<prefix>.tsv``         | Main output file with rescored PSMs and their new scores                                 |
++--------------------------+------------------------------------------------------------------------------------------+
+| ``<prefix>.report.html`` | HTML report with interactive plots showing the results and some quality control metrics. |
++--------------------------+------------------------------------------------------------------------------------------+
 
 Log and configuration files:
 
@@ -31,9 +30,9 @@ Log and configuration files:
 +--------------------------------------+--------------------------------------------------------------------------------------+
 | ``<prefix>.feature_names.tsv``       | List of the features and their descriptions                                          |
 +--------------------------------------+--------------------------------------------------------------------------------------+
-| ``<prefix>.intermediate.psms.tsv``   | Created automatically if the process crashes during feature generation or rescoring. |
+| ``<prefix>.intermediate.tsv``        | Created automatically if the process crashes during feature generation or rescoring. |
 |                                      | Contains all PSMs with successfully added features up to the crash point. Can be     |
-|                                      | used to resume processing with ``-p <prefix>.intermediate.psms.tsv -t tsv``.         |
+|                                      | used to resume processing with ``-p <prefix>.intermediate.tsv -t tsv``.              |
 +--------------------------------------+--------------------------------------------------------------------------------------+
 
 Rescoring result tables (always written): the
@@ -53,25 +52,16 @@ FDR control. ``max_psm_rank_output > 1`` is intended for surfacing ambiguous res
 multiple candidate peptidoforms per spectrum from Mumble), not for a corrected identification
 count.
 
-+-----------------------------------------+--------------------------------------------------------------+
-| File                                    | Description                                                  |
-+=========================================+==============================================================+
-| ``<prefix>.ristretto.psms.tsv``         | PSMs and their rescored score, at PSM-level FDR.             |
-+-----------------------------------------+--------------------------------------------------------------+
-| ``<prefix>.ristretto.peptidoforms.tsv`` | Peptidoforms and their score, at peptidoform-level FDR.      |
-+-----------------------------------------+--------------------------------------------------------------+
-| ``<prefix>.ristretto.peptides.tsv``     | Peptides and their score, at peptide-level FDR.              |
-+-----------------------------------------+--------------------------------------------------------------+
-| ``<prefix>.ristretto.proteins.tsv``     | Proteins and their score, at protein-level FDR.              |
-+-----------------------------------------+--------------------------------------------------------------+
-| ``<prefix>.ristretto.weights.tsv``      | Feature weights, showing feature usage in the rescoring run. |
-+-----------------------------------------+--------------------------------------------------------------+
-
-If rescoring is disabled (``"rescoring": null``) or in DEBUG mode, the following files will also
-be written:
-
-+-------------------------------------------------------------+-----------------------------------------------------------+
-| File                                                        | Description                                               |
-+=============================================================+===========================================================+
-| ``<prefix>.pin``                                            | PSMs with all features for rescoring                      |
-+-------------------------------------------------------------+-----------------------------------------------------------+
++-------------------------------+--------------------------------------------------------------+
+| File                          | Description                                                  |
++===============================+==============================================================+
+| ``<prefix>.psms.tsv``         | PSMs and their rescored score, at PSM-level FDR.             |
++-------------------------------+--------------------------------------------------------------+
+| ``<prefix>.peptidoforms.tsv`` | Peptidoforms and their score, at peptidoform-level FDR.      |
++-------------------------------+--------------------------------------------------------------+
+| ``<prefix>.peptides.tsv``     | Peptides and their score, at peptide-level FDR.              |
++-------------------------------+--------------------------------------------------------------+
+| ``<prefix>.proteins.tsv``     | Proteins and their score, at protein-level FDR.              |
++-------------------------------+--------------------------------------------------------------+
+| ``<prefix>.weights.tsv``      | Feature weights, showing feature usage in the rescoring run. |
++-------------------------------+--------------------------------------------------------------+

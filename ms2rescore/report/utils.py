@@ -44,7 +44,7 @@ def _n_identified(df: pd.DataFrame, fdr_threshold: float) -> int:
     Count target rows passing the FDR threshold (decoys are never identifications).
 
     Mumble-generated alternate candidates are already excluded from ``before`` upstream, in
-    :py:func:`ms2rescore.rescoring.evaluate_before`, so no masking is needed here.
+    :py:func:`ms2rescore._utils.evaluate_before`, so no masking is needed here.
 
     """
     return int(((df["qvalue"] <= fdr_threshold) & ~df["is_decoy"]).sum())

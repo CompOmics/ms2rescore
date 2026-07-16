@@ -6,13 +6,12 @@ from typing import Dict, Optional
 import psm_utils.io
 from psm_utils import PSMList
 
-from ms2rescore import exceptions, rescoring
+from ms2rescore import _utils, exceptions
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.parse_psms import parse_psms
 from ms2rescore.parse_spectra import MSDataType, add_precursor_values, annotate_spectra
 from ms2rescore.report import generate
 from ms2rescore.report.data import ReportData
-from ms2rescore.utils import spectrum_usi
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +46,23 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     psm_list = parse_psms(config, psm_list)
 
     # Evaluate PSMs' pre-rescoring score with ristretto, for report baselines
-    before_result = rescoring.evaluate_before(psm_list, config)
+    before_result = _utils.evaluate_before(psm_list, config)
+    usi_by_native_id = None
     if config["rename_to_usi"]:
-        # rename_to_usi hasn't run yet (must stay after spectrum-file matching below, which
-        # needs the native spectrum_id) -- but before_result's spectrum_id must end up in the
-        # same representation the final psm_list/report will use, or the report merge can't
-        # match rows by spectrum. Remap it now, while psm_list is still natively-identified.
-        usi_by_position = [spectrum_usi(psm) for psm in psm_list]
+        # Build the (run, native spectrum_id) -> USI lookup now, while psm_list still has its
+        # native spectrum_id (the actual rename, further below, must stay after spectrum-file
+        # matching, which needs that native ID). Reused below for the actual rename, and here
+        # to remap before_result's spectrum_id into the same representation psm_list will end
+        # up with, so the report can match "before" and "after" rows by spectrum. The USI
+        # omits the peptidoform, so every candidate PSM of a given spectrum maps to the same
+        # USI, making (run, spectrum_id) a safe, collision-free lookup key.
+        usi_by_native_id = {
+            (psm.run, psm.spectrum_id): f"mzspec:{psm.collection}:{psm.run}:scan:{psm.spectrum_id}"
+            for psm in psm_list
+        }
         before_result.psms["spectrum_id"] = [
-            usi_by_position[i] for i in before_result.psms.index
+            usi_by_native_id[(run, spectrum_id)]
+            for run, spectrum_id in zip(before_result.psms["run"], before_result.psms["spectrum_id"])
         ]
     n_id_before = (
         (before_result.psms["qvalue"] <= config["report_fdr"]) & ~before_result.psms["is_decoy"]
@@ -140,7 +147,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             )
             # Write intermediate TSV
             psm_utils.io.write_file(
-                psm_list, output_file_root + ".intermediate.psms.tsv", filetype="tsv"
+                psm_list, output_file_root + ".intermediate.tsv", filetype="tsv"
             )
             raise
         logger.debug(f"Adding features from {fgen_name}: {set(fgen.feature_names)}")
@@ -175,10 +182,8 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     psm_list = psm_list[psms_with_features]
 
     if "mumble" in config["psm_generator"]:
-        from ms2rescore.utils import filter_mumble_psms
-
         # Remove PSMs where matched_ions_pct drops 25% below the original hit
-        psm_list = filter_mumble_psms(psm_list, threshold=0.50)
+        psm_list = _utils.filter_mumble_psms(psm_list, threshold=0.50)
 
         if config["max_psm_rank_output"] == 1:
             logger.warning(
@@ -191,20 +196,10 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     # Write feature names to file
     _write_feature_names(feature_names, output_file_root)
 
-    # Rename PSMs to USIs if requested
+    # Rename PSMs to USIs if requested, reusing the lookup built above
     if config["rename_to_usi"]:
         logging.debug(f"Creating USIs for {len(psm_list)} PSMs")
-        psm_list["spectrum_id"] = [spectrum_usi(psm) for psm in psm_list]
-
-    # If no rescoring is configured or DEBUG, write PSMs and features to PIN file
-    if config["rescoring"] is None or config["log_level"] == "debug":
-        logger.info(f"Writing added features to PIN file: {output_file_root}.psms.pin")
-        psm_utils.io.write_file(
-            psm_list,
-            output_file_root + ".pin",
-            filetype="percolator",
-            feature_names=all_feature_names,
-        )
+        psm_list["spectrum_id"] = [usi_by_native_id[(psm.run, psm.spectrum_id)] for psm in psm_list]
 
     if config["rescoring"] is None:
         logger.info("No rescoring configured. Skipping rescoring.")
@@ -212,16 +207,14 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Rescore PSMs
     try:
-        psm_list, after_result = rescoring.rescore(psm_list, config, output_file_root)
+        psm_list, after_result = _utils.rescore(psm_list, config, output_file_root)
     except (
         Exception,
         KeyboardInterrupt,
     ):  # Intentionally broad to save intermediate output before re-raising
         # Write output
-        logger.info(f"Writing intermediary output to {output_file_root}.intermediate.psms.tsv...")
-        psm_utils.io.write_file(
-            psm_list, output_file_root + ".intermediate.psms.tsv", filetype="tsv"
-        )
+        logger.info(f"Writing intermediary output to {output_file_root}.intermediate.tsv...")
+        psm_utils.io.write_file(psm_list, output_file_root + ".intermediate.tsv", filetype="tsv")
 
         # Reraise exception
         raise
@@ -239,11 +232,11 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         "rescoring, compared to before."
     )
 
-    rescoring.write_rescoring_tables(after_result, output_file_root)
+    _utils.write_rescoring_tables(after_result, output_file_root)
 
     # Write output
-    logger.info(f"Writing output to {output_file_root}.psms.tsv...")
-    psm_utils.io.write_file(psm_list, output_file_root + ".psms.tsv", filetype="tsv")
+    logger.info(f"Writing output to {output_file_root}.tsv...")
+    psm_utils.io.write_file(psm_list, output_file_root + ".tsv", filetype="tsv")
 
     if config["write_flashlfq"]:
         logger.info(f"Writing output to {output_file_root}.flashlfq.tsv...")

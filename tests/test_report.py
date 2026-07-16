@@ -162,7 +162,7 @@ def _write_regen_fixture(tmp_path, prefix_name="test.ms2rescore"):
     psm_list = PSMList(psm_list=psms)
 
     prefix = str(tmp_path / prefix_name)
-    psm_utils.io.write_file(psm_list, prefix + ".psms.tsv", filetype="tsv")
+    psm_utils.io.write_file(psm_list, prefix + ".tsv", filetype="tsv")
     config = {
         "ms2rescore": {
             "id_decoy_pattern": None,
@@ -177,7 +177,7 @@ def _write_regen_fixture(tmp_path, prefix_name="test.ms2rescore"):
 
 def test_from_files_reconstructs_before_and_after_without_any_table_files(tmp_path):
     """
-    No *.ristretto.*.tsv/parquet files are written at all -- from_files must still fully
+    No rescoring-result table files are written at all -- from_files must still fully
     reconstruct before/after (scores, q-values, rollups) from just the PSM list.
     """
     prefix = _write_regen_fixture(tmp_path)
@@ -245,7 +245,7 @@ def test_from_files_fdr_override_takes_precedence_over_config(tmp_path):
 
 def test_cli_fdr_option_overrides_config(tmp_path):
     prefix = _write_regen_fixture(tmp_path)
-    psm_file = prefix + ".psms.tsv"
+    psm_file = prefix + ".tsv"
 
     result = CliRunner().invoke(report_main, [psm_file, "--fdr", "0.2"])
 

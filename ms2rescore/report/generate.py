@@ -51,7 +51,7 @@ def generate_report(
     output_path_prefix
         Prefix of the MS²Rescore output file names, used to locate the log file and to derive the
         default report path. For example, if the output PSM file is
-        ``/path/to/file.ms2rescore.psms.tsv``, the prefix is ``/path/to/file.ms2rescore``.
+        ``/path/to/file.ms2rescore.tsv``, the prefix is ``/path/to/file.ms2rescore``.
     data
         Fully-populated report data. Build it with :py:meth:`ReportData.from_run` (in-memory run)
         or :py:meth:`ReportData.from_files` (standalone from output files).
@@ -81,7 +81,7 @@ def generate_report(
                 "id": "main_tab_target_decoy",
                 "title": "Target/decoy evaluation",
                 "template": "target-decoy.html",
-                "context": _get_target_decoy_context(psm_df),
+                "context": _get_target_decoy_context(psm_df, data.fdr_threshold),
             },
             {
                 "id": "main_tab_features",
@@ -127,14 +127,18 @@ def _get_overview_context(
         "charts": [
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
-                "description": TEXTS["charts"]["score_comparison"]["description"],
+                "description": TEXTS["charts"]["score_comparison"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.score_scatter_plot(before, after, fdr_threshold).to_html(
                     **PLOTLY_HTML_KWARGS
                 ),
             },
             {
                 "title": TEXTS["charts"]["fdr_comparison"]["title"],
-                "description": TEXTS["charts"]["fdr_comparison"]["description"],
+                "description": TEXTS["charts"]["fdr_comparison"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.fdr_plot_comparison(before, after, fdr_threshold).to_html(
                     **PLOTLY_HTML_KWARGS
                 ),
@@ -150,14 +154,16 @@ def _get_overview_context(
     }
 
 
-def _get_target_decoy_context(psm_df: pd.DataFrame) -> dict:
+def _get_target_decoy_context(psm_df: pd.DataFrame, fdr_threshold: float) -> dict:
     """Return context for the target/decoy tab."""
     logger.debug("Generating target-decoy charts...")
     return {
         "charts": [
             {
                 "title": TEXTS["charts"]["score_histogram"]["title"],
-                "description": TEXTS["charts"]["score_histogram"]["description"],
+                "description": TEXTS["charts"]["score_histogram"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.score_histogram(psm_df).to_html(**PLOTLY_HTML_KWARGS),
             },
             {
@@ -211,7 +217,9 @@ def _get_features_context(
         context["charts"].append(
             {
                 "title": TEXTS["charts"]["ms2pip_pearson"]["title"],
-                "description": TEXTS["charts"]["ms2pip_pearson"]["description"],
+                "description": TEXTS["charts"]["ms2pip_pearson"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.ms2pip_correlation(
                     features, is_decoy, psm_df["qvalue"], color=color_map.get("ms2pip")
                 ).to_html(**PLOTLY_HTML_KWARGS),
@@ -221,7 +229,9 @@ def _get_features_context(
     # Retention-time and ion-mobility charts on high-confidence targets
     high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= fdr_threshold)]
     if "deeplc" in feature_names:
-        _add_deeplc_chart(context, high_conf_features, color=color_map.get("deeplc"))
+        _add_deeplc_chart(
+            context, high_conf_features, fdr_threshold, color=color_map.get("deeplc")
+        )
     if "im2deep" in feature_names:
         _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
 
@@ -252,7 +262,7 @@ def _add_feature_weights_chart(context, feature_weights, feature_names_inv, colo
         logger.warning("Could not generate feature weights plot: %s", e)
 
 
-def _add_deeplc_chart(context, high_conf_features, color=None):
+def _add_deeplc_chart(context, high_conf_features, fdr_threshold, color=None):
     """Append the DeepLC retention-time charts to the features context."""
     scatter = charts.rt_scatter(
         df=high_conf_features,
@@ -269,7 +279,9 @@ def _add_deeplc_chart(context, high_conf_features, color=None):
     context["charts"].append(
         {
             "title": TEXTS["charts"]["deeplc_performance"]["title"],
-            "description": TEXTS["charts"]["deeplc_performance"]["description"],
+            "description": TEXTS["charts"]["deeplc_performance"]["description"].format(
+                fdr_threshold=fdr_threshold
+            ),
             "chart": scatter.to_html(**PLOTLY_HTML_KWARGS)
             + baseline.to_html(**PLOTLY_HTML_KWARGS),
         }

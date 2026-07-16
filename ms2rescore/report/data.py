@@ -12,7 +12,7 @@ import psm_utils
 import psm_utils.io
 from ristretto import RescoreResult
 
-from ms2rescore import rescoring
+from ms2rescore import _utils
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.report.utils import (
     compute_id_stats,
@@ -110,7 +110,7 @@ class ReportData:
         without rerunning rescoring.
 
         """
-        psm_file = Path(output_path_prefix + ".psms.tsv")
+        psm_file = Path(output_path_prefix + ".tsv")
         if not psm_file.is_file():
             raise FileNotFoundError(f"PSM file not found: {psm_file.as_posix()}")
 
@@ -122,8 +122,8 @@ class ReportData:
         logger.info("Reading PSMs from %s...", psm_file.as_posix())
         psm_list = psm_utils.io.read_file(psm_file, filetype="tsv", show_progressbar=True)
 
-        before = rescoring.evaluate_before_from_provenance(psm_list, ms2rescore_config)
-        after = rescoring.evaluate_after_from_psm_list(psm_list, ms2rescore_config)
+        before = _utils.evaluate_before_from_provenance(psm_list, ms2rescore_config)
+        after = _utils.evaluate_after_from_psm_list(psm_list, ms2rescore_config)
         psm_df = create_psm_dataframe(psm_list)
 
         feature_names = _read_feature_names_or_infer(

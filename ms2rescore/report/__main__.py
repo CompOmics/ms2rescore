@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 def main(psm_file, output, fdr):
     """Generate MS²Rescore report from a PSM TSV file.
 
-    PSM_FILE: Path to the PSM TSV file (e.g., output.psms.tsv)
+    PSM_FILE: Path to the main PSM TSV file (e.g., output.ms2rescore.tsv)
     """
     logging.basicConfig(
         level=logging.INFO,
@@ -40,13 +40,8 @@ def main(psm_file, output, fdr):
     )
 
     try:
-        psm_file_path = Path(psm_file)
-
-        # Infer output prefix from PSM file name
-        if ".ms2rescore.psms.tsv" in psm_file_path.name:
-            output_prefix = str(psm_file_path).replace(".psms.tsv", "")
-        else:
-            output_prefix = str(psm_file_path.with_suffix(""))
+        # The main PSM list is always written to "<output_prefix>.tsv"
+        output_prefix = str(Path(psm_file).with_suffix(""))
 
         # Determine output path
         if output:

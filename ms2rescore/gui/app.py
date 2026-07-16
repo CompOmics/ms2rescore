@@ -677,6 +677,7 @@ class RescoringConfiguration(ctk.CTkFrame):
                 "'svm': iterative Percolator-style SVM (default). 'lda': single-pass Fisher "
                 "LDA, faster but less powerful on hard-to-separate datasets."
             ),
+            wraplength=CONFIG_WIDTH - 180,
             values=["svm", "lda"],
             default_value="svm",
         )

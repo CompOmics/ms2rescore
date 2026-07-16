@@ -177,7 +177,7 @@ Viewing the results
 ===================
 
 After a successful run, the output files can be found in the directory of the input PSM file, or
-in the specified output directory. The most important files are the ``*.ms2rescore.psms.tsv`` file,
+in the specified output directory. The most important files are the ``*.ms2rescore.tsv`` file,
 which contains all PSMs with their new scores, and the ``*.ms2rescore.report.html`` file, which
 contains interactive charts that visualize the results and various quality control metrics. See
 :ref:`Output files` for more information.

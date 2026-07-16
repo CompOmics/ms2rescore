@@ -12,7 +12,7 @@ from psm_utils import PSMList
 from rich.progress import track
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError, MS2RescoreError
-from ms2rescore.utils import infer_spectrum_path
+from ms2rescore._utils import infer_spectrum_path
 
 LOGGER = logging.getLogger(__name__)
 

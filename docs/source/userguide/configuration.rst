@@ -323,15 +323,15 @@ Configuring rescoring
 MS²Rescore uses `ristretto <https://github.com/CompOmics/ristretto>`_, a lean semi-supervised
 rescoring implementation, as its rescoring engine. It can be configured with the ``rescoring``
 option, which exposes ``train_fdr`` and ``model`` (``svm``, the default, or the faster but less
-powerful ``lda``). For example, to use a custom ``train_fdr`` of 0.1%, the following configuration
-can be used:
+powerful ``lda``). On a difficult dataset, where the default 1% ``train_fdr`` doesn't yield any
+accepted PSMs for ristretto's semi-supervised training, a higher value such as 10% can help:
 
 .. tab:: JSON
 
   .. code-block:: json
 
     "rescoring": {
-      "train_fdr": 0.001
+      "train_fdr": 0.1
     }
 
 .. tab:: TOML
@@ -339,12 +339,10 @@ can be used:
     .. code-block:: toml
 
       [ms2rescore.rescoring]
-      train_fdr = 0.001
+      train_fdr = 0.1
 
 Set ``rescoring`` to ``null`` to skip rescoring entirely and only write the engineered features
-(e.g. to a Percolator PIN file). Set it to ``{}`` to use the defaults shown above.
-
-See the :ref:`ms2rescore.rescoring` section for the module used to interface with ristretto.
+to the main PSM list output. Set it to ``{}`` to use the defaults shown above.
 
 
 
