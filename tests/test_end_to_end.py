@@ -145,7 +145,7 @@ def test_rescore_writes_intermediate_output_on_rescoring_error(tmp_path, monkeyp
     def _raise(*args, **kwargs):
         raise RuntimeError("simulated rescoring failure")
 
-    monkeypatch.setattr(core._utils, "rescore", _raise)
+    monkeypatch.setattr(core.rescoring, "rescore", _raise)
 
     psm_path = _write_psm_file(tmp_path, _make_psm_list(seed=3))
     config = _make_config(tmp_path, psm_path)
