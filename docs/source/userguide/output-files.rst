@@ -35,17 +35,13 @@ Log and configuration files:
 |                                      | Contains all PSMs with successfully added features up to the crash point. Can be     |
 |                                      | used to resume processing with ``-p <prefix>.intermediate.tsv -t tsv``.              |
 +--------------------------------------+--------------------------------------------------------------------------------------+
+| ``<prefix>.weights.tsv``             | Feature weights, showing feature usage in the rescoring run.                         |
++--------------------------------------+--------------------------------------------------------------------------------------+
 
-Rescoring result tables: the post-rescoring score, q-value, and PEP at each identification level,
-as plain TSV files, convenient to open directly (e.g. in Excel). The protein-level table is only
-written if the PSM file provides a ``protein_list``.
+Identification result tables:
 
-If ``max_psm_rank_output`` is set to more than 1, these tables (and the main PSM list output)
-hold multiple ranks per spectrum, and their q-values/PEPs are computed treating each rank as an
-independent row rather than through proper spectrum competition (not statistically rigorous
-FDR control). ``max_psm_rank_output > 1`` is intended for surfacing ambiguous results (e.g.
-multiple candidate peptidoforms per spectrum from Mumble), not for a corrected identification
-count.
+The post-rescoring score, q-value, and PEP at each identification level, as plain TSV files. The
+protein-level table is only written if the PSM file provides a ``protein_list``.
 
 +-------------------------------+-------------------------------------------------------------------------------------------------+
 | File                          | Description                                                                                     |
@@ -58,5 +54,10 @@ count.
 +-------------------------------+-------------------------------------------------------------------------------------------------+
 | ``<prefix>.proteins.tsv``     | Protein groups and their score, at protein group-level FDR.                                     |
 +-------------------------------+-------------------------------------------------------------------------------------------------+
-| ``<prefix>.weights.tsv``      | Feature weights, showing feature usage in the rescoring run.                                    |
-+-------------------------------+-------------------------------------------------------------------------------------------------+
+
+If ``max_psm_rank_output`` is set to more than 1, these tables (and the main PSM list output)
+hold multiple ranks per spectrum, and their q-values/PEPs are computed treating each rank as an
+independent row rather than through proper spectrum competition (not statistically rigorous
+FDR control). ``max_psm_rank_output > 1`` is intended for surfacing ambiguous results (e.g.
+multiple candidate peptidoforms per spectrum from Mumble), not for a corrected identification
+count.
