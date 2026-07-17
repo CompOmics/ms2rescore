@@ -3,7 +3,9 @@ import re
 from typing import Dict, Optional, Union
 
 import numpy as np
+import pandas as pd
 import psm_utils.io
+import ristretto
 from psm_utils import PSMList
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError
@@ -35,16 +37,20 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
             " for more information."
         )
 
+    # Remove invalid AAs and find decoys first, so score direction can be inferred from them
+    psm_list = _remove_invalid_aa(psm_list)
+    _find_decoys(psm_list, config["id_decoy_pattern"])
+    train_fdr = config["rescoring"].get("train_fdr", 0.01)
+    lower_score_is_better = infer_score_direction(psm_list, train_fdr)
+
     # Filter by PSM rank
-    psm_list.set_ranks(config["lower_score_is_better"])
+    psm_list.set_ranks(lower_score_is_better)
     rank_filter = psm_list["rank"] <= config["max_psm_rank_input"]
     psm_list = psm_list[rank_filter]
     logger.info(f"Removed {sum(~rank_filter)} PSMs with rank >= {config['max_psm_rank_input']}.")
 
-    # Remove invalid AAs, find decoys, calculate q-values
-    psm_list = _remove_invalid_aa(psm_list)
-    _find_decoys(psm_list, config["id_decoy_pattern"])
-    _calculate_qvalues(psm_list, config["lower_score_is_better"])
+    # Calculate q-values
+    _calculate_qvalues(psm_list, lower_score_is_better)
 
     # Parse retention time and/or ion mobility from spectrum_id if patterns provided
     if config["psm_id_rt_pattern"] or config["psm_id_im_pattern"]:
@@ -161,6 +167,63 @@ def _read_psms(config, psm_list):
             logger.debug(f"Read {len(psm_list)} PSMs from '{psm_file}'.")
 
         return PSMList(psm_list=psm_list)
+
+
+def infer_score_direction(psm_list: PSMList, train_fdr: float = 0.01) -> bool:
+    """
+    Infer whether a lower search engine score is better.
+
+    Runs ristretto's spectrum-competed target-decoy evaluation under both score-direction
+    hypotheses and picks whichever identifies more PSMs at ``train_fdr``. More robust than
+    comparing mean target/decoy scores, which can misjudge direction when the raw score is
+    weak or the decoy count is small. Also more accurate than a plain per-PSM q-value here,
+    since this runs before rank filtering: competing to one best candidate per spectrum
+    first (instead of counting every candidate row independently) avoids low-rank noise
+    candidates skewing the direction estimate.
+
+    """
+    features_df = pd.DataFrame(
+        {
+            "spectrum_id": psm_list["spectrum_id"],
+            "run": psm_list["run"],
+            "is_decoy": psm_list["is_decoy"],
+            "peptidoform": [str(p) for p in psm_list["peptidoform"]],
+            "score": psm_list["score"].astype(float),
+        }
+    )
+    features_df = features_df[np.isfinite(features_df["score"])]
+    if features_df.empty or features_df["is_decoy"].nunique() < 2:
+        logger.debug(
+            "Not enough PSMs with a valid score and both target/decoy labels to infer score "
+            "direction; defaulting to higher-is-better."
+        )
+        return False
+
+    def _n_identified(score: pd.Series) -> int:
+        result = ristretto.evaluate(
+            features_df.assign(score=score), run_col="run", multi_rank_rescoring=False
+        )
+        return int(((result.psms["qvalue"] <= train_fdr) & ~result.psms["is_decoy"]).sum())
+
+    n_higher_better = _n_identified(features_df["score"])
+    n_lower_better = _n_identified(-features_df["score"])
+    lower_score_is_better = n_lower_better > n_higher_better
+
+    logger.debug(
+        "Inferred score direction: %s (%d PSMs at %.2f FDR if higher is better, %d if lower is "
+        "better)",
+        "lower is better" if lower_score_is_better else "higher is better",
+        n_higher_better,
+        train_fdr,
+        n_lower_better,
+    )
+    if lower_score_is_better:
+        logger.warning(
+            "Inferred that a lower score is better for this PSM file (uncommon; most search "
+            "engines report higher-is-better scores). If this is incorrect, check the 'score' "
+            "values in the input PSM file."
+        )
+    return lower_score_is_better
 
 
 def _find_decoys(psm_list: PSMList, id_decoy_pattern: Optional[str] = None):

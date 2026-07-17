@@ -13,6 +13,7 @@ import plotly.subplots
 import pyteomics.auxiliary
 from numpy.typing import ArrayLike
 from psm_utils.psm_list import PSMList
+from ristretto import RescoreResult
 
 # Fixed color per feature generator (ColorBrewer "Dark2", colorblind-safe and mutually distinct).
 # Used both for the feature-generator overview charts and for the generator-specific charts, so a
@@ -663,18 +664,40 @@ def rt_distribution_baseline(
     return _style(fig)
 
 
+def _best_per_spectrum(psms: pd.DataFrame) -> pd.DataFrame:
+    """
+    Collapse a ``RescoreResult.psms`` table to the single best-scoring row per spectrum.
+
+    Groups by ``(run, spectrum_id)``, not just ``spectrum_id`` (which can collide across
+    input files). Needed wherever a chart wants one point/row per physical spectrum: under
+    ``max_psm_rank_output > 1``, a spectrum can have multiple candidate rows.
+
+    """
+    return psms.sort_values("score", ascending=False).drop_duplicates(
+        subset=["run", "spectrum_id"], keep="first"
+    )
+
+
 def score_scatter_plot(
-    psm_df: pd.DataFrame,
+    before: RescoreResult,
+    after: RescoreResult,
     fdr_threshold: float = 0.01,
 ) -> go.Figure:
     """
-    Plot PSM scores before and after rescoring from a dataframe.
+    Plot PSM scores before and after rescoring, best-scoring candidate per spectrum.
+
+    Collapses ``before``/``after`` to one row per ``(run, spectrum_id)`` -- the
+    best-scoring candidate on each side, independently -- before comparing. Under
+    ``max_psm_rank_output > 1`` either side can have multiple candidate rows per spectrum,
+    and rescoring can legitimately promote a different peptidoform as a spectrum's winner,
+    so this is a spectrum-level comparison, not a peptidoform-level one.
 
     Parameters
     ----------
-    psm_df
-        Dataframe with PSM information including score_before, score_after,
-        qvalue_before, qvalue_after, and is_decoy columns.
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
     fdr_threshold
         FDR threshold for drawing threshold lines.
 
@@ -682,8 +705,9 @@ def score_scatter_plot(
     -------
     go.Figure
         Plotly figure with score comparison.
+
     """
-    if "score_before" not in psm_df.columns or "score_after" not in psm_df.columns:
+    if before.psms.empty or after.psms.empty:
         figure = go.Figure()
         figure.add_annotation(
             text="No before/after score data available for comparison.",
@@ -691,8 +715,13 @@ def score_scatter_plot(
         )
         return _style(figure)
 
-    # Prepare data
-    plot_df = psm_df.copy()
+    before_best = _best_per_spectrum(before.psms)[["run", "spectrum_id", "score", "qvalue"]].rename(
+        columns={"score": "score_before", "qvalue": "qvalue_before"}
+    )
+    after_best = _best_per_spectrum(after.psms)[
+        ["run", "spectrum_id", "score", "qvalue", "is_decoy"]
+    ].rename(columns={"score": "score_after", "qvalue": "qvalue_after"})
+    plot_df = before_best.merge(after_best, on=["run", "spectrum_id"], how="inner")
     plot_df["PSM type"] = plot_df["is_decoy"].map({True: "decoy", False: "target"})
 
     # Get score thresholds
@@ -702,7 +731,7 @@ def score_scatter_plot(
             .sort_values("qvalue_before", ascending=False)["score_before"]
             .iloc[0]
         )
-    except (IndexError, KeyError):
+    except IndexError:
         score_threshold_before = None
 
     try:
@@ -711,7 +740,7 @@ def score_scatter_plot(
             .sort_values("qvalue_after", ascending=False)["score_after"]
             .iloc[0]
         )
-    except (IndexError, KeyError):
+    except IndexError:
         score_threshold_after = None
 
     # Plot
@@ -724,8 +753,8 @@ def score_scatter_plot(
         marginal_y="histogram",
         opacity=0.1,
         labels={
-            "score_before": "PSM score (before rescoring)",
-            "score_after": "PSM score (after rescoring)",
+            "score_before": "Spectrum score (before rescoring)",
+            "score_after": "Spectrum score (after rescoring)",
         },
         color_discrete_map={"target": _COLOR_TARGET, "decoy": _COLOR_DECOY},
     )
@@ -742,22 +771,32 @@ def score_scatter_plot(
 
 
 def fdr_plot_comparison(
-    psm_df: pd.DataFrame,
+    before: RescoreResult, after: RescoreResult, fdr_threshold: float = 0.01
 ) -> go.Figure:
     """
-    Plot number of identifications in function of FDR threshold before/after rescoring from dataframe.
+    Plot number of identified spectra as a function of FDR threshold, before vs. after.
+
+    Collapses each of ``before``/``after`` independently to one row per ``(run,
+    spectrum_id)`` -- the best-scoring candidate -- before counting, so a spectrum with
+    multiple ambiguous candidate rows (``max_psm_rank_output > 1``) isn't counted more than
+    once.
 
     Parameters
     ----------
-    psm_df
-        Dataframe with PSM information including qvalue_before, qvalue_after, and is_decoy columns.
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
+    fdr_threshold
+        FDR threshold to draw as a reference line.
 
     Returns
     -------
     go.Figure
         Plotly figure with FDR comparison.
+
     """
-    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+    if before.psms.empty or after.psms.empty:
         figure = go.Figure()
         figure.add_annotation(
             text="No before/after q-value data available for comparison.",
@@ -765,17 +804,16 @@ def fdr_plot_comparison(
         )
         return _style(figure)
 
-    # Filter targets only
-    targets = psm_df[~psm_df["is_decoy"]].copy()
+    before_best = _best_per_spectrum(before.psms)
+    after_best = _best_per_spectrum(after.psms)
 
-    # Prepare data in long format
     plot_data = pd.concat(
         [
-            targets[["qvalue_before"]]
-            .rename(columns={"qvalue_before": "q-value"})
+            before_best.loc[~before_best["is_decoy"], ["qvalue"]]
+            .rename(columns={"qvalue": "q-value"})
             .assign(**{"before/after": "before rescoring"}),
-            targets[["qvalue_after"]]
-            .rename(columns={"qvalue_after": "q-value"})
+            after_best.loc[~after_best["is_decoy"], ["qvalue"]]
+            .rename(columns={"qvalue": "q-value"})
             .assign(**{"before/after": "after rescoring"}),
         ]
     )
@@ -796,23 +834,38 @@ def fdr_plot_comparison(
             "after rescoring": "#24a143",
         },
     )
-    fig.add_vline(x=0.01, line_dash="dash", line_color=_COLOR_REFERENCE)
-    fig.update_layout(yaxis_title="Identified PSMs")
+    fig.add_vline(x=fdr_threshold, line_dash="dash", line_color=_COLOR_REFERENCE)
+    fig.update_layout(yaxis_title="Identified spectra")
     return _style(fig)
 
 
+def _group_keys(df: pd.DataFrame, group_cols: Union[str, List[str]]) -> list:
+    """Build hashable group keys from one column, or a compound key from several."""
+    if isinstance(group_cols, str):
+        return list(df[group_cols])
+    return list(zip(*(df[c] for c in group_cols)))
+
+
 def identification_overlap(
-    psm_df: pd.DataFrame,
+    before: RescoreResult,
+    after: RescoreResult,
     fdr_threshold: float = 0.01,
 ) -> go.Figure:
     """
-    Plot stacked bar charts of removed, retained, and gained PSMs and peptides from dataframe.
+    Plot stacked bar charts of removed, retained, and gained IDs at each rollup level.
+
+    Compares ristretto's own before/after rollup tables directly -- spectrum, peptidoform,
+    peptide, and (optionally) protein -- rather than re-deriving sets from a merged per-PSM
+    dataframe. The latter would only be correct at the peptidoform/peptide/protein level if
+    every spectrum kept the same winning peptidoform between before and after, which is
+    exactly what rescoring is expected to change for at least some spectra.
 
     Parameters
     ----------
-    psm_df
-        Dataframe with PSM information including qvalue_before, qvalue_after,
-        is_decoy, and peptidoform columns.
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
     fdr_threshold
         FDR threshold for counting identifications.
 
@@ -820,51 +873,50 @@ def identification_overlap(
     -------
     go.Figure
         Plotly figure with identification overlap.
+
     """
-    if "qvalue_before" not in psm_df.columns or "qvalue_after" not in psm_df.columns:
+    levels = [
+        ("spectra", before.psms, after.psms, ["run", "spectrum_id"]),
+        ("peptidoforms", before.peptidoforms, after.peptidoforms, "peptidoform"),
+    ]
+    if before.peptides is not None and after.peptides is not None:
+        levels.append(("peptides", before.peptides, after.peptides, "peptide"))
+    if before.proteins is not None and after.proteins is not None:
+        levels.append(("protein groups", before.proteins, after.proteins, "protein"))
+
+    overlap_data = defaultdict(dict)
+    for level_name, before_df, after_df, group_cols in levels:
+        if before_df.empty or after_df.empty:
+            continue
+        before_mask = (before_df["qvalue"] <= fdr_threshold) & ~before_df["is_decoy"]
+        after_mask = (after_df["qvalue"] <= fdr_threshold) & ~after_df["is_decoy"]
+
+        ids_before = set(_group_keys(before_df[before_mask], group_cols))
+        ids_after = set(_group_keys(after_df[after_mask], group_cols))
+        overlap_data["removed"][level_name] = -len(ids_before - ids_after)
+        overlap_data["retained"][level_name] = len(ids_after & ids_before)
+        overlap_data["gained"][level_name] = len(ids_after - ids_before)
+
+    if not overlap_data["retained"]:
         figure = go.Figure()
         figure.add_annotation(
-            text="No before/after q-value data available for comparison.",
+            text="No before/after data available for comparison.",
             showarrow=False,
         )
         return _style(figure)
 
-    overlap_data = defaultdict(dict)
-
-    # PSM level
-    targets = psm_df[~psm_df["is_decoy"]]
-    psms_before = set(targets[targets["qvalue_before"] <= fdr_threshold].index)
-    psms_after = set(targets[targets["qvalue_after"] <= fdr_threshold].index)
-
-    overlap_data["removed"]["psms"] = -len(psms_before - psms_after)
-    overlap_data["retained"]["psms"] = len(psms_after.intersection(psms_before))
-    overlap_data["gained"]["psms"] = len(psms_after - psms_before)
-
-    # Peptide level
-    if "peptidoform" in psm_df.columns:
-        peptides_before = set(
-            targets[targets["qvalue_before"] <= fdr_threshold]["peptidoform"].unique()
-        )
-        peptides_after = set(
-            targets[targets["qvalue_after"] <= fdr_threshold]["peptidoform"].unique()
-        )
-
-        overlap_data["removed"]["peptides"] = -len(peptides_before - peptides_after)
-        overlap_data["retained"]["peptides"] = len(peptides_after.intersection(peptides_before))
-        overlap_data["gained"]["peptides"] = len(peptides_after - peptides_before)
-
     colors = [_COLOR_DECOY, _COLOR_TARGET, "#24a143"]
-    levels = list(overlap_data["retained"].keys())
-    fig = plotly.subplots.make_subplots(rows=len(levels), cols=1)
+    level_names = list(overlap_data["retained"].keys())
+    fig = plotly.subplots.make_subplots(rows=len(level_names), cols=1)
 
-    for i, level in enumerate(levels):
+    for i, level_name in enumerate(level_names):
         for (item, data), color in zip(overlap_data.items(), colors):
-            if level not in data:
+            if level_name not in data:
                 continue
             fig.add_trace(
                 go.Bar(
-                    y=[level],
-                    x=[data[level]],
+                    y=[level_name],
+                    x=[data[level_name]],
                     marker={"color": color},
                     orientation="h",
                     width=0.4,

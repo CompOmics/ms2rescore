@@ -19,12 +19,20 @@ logger = logging.getLogger(__name__)
     default=None,
     help="Output path for the report HTML file. If not provided, will be based on PSM file name.",
 )
-def main(psm_file, output):
+@click.option(
+    "--fdr",
+    type=click.FloatRange(0, 1),
+    default=None,
+    help=(
+        "FDR threshold for the report's identification stats/charts. Defaults to the "
+        "report_fdr used in the original run (from its saved full-config.json)."
+    ),
+)
+def main(psm_file, output, fdr):
     """Generate MS²Rescore report from a PSM TSV file.
 
-    PSM_FILE: Path to the PSM TSV file (e.g., output.psms.tsv)
+    PSM_FILE: Path to the main PSM TSV file (e.g., output.ms2rescore.tsv)
     """
-    logging.getLogger("mokapot").setLevel(logging.WARNING)
     logging.basicConfig(
         level=logging.INFO,
         handlers=[RichHandler(rich_tracebacks=True)],
@@ -32,13 +40,8 @@ def main(psm_file, output):
     )
 
     try:
-        psm_file_path = Path(psm_file)
-
-        # Infer output prefix from PSM file name
-        if ".ms2rescore.psms.tsv" in psm_file_path.name:
-            output_prefix = str(psm_file_path).replace(".psms.tsv", "")
-        else:
-            output_prefix = str(psm_file_path.with_suffix(""))
+        # The main PSM list is always written to "<output_prefix>.tsv"
+        output_prefix = str(Path(psm_file).with_suffix(""))
 
         # Determine output path
         if output:
@@ -47,7 +50,7 @@ def main(psm_file, output):
             output_path = Path(output_prefix + ".report.html")
 
         logger.info("Generating report...")
-        report_data = ReportData.from_files(output_prefix)
+        report_data = ReportData.from_files(output_prefix, fdr_threshold=fdr)
         generate_report(output_prefix, report_data, output_file=output_path)
 
         logger.info(f"✓ Report generated: {output_path}")

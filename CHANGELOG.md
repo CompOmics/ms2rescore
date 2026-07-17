@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   generators run, eliminating redundant per-generator spectrum annotation.
 - Top-level configuration options `fragmentation_model`, `tolerance_value`, and `tolerance_mode`
   to control centralized fragment ion annotation. Defaults: `cidhcd`, `0.02 Da`.
+- New `rescoring` configuration option for the ristretto rescoring engine: `train_fdr` and
+  `model` (`"svm"`, default, or `"lda"`, faster but less powerful). Accepts `{}` for defaults,
+  or a partial dict -- missing keys fall back to ristretto's own defaults.
+- New top-level `report_fdr` configuration option: FDR threshold used for console-logged
+  identification counts, the HTML report's stats/charts, and FlashLFQ output filtering.
+  Previously hardcoded at 1% throughout.
+- `ms2rescore-report` CLI: new `--fdr` option to regenerate a report at a different FDR
+  threshold without rerunning rescoring.
+- Automatic inference of search-engine score direction (higher-is-better vs. lower-is-better)
+  via spectrum-competed target-decoy evaluation, replacing the user-set `lower_score_is_better`
+  option. Grouped by run, so multi-file input sharing native spectrum/scan IDs across runs
+  doesn't corrupt the inferred direction.
+- Rescoring result tables (`<prefix>.psms.tsv`, `.peptidoforms.tsv`, `.peptides.tsv`,
+  `.proteins.tsv`, `.weights.tsv`) are now always written as plain TSV, independent of rescoring
+  engine internals.
+- `ristretto-ms` dependency: a lean, dependency-light (numpy/scikit-learn/pandas)
+  reimplementation of the Percolator/Käll semi-supervised rescoring algorithm.
+- GUI: rescoring model selector (svm/lda); GUI runs now also write an HTML log file
+  (`<prefix>.log.html`), matching the CLI.
 
 ### Changed
 
@@ -22,8 +41,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are passed via `psm.spectrum`.
 - MS2: migrated from `ms2_features_from_ms2spectra` to `score_ms2_spectra` API. Feature set
   expanded to cover all ion series (a, b, c, x, y, z).
-- Dependencies bumped: `ms2pip>=4.2.0b1`, `ms2rescore_rs>=0.5.0b1`.
+- Dependencies bumped: `ms2pip>=4.2.0b1`, `ms2rescore_rs>=0.5.0b1`. Added `pyarrow>=14`.
 - numpy 2.0 compatibility in `charts.py` (`np.trapz` → `np.trapezoid`).
+- Rescoring engine replaced: mokapot → ristretto. Rescoring can no longer be skipped -- it
+  always runs.
+- Main PSM list output renamed `<prefix>.psms.tsv` → `<prefix>.tsv`; the crash-recovery
+  intermediate file renamed the same way (`<prefix>.intermediate.tsv`).
+- HTML report generation (both in-run and standalone via `ms2rescore-report`) reconstructs
+  before/after rescoring comparisons from the main PSM list's provenance data and current state,
+  rather than relying on separately persisted result tables.
+- Report/identification-overlap comparisons key on `(run, spectrum_id)` instead of bare
+  `spectrum_id`, so multiple input files reusing the same native spectrum IDs no longer collide.
+- Multi-run PSM lists are disambiguated during rescoring/competition via ristretto's `run_col`,
+  instead of relying on `spectrum_id` alone.
+- `max_psm_rank_output > 1` now applies consistently across the main output, rescoring tables,
+  and report: multiple ranked PSMs per spectrum, with q-values/PEPs computed per-row rather than
+  through full spectrum competition. Intended for surfacing ambiguous candidates (e.g. from
+  Mumble), not a statistically rigorous FDR-controlled count.
+- Protein-level rollups use ristretto's picked-protein competition (Savitski et al. 2015) when
+  `id_decoy_pattern` is set.
+
+### Removed
+
+- [BREAKING] `ms2_tolerance`, `spectrum_path`, and `spectrum_id_pattern` parameters removed from
+  `MS2PIPFeatureGenerator`. Fragment mass tolerance is set globally via `tolerance_value` /
+  `tolerance_mode` in the top-level configuration (default: `0.02 Da`).
+- [BREAKING] `spectrum_path`, `spectrum_id_pattern`, `mass_mode`, and `processes` parameters
+  removed from `MS2FeatureGenerator`. Spectra are provided via centralized `annotate_spectra()`.
+- [BREAKING] Mokapot rescoring engine and the `mokapot` dependency removed, along with the
+  `ms2rescore.rescoring_engines` module.
+- [BREAKING] `rescoring_engine` configuration option removed (mokapot-specific: `fasta_file`,
+  `write_weights`, `write_txt`, `protein_kwargs`), replaced by `rescoring` (see Added).
+- [BREAKING] `fasta_file` configuration option and FASTA-based protein inference removed.
+- [BREAKING] `lower_score_is_better` configuration option removed. Score direction is now always
+  auto-inferred (see Added) with no config-level override.
+- [BREAKING] `write_rescoring_tables` configuration option removed -- rescoring tables are
+  unconditionally written now.
+- [BREAKING] PIN (Percolator) file output removed for `log_level=debug` -- the main PSM list
+  TSV already carries all rescoring features.
+- [BREAKING] Ability to skip rescoring via configuration removed. `rescoring: null` is now
+  rejected by config validation instead of being silently ignored; rescoring always runs.
+- [BREAKING] `ms2rescore.utils` (public) renamed to `ms2rescore._utils` (internal) and merged
+  with the new rescoring integration layer -- no longer part of the public API surface.
 
 ### Fixed
 
@@ -39,14 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BrokenExecutor` not caught in mokapot rescoring engine.
 - Fragment mass tolerance fallback defaults in `core.py` incorrectly set to `20.0 ppm` instead
   of `0.02 Da`.
-
-### Breaking changes
-
-- `ms2_tolerance`, `spectrum_path`, and `spectrum_id_pattern` parameters removed from
-  `MS2PIPFeatureGenerator`. Fragment mass tolerance is set globally via `tolerance_value` /
-  `tolerance_mode` in the top-level configuration (default: `0.02 Da`).
-- `spectrum_path`, `spectrum_id_pattern`, `mass_mode`, and `processes` parameters removed from
-  `MS2FeatureGenerator`. Spectra are provided via centralized `annotate_spectra()`.
+- GUI runs never wrote an HTML log file (`<prefix>.log.html`), unlike CLI runs -- the GUI's
+  logging setup only ever attached a plain text-file handler.
 
 ## [3.3.0a1] - 2026-04-09
 

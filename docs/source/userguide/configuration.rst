@@ -317,32 +317,31 @@ Currently, `Mumble <https://github.com/compomics/mumble>`_ is the only available
   reference, integration details, and known limitations.
 
 
-Configuring rescoring engines
-=============================
+Configuring rescoring
+=====================
 
-MS²Rescore uses Mokapot as its rescoring engine. It can be configured with the
-``rescoring_engine`` option. For example, to use Mokapot with a custom train_fdr of 0.1%, the
-following configuration can be used:
+MS²Rescore uses `ristretto <https://github.com/CompOmics/ristretto>`_, a lean semi-supervised
+rescoring implementation, as its rescoring engine. It can be configured with the ``rescoring``
+option, which exposes ``train_fdr`` and ``model`` (``svm``, the default, or the faster but less
+powerful ``lda``). On a difficult dataset, where the default 1% ``train_fdr`` doesn't yield any
+accepted PSMs for ristretto's semi-supervised training, a higher value such as 10% can help:
 
 .. tab:: JSON
 
   .. code-block:: json
 
-    "rescoring_engine": {
-      "mokapot": {
-        "train_fdr": 0.001
-      }
+    "rescoring": {
+      "train_fdr": 0.1
+    }
 
 .. tab:: TOML
 
     .. code-block:: toml
 
-      [ms2rescore.rescoring_engine.mokapot]
-      train_fdr = 0.001
+      [ms2rescore.rescoring]
+      train_fdr = 0.1
 
-
-All options for the rescoring engines can be found in the :ref:`ms2rescore.rescoring_engines`
-section.
+Set ``rescoring`` to ``{}`` to use the defaults shown above.
 
 
 

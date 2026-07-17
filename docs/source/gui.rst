@@ -77,12 +77,6 @@ folder with spectrum files, click the "Browse directories" button.
    Spectrum file selection
 
 
-Optionally, for protein inference information, a FASTA file can also be provided. Ensure that
-this file contains the same protein sequences as the search database used for the search engine.
-If a FASTA file is provided, protein digestion settings may need to be configured in the rescoring
-engine configuration.
-
-
 Number of processes
 ^^^^^^^^^^^^^^^^^^^
 
@@ -183,7 +177,7 @@ Viewing the results
 ===================
 
 After a successful run, the output files can be found in the directory of the input PSM file, or
-in the specified output directory. The most important files are the ``*.ms2rescore.psms.tsv`` file,
+in the specified output directory. The most important files are the ``*.ms2rescore.tsv`` file,
 which contains all PSMs with their new scores, and the ``*.ms2rescore.report.html`` file, which
 contains interactive charts that visualize the results and various quality control metrics. See
 :ref:`Output files` for more information.

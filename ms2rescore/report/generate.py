@@ -10,6 +10,7 @@ from typing import Optional
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 from plotly.offline import get_plotlyjs_version
+from ristretto import RescoreResult
 
 import tomllib
 
@@ -17,7 +18,6 @@ import ms2rescore
 import ms2rescore.report.charts as charts
 import ms2rescore.report.templates as templates
 from ms2rescore.report.data import ReportData
-from ms2rescore.report.utils import build_stat_card
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def generate_report(
     output_path_prefix
         Prefix of the MS²Rescore output file names, used to locate the log file and to derive the
         default report path. For example, if the output PSM file is
-        ``/path/to/file.ms2rescore.psms.tsv``, the prefix is ``/path/to/file.ms2rescore``.
+        ``/path/to/file.ms2rescore.tsv``, the prefix is ``/path/to/file.ms2rescore``.
     data
         Fully-populated report data. Build it with :py:meth:`ReportData.from_run` (in-memory run)
         or :py:meth:`ReportData.from_files` (standalone from output files).
@@ -59,16 +59,7 @@ def generate_report(
         Path to the output HTML file. Defaults to ``output_path_prefix + ".report.html"``.
     """
     psm_df = data.psm_df
-
-    # Pre-compute filtered subsets shared across charts
-    targets = psm_df[~psm_df["is_decoy"]]
     is_decoy = psm_df["is_decoy"]
-    if "qvalue_before" in psm_df.columns and "qvalue_after" in psm_df.columns:
-        targets_before_fdr = targets[targets["qvalue_before"] <= 0.01]
-        targets_after_fdr = targets[targets["qvalue_after"] <= 0.01]
-    else:
-        targets_before_fdr = None
-        targets_after_fdr = None
 
     context = {
         "plotlyjs_version": get_plotlyjs_version(),
@@ -83,21 +74,21 @@ def generate_report(
                 "title": "Overview",
                 "template": "overview.html",
                 "context": _get_overview_context(
-                    psm_df, targets_before_fdr, targets_after_fdr, data.protein_stats
+                    data.id_stats, data.before, data.after, data.fdr_threshold
                 ),
             },
             {
                 "id": "main_tab_target_decoy",
                 "title": "Target/decoy evaluation",
                 "template": "target-decoy.html",
-                "context": _get_target_decoy_context(psm_df),
+                "context": _get_target_decoy_context(psm_df, data.fdr_threshold),
             },
             {
                 "id": "main_tab_features",
                 "title": "Rescoring features",
                 "template": "features.html",
                 "context": _get_features_context(
-                    psm_df, data.feature_names, data.feature_weights, is_decoy
+                    psm_df, data.feature_names, data.feature_weights, is_decoy, data.fdr_threshold
                 ),
             },
             {
@@ -126,76 +117,53 @@ def _get_psm_filenames(data: ReportData) -> str:
     return "Unknown"
 
 
-def _get_stats_context(
-    psm_df: pd.DataFrame,
-    targets_before_fdr: Optional[pd.DataFrame],
-    targets_after_fdr: Optional[pd.DataFrame],
-    protein_stats: Optional[list],
-) -> list:
-    """Return the overview stat cards for PSM, peptide, and (if available) protein levels."""
-    if targets_before_fdr is None or targets_after_fdr is None:
-        logger.warning("Before/after q-values not found. Overview statistics will be empty.")
-        return []
-
-    stats = []
-
-    # PSM level
-    psms_before, psms_after = len(targets_before_fdr), len(targets_after_fdr)
-    if psms_before > 0:
-        stats.append(build_stat_card("PSMs", "psms", psms_before, psms_after))
-
-    # Peptide level
-    if "peptidoform" in psm_df.columns:
-        peptides_before = targets_before_fdr["peptidoform"].nunique()
-        peptides_after = targets_after_fdr["peptidoform"].nunique()
-        if peptides_before > 0:
-            stats.append(build_stat_card("Peptides", "peptides", peptides_before, peptides_after))
-
-    # Protein-group level (only present when a fasta was provided)
-    if protein_stats:
-        stats.extend(protein_stats)
-
-    return stats
-
-
 def _get_overview_context(
-    psm_df: pd.DataFrame,
-    targets_before_fdr: Optional[pd.DataFrame],
-    targets_after_fdr: Optional[pd.DataFrame],
-    protein_stats: Optional[list],
+    id_stats: list, before: RescoreResult, after: RescoreResult, fdr_threshold: float
 ) -> dict:
     """Return context for the overview tab."""
     logger.debug("Generating overview charts...")
     return {
-        "stats": _get_stats_context(psm_df, targets_before_fdr, targets_after_fdr, protein_stats),
+        "stats": id_stats,
         "charts": [
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
-                "description": TEXTS["charts"]["score_comparison"]["description"],
-                "chart": charts.score_scatter_plot(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+                "description": TEXTS["charts"]["score_comparison"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
+                "chart": charts.score_scatter_plot(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
             {
                 "title": TEXTS["charts"]["fdr_comparison"]["title"],
-                "description": TEXTS["charts"]["fdr_comparison"]["description"],
-                "chart": charts.fdr_plot_comparison(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+                "description": TEXTS["charts"]["fdr_comparison"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
+                "chart": charts.fdr_plot_comparison(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
             {
                 "title": TEXTS["charts"]["identification_overlap"]["title"],
                 "description": TEXTS["charts"]["identification_overlap"]["description"],
-                "chart": charts.identification_overlap(psm_df).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.identification_overlap(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
         ],
     }
 
 
-def _get_target_decoy_context(psm_df: pd.DataFrame) -> dict:
+def _get_target_decoy_context(psm_df: pd.DataFrame, fdr_threshold: float) -> dict:
     """Return context for the target/decoy tab."""
     logger.debug("Generating target-decoy charts...")
     return {
         "charts": [
             {
                 "title": TEXTS["charts"]["score_histogram"]["title"],
-                "description": TEXTS["charts"]["score_histogram"]["description"],
+                "description": TEXTS["charts"]["score_histogram"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.score_histogram(psm_df).to_html(**PLOTLY_HTML_KWARGS),
             },
             {
@@ -212,6 +180,7 @@ def _get_features_context(
     feature_names: dict,
     feature_weights: Optional[pd.DataFrame],
     is_decoy: pd.Series,
+    fdr_threshold: float,
 ) -> dict:
     """Return context for the rescoring-features tab."""
     logger.debug("Generating feature-related charts...")
@@ -225,7 +194,7 @@ def _get_features_context(
     feature_names_inv = {name: gen for gen, names in feature_names.items() for name in names}
     color_map = {gen: FEATURE_GENERATOR_COLORS.get(gen, "#FFFFFF") for gen in feature_names}
 
-    # Feature weights (only when the mokapot linear model provided them)
+    # Feature weights (empty only when rescoring was skipped)
     if feature_weights is not None and not feature_weights.empty:
         _add_feature_weights_chart(context, feature_weights, feature_names_inv, color_map)
 
@@ -248,7 +217,9 @@ def _get_features_context(
         context["charts"].append(
             {
                 "title": TEXTS["charts"]["ms2pip_pearson"]["title"],
-                "description": TEXTS["charts"]["ms2pip_pearson"]["description"],
+                "description": TEXTS["charts"]["ms2pip_pearson"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.ms2pip_correlation(
                     features, is_decoy, psm_df["qvalue"], color=color_map.get("ms2pip")
                 ).to_html(**PLOTLY_HTML_KWARGS),
@@ -256,9 +227,11 @@ def _get_features_context(
         )
 
     # Retention-time and ion-mobility charts on high-confidence targets
-    high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= 0.01)]
+    high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= fdr_threshold)]
     if "deeplc" in feature_names:
-        _add_deeplc_chart(context, high_conf_features, color=color_map.get("deeplc"))
+        _add_deeplc_chart(
+            context, high_conf_features, fdr_threshold, color=color_map.get("deeplc")
+        )
     if "im2deep" in feature_names:
         _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
 
@@ -268,8 +241,10 @@ def _get_features_context(
 def _add_feature_weights_chart(context, feature_weights, feature_names_inv, color_map):
     """Append the feature-weights charts to the features context."""
     try:
-        weights = feature_weights.melt(var_name="feature", value_name="weight")
-        weights["feature"] = weights["feature"].str.replace(r"^(feature:)?", "", regex=True)
+        # `feature_weights` is indexed by feature name, one column per CV fold
+        weights = feature_weights.reset_index(names="feature").melt(
+            id_vars="feature", var_name="fold", value_name="weight"
+        )
         weights["feature_generator"] = weights["feature"].map(feature_names_inv)
         context["charts"].append(
             {
@@ -287,7 +262,7 @@ def _add_feature_weights_chart(context, feature_weights, feature_names_inv, colo
         logger.warning("Could not generate feature weights plot: %s", e)
 
 
-def _add_deeplc_chart(context, high_conf_features, color=None):
+def _add_deeplc_chart(context, high_conf_features, fdr_threshold, color=None):
     """Append the DeepLC retention-time charts to the features context."""
     scatter = charts.rt_scatter(
         df=high_conf_features,
@@ -304,7 +279,9 @@ def _add_deeplc_chart(context, high_conf_features, color=None):
     context["charts"].append(
         {
             "title": TEXTS["charts"]["deeplc_performance"]["title"],
-            "description": TEXTS["charts"]["deeplc_performance"]["description"],
+            "description": TEXTS["charts"]["deeplc_performance"]["description"].format(
+                fdr_threshold=fdr_threshold
+            ),
             "chart": scatter.to_html(**PLOTLY_HTML_KWARGS)
             + baseline.to_html(**PLOTLY_HTML_KWARGS),
         }

@@ -40,20 +40,10 @@
                         "deeplc": {}
                     }
                 },
-                "rescoring_engine": {
-                    "description": "Rescoring engine to use and its configuration. Leave empty to skip rescoring and write features to file.",
-                    "type": "object",
-                    "minProperties": 0,
-                    "maxProperties": 1,
-                    "patternProperties": {
-                        ".*": { "$ref": "#/definitions/rescoring_engine" },
-                        "mokapot": {
-                            "$ref": "#/definitions/mokapot"
-                        }
-                    },
-                    "default": {
-                        "mokapot": {}
-                    }
+                "rescoring": {
+                    "description": "Ristretto rescoring configuration. Set to {} to use the defaults below.",
+                    "allOf": [{ "$ref": "#/definitions/rescoring" }],
+                    "default": { "train_fdr": 0.01, "model": "svm" }
                 },
                 "psm_generator": {
                     "description": "PSM generator and their configuration.",
@@ -131,11 +121,6 @@
                     "default": null,
                     "format": "regex"
                 },
-                "lower_score_is_better": {
-                    "description": "Bool indicating if lower score is better",
-                    "type": "boolean",
-                    "default": false
-                },
                 "max_psm_rank_input": {
                     "description": "Maximum rank of PSMs to use as input for rescoring",
                     "type": "number",
@@ -170,10 +155,6 @@
                     "description": "Convert spectrum IDs to their universal spectrum identifier",
                     "type": "boolean"
                 },
-                "fasta_file": {
-                    "description": "Path to FASTA file with protein sequences to use for protein inference",
-                    "oneOf": [{ "type": "string" }, { "type": "null" }]
-                },
                 "write_flashlfq": {
                     "description": "Write results to a FlashLFQ-compatible file",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -183,6 +164,13 @@
                     "description": "Write an HTML report with various QC metrics and charts",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": true
+                },
+                "report_fdr": {
+                    "description": "FDR threshold used for reporting: console log identification counts, the HTML report's identification stats/charts, and FlashLFQ output filtering. Independent of rescoring.train_fdr, which controls ristretto's training instead.",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.01
                 },
                 "disable_update_check": {
                     "description": "Disable the automatic update check",
@@ -221,10 +209,25 @@
             "type": "object",
             "additionalProperties": true
         },
-        "rescoring_engine": {
-            "description": "Rescoring engine configuration",
+        "rescoring": {
+            "description": "Ristretto rescoring configuration.",
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+                "train_fdr": {
+                    "description": "FDR threshold used during ristretto's semi-supervised training",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.01
+                },
+                "model": {
+                    "description": "Model used for ristretto's semi-supervised rescoring: 'svm' (iterative Percolator-style SVM, default) or 'lda' (single-pass Fisher LDA, faster but less powerful on hard datasets)",
+                    "type": "string",
+                    "enum": ["svm", "lda"],
+                    "default": "svm"
+                }
+            }
         },
         "psm_generator": {
             "description": "Additional PSM feature generator configuration",
@@ -326,32 +329,6 @@
                 },
                 "all_unimod_modifications": {
                     "description": "Consider all Unimod modifications instead of the restricted default/`modification_file` list. Substantially increases runtime and the risk of false-positive candidate modifications.",
-                    "type": "boolean",
-                    "default": false
-                }
-            }
-        },
-
-        "mokapot": {
-            "$ref": "#/definitions/rescoring_engine",
-            "description": "Mokapot rescoring engine configuration. Additional properties are passed to the Mokapot brew function.",
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-                "train_fdr": {
-                    "description": "FDR threshold for training Mokapot",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "default": 0.01
-                },
-                "write_weights": {
-                    "description": "Write Mokapot weights to a text file",
-                    "type": "boolean",
-                    "default": false
-                },
-                "write_txt": {
-                    "description": "Write Mokapot results to a text file",
                     "type": "boolean",
                     "default": false
                 }

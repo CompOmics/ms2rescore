@@ -29,7 +29,7 @@ from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
-from ms2rescore.utils import get_original_hit_mask
+from ms2rescore._utils import get_original_hit_mask
 
 logger = logging.getLogger(__name__)
 
