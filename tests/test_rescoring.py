@@ -332,7 +332,7 @@ def test_fix_constant_pep_removes_higher_scoring_decoys():
         peps=[1.0] * 5,
     )
 
-    fixed_psm_list, fixed_result = _ristretto_utils._fix_constant_pep(psm_list, result)
+    fixed_psm_list, fixed_result = rescoring._fix_constant_pep(psm_list, result)
     assert len(fixed_psm_list) == 4
     assert set(fixed_psm_list["spectrum_id"]) == {"0", "1", "2", "3"}
     assert len(fixed_result.psms) == 4
@@ -357,7 +357,7 @@ def test_fix_constant_pep_no_recompute_when_no_decoys_remain():
         ]
     )
 
-    fixed_psm_list, fixed_result = _ristretto_utils._fix_constant_pep(psm_list, result)
+    fixed_psm_list, fixed_result = rescoring._fix_constant_pep(psm_list, result)
     assert len(fixed_psm_list) == 1
     assert not fixed_psm_list[0].is_decoy
     assert len(fixed_result.psms) == 1
@@ -375,7 +375,7 @@ def test_fix_constant_pep_is_noop_when_pep_not_constant():
         spectrum_ids=["1", "2"], is_decoy=[False, True], scores=[1.0, 5.0], peps=[0.5, 1.0]
     )
 
-    fixed_psm_list, fixed_result = _ristretto_utils._fix_constant_pep(psm_list, result)
+    fixed_psm_list, fixed_result = rescoring._fix_constant_pep(psm_list, result)
     assert len(fixed_psm_list) == 2
     assert len(fixed_result.psms) == 2
 
