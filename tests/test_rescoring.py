@@ -1,4 +1,4 @@
-"""Tests for the ristretto integration layer in ms2rescore._utils."""
+"""Tests for ms2rescore.rescoring.rescore() and its supporting ms2rescore._ristretto_utils."""
 
 from unittest.mock import patch
 
@@ -7,7 +7,7 @@ import pandas as pd
 from psm_utils import PSM, PSMList
 from ristretto import RescoreResult
 
-from ms2rescore import _utils
+from ms2rescore import _ristretto_utils, rescoring
 
 BASE_CONFIG = {
     "id_decoy_pattern": None,
@@ -70,7 +70,7 @@ def _make_psm_list(
 
 def test_build_features_dataframe_columns():
     psm_list = _make_psm_list(n_spectra=5, seed=1)
-    df = _utils._build_features_dataframe(
+    df = _ristretto_utils._build_features_dataframe(
         psm_list, feature_names={"feature_a", "feature_b"}, lower_score_is_better=False
     )
 
@@ -95,7 +95,7 @@ def test_build_features_dataframe_negates_score_when_lower_is_better():
     psm_list = _make_psm_list(n_spectra=5, seed=2)
     original_scores = np.array(list(psm_list["score"]))
 
-    df = _utils._build_features_dataframe(
+    df = _ristretto_utils._build_features_dataframe(
         psm_list, feature_names=set(), lower_score_is_better=True
     )
 
@@ -104,7 +104,7 @@ def test_build_features_dataframe_negates_score_when_lower_is_better():
 
 def test_build_features_dataframe_omits_protein_when_missing():
     psm_list = _make_psm_list(n_spectra=5, seed=3, with_protein=False)
-    df = _utils._build_features_dataframe(
+    df = _ristretto_utils._build_features_dataframe(
         psm_list, feature_names=set(), lower_score_is_better=False
     )
     assert "protein" not in df.columns
@@ -112,7 +112,7 @@ def test_build_features_dataframe_omits_protein_when_missing():
 
 def test_evaluate_before_returns_result_with_expected_columns():
     psm_list = _make_psm_list(n_spectra=30, seed=4)
-    result = _utils.evaluate_before(psm_list, BASE_CONFIG)
+    result = _ristretto_utils.evaluate_before(psm_list, BASE_CONFIG)
 
     assert {"spectrum_id", "run", "peptidoform", "score", "qvalue", "pep"}.issubset(
         result.psms.columns
@@ -128,7 +128,7 @@ def test_evaluate_before_disambiguates_spectrum_id_across_runs():
     psm_list_b = _make_psm_list(n_spectra=30, seed=11, run="runB")
     psm_list = PSMList(psm_list=list(psm_list_a) + list(psm_list_b))
 
-    result = _utils.evaluate_before(psm_list, BASE_CONFIG)
+    result = _ristretto_utils.evaluate_before(psm_list, BASE_CONFIG)
 
     assert len(result.psms) == 60
     assert set(result.psms["run"]) == {"runA", "runB"}
@@ -139,7 +139,7 @@ def test_evaluate_before_excludes_mumble_generated_candidates():
     psm_list = _make_psm_list(n_spectra=20, seed=14, mumble_ranks=1)
     assert len(psm_list) == 40
 
-    result = _utils.evaluate_before(psm_list, BASE_CONFIG)
+    result = _ristretto_utils.evaluate_before(psm_list, BASE_CONFIG)
 
     # Only the 20 original candidates ever entered the competition.
     assert len(result.psms) == 20
@@ -149,7 +149,7 @@ def test_evaluate_before_mirrors_max_psm_rank_output():
     psm_list = _make_psm_list(n_spectra=20, ranks_per_spectrum=3, seed=15)
     config = {**BASE_CONFIG, "max_psm_rank_output": 2}
 
-    result = _utils.evaluate_before(psm_list, config)
+    result = _ristretto_utils.evaluate_before(psm_list, config)
 
     # Trimmed to top 2 (by raw score) per spectrum, not competed down to 1.
     assert len(result.psms) <= 40
@@ -163,7 +163,7 @@ def test_rescore_disambiguates_spectrum_id_across_runs():
     psm_list_b = _make_psm_list(n_spectra=30, seed=13, run="runB")
     psm_list = PSMList(psm_list=list(psm_list_a) + list(psm_list_b))
 
-    new_psm_list, after_result = _utils.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    new_psm_list, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
     assert len(new_psm_list) == 60
     assert len(after_result.psms) == 60
@@ -173,7 +173,7 @@ def test_rescore_disambiguates_spectrum_id_across_runs():
 def test_rescore_writes_scores_and_metadata():
     psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=1, seed=5)
 
-    new_psm_list, after_result = _utils.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    new_psm_list, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
     assert len(new_psm_list) == len(after_result.psms)
     assert set(new_psm_list["qvalue"]) == set(after_result.psms["qvalue"])
@@ -187,7 +187,7 @@ def test_rescore_writes_scores_and_metadata():
 def test_rescore_returns_learned_feature_weights():
     psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=1, seed=5)
 
-    _, after_result = _utils.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    _, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
     assert not after_result.feature_weights.empty
     assert after_result.n_iterations
@@ -197,7 +197,7 @@ def test_rescore_respects_configured_model():
     psm_list = _make_psm_list(n_spectra=30, seed=18)
     config = {**BASE_CONFIG, "rescoring": {"train_fdr": 0.1, "model": "lda"}}
 
-    new_psm_list, after_result = _utils.rescore(psm_list, config, "unused-output-root")
+    new_psm_list, after_result = rescoring.rescore(psm_list, config, "unused-output-root")
 
     assert len(new_psm_list) == len(after_result.psms)
     q = after_result.psms["qvalue"].to_numpy()
@@ -211,7 +211,7 @@ def test_rescore_handles_partial_rescoring_config():
 
     for rescoring_config in ({"model": "lda"}, {"train_fdr": 0.1}):
         config = {**BASE_CONFIG, "rescoring": rescoring_config}
-        new_psm_list, after_result = _utils.rescore(psm_list, config, "unused-output-root")
+        new_psm_list, after_result = rescoring.rescore(psm_list, config, "unused-output-root")
         assert len(new_psm_list) == len(after_result.psms)
 
 
@@ -225,10 +225,10 @@ def test_rescore_empty_rescoring_config_falls_back_to_ristretto_defaults():
     psm_list = _make_psm_list(n_spectra=30, seed=19)
     config = {**BASE_CONFIG, "rescoring": {}}
 
-    with patch.object(_utils.ristretto, "rescore", wraps=_utils.ristretto.rescore) as m:
+    with patch.object(rescoring.ristretto, "rescore", wraps=rescoring.ristretto.rescore) as m:
         try:
-            _utils.rescore(psm_list, config, "unused-output-root")
-        except _utils.RescoringError:
+            rescoring.rescore(psm_list, config, "unused-output-root")
+        except rescoring.RescoringError:
             pass
 
     passed_kwargs = m.call_args.kwargs
@@ -240,7 +240,7 @@ def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():
     psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=2, seed=6)
     config = {**BASE_CONFIG, "max_psm_rank_output": 2}
 
-    new_psm_list, after_result = _utils.rescore(psm_list, config, "unused-output-root")
+    new_psm_list, after_result = rescoring.rescore(psm_list, config, "unused-output-root")
 
     new_psm_list.set_ranks(lower_score_better=False)
     assert (new_psm_list["rank"] <= 2).all()
@@ -254,9 +254,9 @@ def test_rescore_multi_rank_output_keeps_multiple_ranks_per_spectrum():
 
 def test_evaluate_after_from_psm_list_reproduces_rescore_result():
     psm_list = _make_psm_list(n_spectra=25, seed=16)
-    new_psm_list, after_result = _utils.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    new_psm_list, after_result = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
-    reconstructed = _utils.evaluate_after_from_psm_list(new_psm_list, BASE_CONFIG)
+    reconstructed = _ristretto_utils.evaluate_after_from_psm_list(new_psm_list, BASE_CONFIG)
 
     assert len(reconstructed.psms) == len(after_result.psms)
     assert np.allclose(
@@ -273,7 +273,7 @@ def test_evaluate_before_from_provenance_uses_stashed_score():
         psm.provenance_data["before_rescoring_score"] = stashed
         psm.score = -999.0  # current score must NOT be used
 
-    result = _utils.evaluate_before_from_provenance(psm_list, BASE_CONFIG)
+    result = _ristretto_utils.evaluate_before_from_provenance(psm_list, BASE_CONFIG)
 
     assert len(result.psms) == 20
     assert not (result.psms["score"] == -999.0).any()
@@ -332,7 +332,7 @@ def test_fix_constant_pep_removes_higher_scoring_decoys():
         peps=[1.0] * 5,
     )
 
-    fixed_psm_list, fixed_result = _utils._fix_constant_pep(psm_list, result)
+    fixed_psm_list, fixed_result = _ristretto_utils._fix_constant_pep(psm_list, result)
     assert len(fixed_psm_list) == 4
     assert set(fixed_psm_list["spectrum_id"]) == {"0", "1", "2", "3"}
     assert len(fixed_result.psms) == 4
@@ -357,7 +357,7 @@ def test_fix_constant_pep_no_recompute_when_no_decoys_remain():
         ]
     )
 
-    fixed_psm_list, fixed_result = _utils._fix_constant_pep(psm_list, result)
+    fixed_psm_list, fixed_result = _ristretto_utils._fix_constant_pep(psm_list, result)
     assert len(fixed_psm_list) == 1
     assert not fixed_psm_list[0].is_decoy
     assert len(fixed_result.psms) == 1
@@ -375,17 +375,17 @@ def test_fix_constant_pep_is_noop_when_pep_not_constant():
         spectrum_ids=["1", "2"], is_decoy=[False, True], scores=[1.0, 5.0], peps=[0.5, 1.0]
     )
 
-    fixed_psm_list, fixed_result = _utils._fix_constant_pep(psm_list, result)
+    fixed_psm_list, fixed_result = _ristretto_utils._fix_constant_pep(psm_list, result)
     assert len(fixed_psm_list) == 2
     assert len(fixed_result.psms) == 2
 
 
 def test_write_rescoring_tables(tmp_path):
     psm_list = _make_psm_list(n_spectra=30, seed=7)
-    _, after = _utils.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    _, after = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
 
     prefix = str(tmp_path / "test")
-    _utils.write_rescoring_tables(after, prefix)
+    _ristretto_utils.write_rescoring_tables(after, prefix)
 
     for level in ("psms", "peptidoforms", "proteins"):
         assert (tmp_path / f"test.{level}.tsv").is_file()
@@ -401,11 +401,11 @@ def test_write_rescoring_tables_no_peptides_file_when_no_peptide_col(tmp_path):
     # is always "peptide" in rescore(), so peptides IS present -- this documents that proteins
     # can be absent when protein_list isn't, by using a fixture without proteins).
     psm_list = _make_psm_list(n_spectra=30, seed=9, with_protein=False)
-    _, after = _utils.rescore(psm_list, BASE_CONFIG, "unused-output-root")
+    _, after = rescoring.rescore(psm_list, BASE_CONFIG, "unused-output-root")
     assert after.proteins is None
 
     prefix = str(tmp_path / "test")
-    _utils.write_rescoring_tables(after, prefix)
+    _ristretto_utils.write_rescoring_tables(after, prefix)
 
     assert not (tmp_path / "test.proteins.tsv").is_file()
     assert (tmp_path / "test.peptides.tsv").is_file()

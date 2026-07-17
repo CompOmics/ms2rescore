@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import psm_utils.io
 from psm_utils import PSMList
 
-from ms2rescore import _utils, exceptions
+from ms2rescore import _ristretto_utils, _utils, exceptions, rescoring
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.parse_psms import parse_psms
 from ms2rescore.parse_spectra import MSDataType, add_precursor_values, annotate_spectra
@@ -46,7 +46,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     psm_list = parse_psms(config, psm_list)
 
     # Evaluate PSMs' pre-rescoring score with ristretto, for report baselines
-    before_result = _utils.evaluate_before(psm_list, config)
+    before_result = _ristretto_utils.evaluate_before(psm_list, config)
     usi_by_native_id = None
     if config["rename_to_usi"]:
         # Build the (run, native spectrum_id) -> USI lookup now, while psm_list still has its
@@ -204,7 +204,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     # Rescore PSMs
     logger.info(f"Rescoring {len(psm_list)} PSMs with ristretto...")
     try:
-        psm_list, after_result = _utils.rescore(psm_list, config, output_file_root)
+        psm_list, after_result = rescoring.rescore(psm_list, config, output_file_root)
     except (
         Exception,
         KeyboardInterrupt,
@@ -229,7 +229,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         "rescoring, compared to before."
     )
 
-    _utils.write_rescoring_tables(after_result, output_file_root)
+    _ristretto_utils.write_rescoring_tables(after_result, output_file_root)
 
     # Write output
     logger.info(f"Writing output to {output_file_root}.tsv...")

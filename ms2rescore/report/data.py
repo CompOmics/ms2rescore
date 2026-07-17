@@ -12,7 +12,7 @@ import psm_utils
 import psm_utils.io
 from ristretto import RescoreResult
 
-from ms2rescore import _utils
+from ms2rescore import _ristretto_utils
 from ms2rescore.feature_generators import FEATURE_GENERATORS
 from ms2rescore.report.utils import (
     compute_id_stats,
@@ -122,8 +122,8 @@ class ReportData:
         logger.info("Reading PSMs from %s...", psm_file.as_posix())
         psm_list = psm_utils.io.read_file(psm_file, filetype="tsv", show_progressbar=True)
 
-        before = _utils.evaluate_before_from_provenance(psm_list, ms2rescore_config)
-        after = _utils.evaluate_after_from_psm_list(psm_list, ms2rescore_config)
+        before = _ristretto_utils.evaluate_before_from_provenance(psm_list, ms2rescore_config)
+        after = _ristretto_utils.evaluate_after_from_psm_list(psm_list, ms2rescore_config)
         psm_df = create_psm_dataframe(psm_list)
 
         feature_names = _read_feature_names_or_infer(
