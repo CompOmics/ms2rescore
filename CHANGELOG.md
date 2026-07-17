@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-07-17
+
 ### Added
 
 - `annotate_spectra()` in `parse_spectra.py`: annotates all PSM spectra once before feature
@@ -30,8 +32,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   engine internals.
 - `ristretto-ms` dependency: a lean, dependency-light (numpy/scikit-learn/pandas)
   reimplementation of the Percolator/Käll semi-supervised rescoring algorithm.
-- GUI: rescoring model selector (svm/lda); GUI runs now also write an HTML log file
-  (`<prefix>.log.html`), matching the CLI.
+- New `ms2` feature generator backed by `ms2rescore-rs`, providing direct-spectrum features
+  including matched-ion counts and percentages, hyperscore, and intensity-ratio features for
+  the a, b, c, x, y, and z ion series.
+- Configurable IM2Deep CCS reference datasets. CSV, compressed CSV, and Parquet files are
+  supported and must contain `peptidoform` and `CCS` columns.
+- Mumble integration as an optional dependency (`ms2rescore[mumble]`) for generating
+  mass-shift candidate peptidoforms before rescoring.
+- Intermediate-file recovery: the current PSM state is written to
+  `<prefix>.intermediate.tsv` when feature generation or rescoring fails.
+- Feature generators are skipped when all of their output features are already present,
+  allowing interrupted runs to resume without recomputing completed features.
+- Full per-feature-generator test coverage for the basic, DeepLC, IM2Deep, MS2, and MS²PIP
+  feature generators, together with end-to-end rescoring integration tests.
+- GUI: rescoring model selector (svm/lda); centralized fragmentation-model and fragment-tolerance
+  controls; GUI runs now also write an HTML log file (`<prefix>.log.html`), matching the CLI.
 
 ### Changed
 
@@ -41,7 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are passed via `psm.spectrum`.
 - MS2: migrated from `ms2_features_from_ms2spectra` to `score_ms2_spectra` API. Feature set
   expanded to cover all ion series (a, b, c, x, y, z).
-- Dependencies bumped: `ms2pip>=4.2.0b1`, `ms2rescore_rs>=0.5.0b1`. Added `pyarrow>=14`.
+- DeepLC migrated to the v4 functional API, with dataset-wide prediction and selection of the
+  best multitask prediction head independently for each run.
+- IM2Deep migrated to the v2 functional API, with dataset-wide prediction and per-run linear
+  CCS calibration.
+- Dependencies bumped: `deeplc>=4.0.0b1`, `im2deep>=2.0.1`, `ms2pip>=4.2.0`,
+  `ms2rescore_rs>=0.5.0`, and `ristretto-ms>=0.3.0`. Added `pyarrow>=14`.
 - numpy 2.0 compatibility in `charts.py` (`np.trapz` → `np.trapezoid`).
 - Rescoring engine replaced: mokapot → ristretto. Rescoring can no longer be skipped -- it
   always runs.
@@ -60,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Mumble), not a statistically rigorous FDR-controlled count.
 - Protein-level rollups use ristretto's picked-protein competition (Savitski et al. 2015) when
   `id_decoy_pattern` is set.
+- Python 3.11 or newer is now required.
 
 ### Removed
 
@@ -68,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tolerance_mode` in the top-level configuration (default: `0.02 Da`).
 - [BREAKING] `spectrum_path`, `spectrum_id_pattern`, `mass_mode`, and `processes` parameters
   removed from `MS2FeatureGenerator`. Spectra are provided via centralized `annotate_spectra()`.
+- [BREAKING] `ionmob` feature generator removed. Ion-mobility prediction and CCS calibration are
+  now provided by the IM2Deep v2 feature generator.
+- [BREAKING] `maxquant` feature generator removed. Its relevant spectrum-derived features are
+  now provided by the `ms2` feature generator.
 - [BREAKING] Mokapot rescoring engine and the `mokapot` dependency removed, along with the
   `ms2rescore.rescoring_engines` module.
 - [BREAKING] `rescoring_engine` configuration option removed (mokapot-specific: `fasta_file`,
@@ -81,8 +106,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TSV already carries all rescoring features.
 - [BREAKING] Ability to skip rescoring via configuration removed. `rescoring: null` is now
   rejected by config validation instead of being silently ignored; rescoring always runs.
-- [BREAKING] `ms2rescore.utils` (public) renamed to `ms2rescore._utils` (internal) and merged
-  with the new rescoring integration layer -- no longer part of the public API surface.
+- [BREAKING] The public `ms2rescore.utils` module removed. General internal utilities now reside
+  in `ms2rescore._utils`, while private ristretto integration helpers reside in
+  `ms2rescore._ristretto_utils`; neither module is part of the public API surface.
 
 ### Fixed
 
@@ -92,14 +118,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ms2rescore via centralized per-PSM `annotate_spectra()`.
 - DeepLC RT features incorrectly assigned across PSMs: missing `sort_index()` after q-value sort
   for calibration caused PSMs to receive another PSM's RT predictions.
+- Multi-run MS²PIP crash caused by observed-spectrum deduplication using `spectrum_id` alone.
+  Spectra are now keyed by `(run, spectrum_id)`, preventing collisions between runs that reuse
+  native scan identifiers.
+- Missing precursor m/z or search-engine scores produced `NaN` basic features instead of the
+  documented `0` values because float `NaN` values were not detected by the existing `None`
+  checks.
+- DeepLC multitask models always used prediction head 0 instead of selecting the head that best
+  matched each run.
+- Mumble-generated candidate PSMs leaked into DeepLC and IM2Deep calibration-set selection
+  because they inherited the original PSM's score and q-value. Generated candidates are now
+  excluded using `get_original_hit_mask()`.
+- Configured IM2Deep reference datasets were incorrectly reported as missing because the
+  file-existence check was inverted.
 - `processes=-1` (ms2rescore default) passed to DeepLC `num_threads`, which requires a positive
   integer or `None`.
 - Q-value NaN check in `parse_psms.py` failed when `qvalue` array contained `None` values.
-- `BrokenExecutor` not caught in mokapot rescoring engine.
 - Fragment mass tolerance fallback defaults in `core.py` incorrectly set to `20.0 ppm` instead
   of `0.02 Da`.
+- Empty or partial `rescoring` configuration dictionaries could raise `KeyError` instead of
+  falling back to ristretto defaults.
 - GUI runs never wrote an HTML log file (`<prefix>.log.html`), unlike CLI runs -- the GUI's
   logging setup only ever attached a plain text-file handler.
+
 
 ## [3.3.0a1] - 2026-04-09
 
