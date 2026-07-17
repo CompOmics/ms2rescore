@@ -1,33 +1,23 @@
-"""Generate an HTML report with various QC charts for of MS²Rescore results."""
+"""Generate an HTML report with various QC charts for MS²Rescore results."""
 
 import importlib.resources
 import json
 import logging
 from datetime import datetime
-from itertools import cycle
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 import pandas as pd
-import plotly.express as px
-import psm_utils.io
 from jinja2 import Environment, FileSystemLoader
 from plotly.offline import get_plotlyjs_version
-from psm_utils.psm_list import PSMList
+from ristretto import RescoreResult
 
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
+import tomllib
 
 import ms2rescore
 import ms2rescore.report.charts as charts
 import ms2rescore.report.templates as templates
-from ms2rescore.report.utils import (
-    get_confidence_estimates,
-    get_feature_values,
-    read_feature_names,
-)
+from ms2rescore.report.data import ReportData
 
 logger = logging.getLogger(__name__)
 
@@ -41,204 +31,139 @@ PLOTLY_HTML_KWARGS = {
     },
 }
 
+# Fixed color per feature generator, defined alongside the charts so the generator-specific
+# charts (DeepLC, IM2Deep, MS²PIP) reuse the same color as the feature-generator overview charts.
+FEATURE_GENERATOR_COLORS = charts.FEATURE_GENERATOR_COLORS
 
-TEXTS = tomllib.loads(importlib.resources.read_text(templates, "texts.toml"))
+TEXTS = tomllib.loads(importlib.resources.files(templates).joinpath("texts.toml").read_text())
 
 
 def generate_report(
     output_path_prefix: str,
-    psm_list: Optional[psm_utils.PSMList] = None,
-    feature_names: Optional[Dict[str, set]] = None,
-    use_txt_log: bool = False,
+    data: ReportData,
+    output_file: Optional[Path] = None,
 ):
     """
-    Generate the report.
+    Generate the HTML report from an in-memory :py:class:`~ms2rescore.report.data.ReportData`.
 
     Parameters
     ----------
     output_path_prefix
-        Prefix of the MS²Rescore output file names. For example, if the output PSM file is
-        ``/path/to/file.ms2rescore.psms.tsv``, the prefix is ``/path/to/file.ms2rescore``.
-    psm_list
-        PSMs to be used for the report. If not provided, the PSMs will be read from the
-        PSM file that matches the ``output_path_prefix``.
-    feature_names
-        Feature names to be used for the report. If not provided, the feature names will be
-        read from the feature names file that matches the ``output_path_prefix``.
-    use_txt_log
-        If True, the log file will be read from ``output_path_prefix + ".log.txt"`` instead of
-        ``output_path_prefix + ".log.html"``.
-
+        Prefix of the MS²Rescore output file names, used to locate the log file and to derive the
+        default report path. For example, if the output PSM file is
+        ``/path/to/file.ms2rescore.tsv``, the prefix is ``/path/to/file.ms2rescore``.
+    data
+        Fully-populated report data. Build it with :py:meth:`ReportData.from_run` (in-memory run)
+        or :py:meth:`ReportData.from_files` (standalone from output files).
+    output_file
+        Path to the output HTML file. Defaults to ``output_path_prefix + ".report.html"``.
     """
-    files = _collect_files(output_path_prefix, use_txt_log=use_txt_log)
-
-    # Read PSMs
-    if not psm_list:
-        if files["PSMs"]:
-            logger.info("Reading PSMs...")
-            psm_list = psm_utils.io.read_file(files["PSMs"], filetype="tsv", show_progressbar=True)
-        else:
-            raise FileNotFoundError("PSM file not found and no PSM list provided.")
-
-    # Read config
-    config = json.loads(files["configuration"].read_text())
-
-    logger.debug("Recalculating confidence estimates...")
-    fasta_file = config["ms2rescore"]["fasta_file"]
-    confidence_before, confidence_after = get_confidence_estimates(psm_list, fasta_file)
-
-    overview_context = _get_overview_context(confidence_before, confidence_after)
-    target_decoy_context = _get_target_decoy_context(psm_list)
-    features_context = _get_features_context(psm_list, files, feature_names=feature_names)
-    config_context = _get_config_context(config)
-    log_context = _get_log_context(files)
+    psm_df = data.psm_df
+    is_decoy = psm_df["is_decoy"]
 
     context = {
         "plotlyjs_version": get_plotlyjs_version(),
         "metadata": {
             "generated_on": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            "ms2rescore_version": ms2rescore.__version__,  # TODO: Write during run?
-            "psm_filename": "\n".join(
-                [Path(id_file).name for id_file in config["ms2rescore"]["psm_file"]]
-            ),
+            "ms2rescore_version": ms2rescore.__version__,
+            "psm_filename": _get_psm_filenames(data),
         },
         "main_tabs": [
             {
                 "id": "main_tab_comparison",
                 "title": "Overview",
                 "template": "overview.html",
-                "context": overview_context,
+                "context": _get_overview_context(
+                    data.id_stats, data.before, data.after, data.fdr_threshold
+                ),
             },
             {
                 "id": "main_tab_target_decoy",
                 "title": "Target/decoy evaluation",
                 "template": "target-decoy.html",
-                "context": target_decoy_context,
+                "context": _get_target_decoy_context(psm_df, data.fdr_threshold),
             },
             {
                 "id": "main_tab_features",
                 "title": "Rescoring features",
                 "template": "features.html",
-                "context": features_context,
+                "context": _get_features_context(
+                    psm_df, data.feature_names, data.feature_weights, is_decoy, data.fdr_threshold
+                ),
             },
             {
                 "id": "main_tab_config",
                 "title": "Full configuration",
                 "template": "config.html",
-                "context": config_context,
+                "context": _get_config_context(data.config),
             },
             {
                 "id": "main_tab_log",
                 "title": "Log",
                 "template": "log.html",
-                "context": log_context,
+                "context": _get_log_context(output_path_prefix, data.log_html),
             },
         ],
     }
 
-    _render_and_write(output_path_prefix, **context)
+    _render_and_write(output_path_prefix, output_file=output_file, **context)
 
 
-def _collect_files(output_path_prefix, use_txt_log=False):
-    """Collect all files generated by MS²Rescore."""
-    logger.debug("Collecting files...")
-    files = {
-        "PSMs": Path(output_path_prefix + ".psms.tsv").resolve(),
-        "configuration": Path(output_path_prefix + ".full-config.json").resolve(),
-        "feature names": Path(output_path_prefix + ".feature_names.tsv").resolve(),
-        "feature weights": Path(output_path_prefix + ".mokapot.weights.tsv").resolve(),
-        "log": (
-            Path(output_path_prefix + ".log.txt").resolve()
-            if use_txt_log
-            else Path(output_path_prefix + ".log.html").resolve()
-        ),
-    }
-    for file, path in files.items():
-        if Path(path).is_file():
-            logger.debug("✅ Found %s: '%s'", file, path.as_posix())
-        else:
-            logger.warning("❌ %s: '%s'", file, path.as_posix())
-            files[file] = None
-    return files
+def _get_psm_filenames(data: ReportData) -> str:
+    """Return the input PSM filename(s) for the report metadata."""
+    psm_files = data.config.get("ms2rescore", {}).get("psm_file")
+    if psm_files:
+        return "\n".join(Path(psm_file).name for psm_file in psm_files)
+    return "Unknown"
 
 
-def _get_stats_context(confidence_before, confidence_after):
-    """Return context for overview statistics pane."""
-    stats = []
-    levels = ["psms", "peptides", "proteins"]
-    level_names = ["PSMs", "Peptides", "Protein groups"]
-    card_colors = ["card-bg-blue", "card-bg-green", "card-bg-red"]
-
-    # Cannot report stats if confidence estimates are not present
-    if not confidence_before or not confidence_after:
-        return stats
-
-    for level, level_name, card_color in zip(levels, level_names, card_colors):
-        try:
-            before = confidence_before.accepted[level.lower()]
-            after = confidence_after.accepted[level.lower()]
-        except KeyError:
-            continue  # Level not present (e.g. no fasta provided)
-        if not before or not after:
-            continue
-        increase = (after - before) / before * 100
-        stats.append(
-            {
-                "item": level_name,
-                "card_color": card_color,
-                "number": after,
-                "diff": f"({after - before:+})",
-                "percentage": f"{increase:.1f}%",
-                "is_increase": increase > 0,
-                "bar_percentage": before / after * 100 if increase > 0 else after / before * 100,
-                "bar_color": "#24a143" if increase > 0 else "#a12424",
-            }
-        )
-    return stats
-
-
-def _get_overview_context(confidence_before, confidence_after) -> dict:
-    """Return context for overview tab."""
+def _get_overview_context(
+    id_stats: list, before: RescoreResult, after: RescoreResult, fdr_threshold: float
+) -> dict:
+    """Return context for the overview tab."""
     logger.debug("Generating overview charts...")
     return {
-        "stats": _get_stats_context(confidence_before, confidence_after),
+        "stats": id_stats,
         "charts": [
             {
                 "title": TEXTS["charts"]["score_comparison"]["title"],
-                "description": TEXTS["charts"]["score_comparison"]["description"],
-                "chart": charts.score_scatter_plot(
-                    confidence_before,
-                    confidence_after,
-                ).to_html(**PLOTLY_HTML_KWARGS),
+                "description": TEXTS["charts"]["score_comparison"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
+                "chart": charts.score_scatter_plot(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
             {
                 "title": TEXTS["charts"]["fdr_comparison"]["title"],
-                "description": TEXTS["charts"]["fdr_comparison"]["description"],
-                "chart": charts.fdr_plot_comparison(
-                    confidence_before,
-                    confidence_after,
-                ).to_html(**PLOTLY_HTML_KWARGS),
+                "description": TEXTS["charts"]["fdr_comparison"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
+                "chart": charts.fdr_plot_comparison(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
             {
                 "title": TEXTS["charts"]["identification_overlap"]["title"],
                 "description": TEXTS["charts"]["identification_overlap"]["description"],
-                "chart": charts.identification_overlap(
-                    confidence_before,
-                    confidence_after,
-                ).to_html(**PLOTLY_HTML_KWARGS),
+                "chart": charts.identification_overlap(before, after, fdr_threshold).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
             },
         ],
     }
 
 
-def _get_target_decoy_context(psm_list) -> dict:
+def _get_target_decoy_context(psm_df: pd.DataFrame, fdr_threshold: float) -> dict:
+    """Return context for the target/decoy tab."""
     logger.debug("Generating target-decoy charts...")
-    psm_df = psm_list.to_dataframe()
     return {
         "charts": [
             {
                 "title": TEXTS["charts"]["score_histogram"]["title"],
-                "description": TEXTS["charts"]["score_histogram"]["description"],
+                "description": TEXTS["charts"]["score_histogram"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.score_histogram(psm_df).to_html(**PLOTLY_HTML_KWARGS),
             },
             {
@@ -251,53 +176,32 @@ def _get_target_decoy_context(psm_list) -> dict:
 
 
 def _get_features_context(
-    psm_list: PSMList,
-    files: Dict[str, Path],
-    feature_names: Optional[Dict[str, set]] = None,
+    psm_df: pd.DataFrame,
+    feature_names: dict,
+    feature_weights: Optional[pd.DataFrame],
+    is_decoy: pd.Series,
+    fdr_threshold: float,
 ) -> dict:
-    """Return context for features tab."""
+    """Return context for the rescoring-features tab."""
     logger.debug("Generating feature-related charts...")
-    context: dict[str, list] = {"charts": []}
+    context: dict = {"charts": []}
 
-    # Get feature names, mapping with generator, and flat list
     if not feature_names:
-        feature_names = read_feature_names(files["feature names"])
-    feature_names_flat = [f_name for f_list in feature_names.values() for f_name in f_list]
-    feature_names_inv = {name: gen for gen, f_list in feature_names.items() for name in f_list}
+        logger.warning("No features found. Skipping feature charts.")
+        return context
 
-    # Get fixed color map for feature generators
-    color_map = dict(zip(feature_names.keys(), cycle(px.colors.qualitative.Plotly)))
+    feature_names_flat = [name for names in feature_names.values() for name in names]
+    feature_names_inv = {name: gen for gen, names in feature_names.items() for name in names}
+    color_map = {gen: FEATURE_GENERATOR_COLORS.get(gen, "#FFFFFF") for gen in feature_names}
 
-    # feature weights
-    if not files["feature weights"]:
-        logger.warning("Could not find feature weights files. Skipping feature weights plot.")
-    else:
-        feature_weights = pd.read_csv(files["feature weights"], sep="\t").melt(
-            var_name="feature", value_name="weight"
-        )
-        feature_weights["feature"] = feature_weights["feature"].str.replace(
-            r"^(feature:)?", "", regex=True
-        )
-        feature_weights["feature_generator"] = feature_weights["feature"].map(feature_names_inv)
-
-        context["charts"].append(
-            {
-                "title": TEXTS["charts"]["feature_usage"]["title"],
-                "description": TEXTS["charts"]["feature_usage"]["description"],
-                "chart": charts.feature_weights_by_generator(
-                    feature_weights, color_discrete_map=color_map
-                ).to_html(**PLOTLY_HTML_KWARGS)
-                + charts.feature_weights(feature_weights, color_discrete_map=color_map).to_html(
-                    **PLOTLY_HTML_KWARGS
-                ),
-            }
-        )
+    # Feature weights (empty only when rescoring was skipped)
+    if feature_weights is not None and not feature_weights.empty:
+        _add_feature_weights_chart(context, feature_weights, feature_names_inv, color_map)
 
     # Individual feature performance
-    features = get_feature_values(psm_list, feature_names_flat)
-    _, feature_ecdf_auc = charts.calculate_feature_qvalues(features, psm_list["is_decoy"])
+    features = psm_df[feature_names_flat].copy()
+    _, feature_ecdf_auc = charts.calculate_feature_qvalues(features, is_decoy)
     feature_ecdf_auc["feature_generator"] = feature_ecdf_auc["feature"].map(feature_names_inv)
-
     context["charts"].append(
         {
             "title": TEXTS["charts"]["feature_performance"]["title"],
@@ -308,117 +212,140 @@ def _get_features_context(
         }
     )
 
-    # MS²PIP specific charts
-    if "ms2pip" in feature_names and "spec_pearson_norm" in feature_names["ms2pip"]:
+    # MS²PIP correlation
+    if "spec_pearson_norm" in feature_names.get("ms2pip", []):
         context["charts"].append(
             {
                 "title": TEXTS["charts"]["ms2pip_pearson"]["title"],
-                "description": TEXTS["charts"]["ms2pip_pearson"]["description"],
+                "description": TEXTS["charts"]["ms2pip_pearson"]["description"].format(
+                    fdr_threshold=fdr_threshold
+                ),
                 "chart": charts.ms2pip_correlation(
-                    features, psm_list["is_decoy"], psm_list["qvalue"]
+                    features, is_decoy, psm_df["qvalue"], color=color_map.get("ms2pip")
                 ).to_html(**PLOTLY_HTML_KWARGS),
             }
         )
 
-    # DeepLC specific charts
+    # Retention-time and ion-mobility charts on high-confidence targets
+    high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= fdr_threshold)]
     if "deeplc" in feature_names:
-        import deeplc.plot
-
-        scatter_chart = deeplc.plot.scatter(
-            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
-            predicted_column="predicted_retention_time_best",
-            observed_column="observed_retention_time_best",
-        )
-        baseline_chart = deeplc.plot.distribution_baseline(
-            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
-            predicted_column="predicted_retention_time_best",
-            observed_column="observed_retention_time_best",
-        )
-        context["charts"].append(
-            {
-                "title": TEXTS["charts"]["deeplc_performance"]["title"],
-                "description": TEXTS["charts"]["deeplc_performance"]["description"],
-                "chart": scatter_chart.to_html(**PLOTLY_HTML_KWARGS)
-                + baseline_chart.to_html(**PLOTLY_HTML_KWARGS),
-            }
-        )
-
-    # IM2Deep specific charts
-    if "im2deep" in feature_names:
-        import deeplc.plot
-
-        scatter_chart = deeplc.plot.scatter(
-            df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
-            predicted_column="ccs_predicted_im2deep",
-            observed_column="ccs_observed_im2deep",
-            xaxis_label="Observed CCS",
-            yaxis_label="Predicted CCS",
-            plot_title="Predicted vs. observed CCS - IM2Deep",
-        )
-
-        context["charts"].append(
-            {
-                "title": TEXTS["charts"]["im2deep_performance"]["title"],
-                "description": TEXTS["charts"]["im2deep_performance"]["description"],
-                "chart": scatter_chart.to_html(**PLOTLY_HTML_KWARGS),
-            }
-        )
-
-    # ionmob specific charts
-    if "ionmob" in feature_names:
         try:
-            import deeplc.plot
-
-            scatter_chart = deeplc.plot.scatter(
-                df=features[(~psm_list["is_decoy"]) & (psm_list["qvalue"] <= 0.01)],
-                predicted_column="ccs_predicted",
-                observed_column="ccs_observed",
-                xaxis_label="Observed CCS",
-                yaxis_label="Predicted CCS",
-                plot_title="Predicted vs. observed CCS - ionmob",
+            _add_deeplc_chart(
+                context, high_conf_features, fdr_threshold, color=color_map.get("deeplc")
             )
+        except Exception as e:
+            logger.warning("Could not generate DeepLC performance plot: %s", e)
+    if "im2deep" in feature_names:
+        try:
+            _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
+        except Exception as e:
+            logger.warning("Could not generate IM2Deep performance plot: %s", e)
 
-            context["charts"].append(
-                {
-                    "title": TEXTS["charts"]["ionmob_performance"]["title"],
-                    "description": TEXTS["charts"]["ionmob_performance"]["description"],
-                    "chart": scatter_chart.to_html(**PLOTLY_HTML_KWARGS),
-                }
-            )
-
-        # TODO: for now, ionmob plot will only be available if deeplc is installed. Since ionmob does not have a dependency on deeplc, this should be changed in the future.
-        except ImportError:
-            logger.warning(
-                "Could not import deeplc.plot, skipping ionmob CCS prediction performance plot. Please install DeepLC to generate this plot."
-            )
     return context
 
 
+def _add_feature_weights_chart(context, feature_weights, feature_names_inv, color_map):
+    """Append the feature-weights charts to the features context."""
+    try:
+        # `feature_weights` is indexed by feature name, one column per CV fold
+        weights = feature_weights.reset_index(names="feature").melt(
+            id_vars="feature", var_name="fold", value_name="weight"
+        )
+        weights["feature_generator"] = weights["feature"].map(feature_names_inv)
+        context["charts"].append(
+            {
+                "title": TEXTS["charts"]["feature_usage"]["title"],
+                "description": TEXTS["charts"]["feature_usage"]["description"],
+                "chart": charts.feature_weights_by_generator(
+                    weights, color_discrete_map=color_map
+                ).to_html(**PLOTLY_HTML_KWARGS)
+                + charts.feature_weights(weights, color_discrete_map=color_map).to_html(
+                    **PLOTLY_HTML_KWARGS
+                ),
+            }
+        )
+    except Exception as e:
+        logger.warning("Could not generate feature weights plot: %s", e)
+
+
+def _add_deeplc_chart(context, high_conf_features, fdr_threshold, color=None):
+    """Append the DeepLC retention-time charts to the features context."""
+    scatter = charts.rt_scatter(
+        df=high_conf_features,
+        predicted_column="predicted_retention_time_best",
+        observed_column="observed_retention_time_best",
+        marker_color=color,
+    )
+    baseline = charts.rt_distribution_baseline(
+        df=high_conf_features,
+        predicted_column="predicted_retention_time_best",
+        observed_column="observed_retention_time_best",
+        highlight_color=color,
+    )
+    context["charts"].append(
+        {
+            "title": TEXTS["charts"]["deeplc_performance"]["title"],
+            "description": TEXTS["charts"]["deeplc_performance"]["description"].format(
+                fdr_threshold=fdr_threshold
+            ),
+            "chart": scatter.to_html(**PLOTLY_HTML_KWARGS)
+            + baseline.to_html(**PLOTLY_HTML_KWARGS),
+        }
+    )
+
+
+def _add_im2deep_chart(context, high_conf_features, color=None):
+    """Append the IM2Deep CCS chart to the features context."""
+    scatter = charts.rt_scatter(
+        df=high_conf_features,
+        predicted_column="ccs_predicted_im2deep",
+        observed_column="ccs_observed_im2deep",
+        xaxis_label="Observed CCS",
+        yaxis_label="Predicted CCS",
+        plot_title="Predicted vs. observed CCS - IM2Deep",
+        marker_color=color,
+    )
+    context["charts"].append(
+        {
+            "title": TEXTS["charts"]["im2deep_performance"]["title"],
+            "description": TEXTS["charts"]["im2deep_performance"]["description"],
+            "chart": scatter.to_html(**PLOTLY_HTML_KWARGS),
+        }
+    )
+
+
 def _get_config_context(config: dict) -> dict:
-    """Return context for config tab."""
+    """Return context for the config tab."""
     return {
         "description": TEXTS["configuration"]["description"],
         "config": json.dumps(config, indent=4),
     }
 
 
-def _get_log_context(files: Dict[str, Path]) -> dict:
-    """Return context for log tab."""
-    if not files["log"]:
-        return {"log": "<i>Log file could not be found.</i>"}
+def _get_log_context(output_path_prefix: str, log_html: Optional[str]) -> dict:
+    """Return context for the log tab, reading the log file when not provided in memory."""
+    if log_html is not None:
+        return {"log": log_html}
 
-    if files["log"].suffix == ".html":
-        return {"log": files["log"].read_text(encoding="utf-8")}
+    # Locate the log written during the run, preferring the HTML variant
+    for suffix in (".log.html", ".log.txt"):
+        log_path = Path(output_path_prefix + suffix)
+        if log_path.is_file():
+            content = log_path.read_text(encoding="utf-8")
+            if suffix == ".log.txt":
+                content = "<pre><code>" + content + "</code></pre>"
+            return {"log": content}
 
-    if files["log"].suffix == ".txt":
-        return {"log": "<pre><code>" + files["log"].read_text(encoding="utf-8") + "</code></pre>"}
-
-    return {"log": "<i>Log file format not recognized.</i>"}
+    return {"log": "<i>Log file could not be found.</i>"}
 
 
-def _render_and_write(output_path_prefix: str, **context):
-    """Render template with context and write to HTML file."""
-    report_path = Path(output_path_prefix + ".report.html").resolve()
+def _render_and_write(output_path_prefix: str, output_file: Optional[Path] = None, **context):
+    """Render the base template with context and write it to the HTML report file."""
+    if output_file:
+        report_path = Path(output_file).resolve()
+    else:
+        report_path = Path(output_path_prefix + ".report.html").resolve()
+
     logger.info("Writing report to %s", report_path.as_posix())
 
     # Use importlib.resources for PyInstaller compatibility

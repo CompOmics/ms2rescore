@@ -8,10 +8,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Dict, List, Union
 
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib  # type: ignore
+import tomllib
 
 from cascade_config import CascadeConfig
 
@@ -96,7 +93,6 @@ def _validate_regular_expressions(config: Dict) -> Dict:
         "psm_id_im_pattern",
     ]:
         if config["ms2rescore"][field]:
-
             # Check if valid regex
             try:
                 pattern = re.compile(config["ms2rescore"][field])
@@ -135,14 +131,18 @@ def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]
         configurations = [configurations]
 
     # Initialize CascadeConfig with validation schema and defaults
-    config_schema = importlib.resources.open_text(package_data, "config_schema.json")
-    config_default = importlib.resources.open_text(package_data, "config_default.json")
+    config_schema = json.loads(
+        importlib.resources.files(package_data).joinpath("config_schema.json").read_text()
+    )
+    config_default = json.loads(
+        importlib.resources.files(package_data).joinpath("config_default.json").read_text()
+    )
     cascade_conf = CascadeConfig(
-        validation_schema=json.load(config_schema),
+        validation_schema=config_schema,
         none_overrides_value=False,
         max_recursion_depth=1,
     )
-    cascade_conf.add_dict(json.load(config_default))
+    cascade_conf.add_dict(config_default)
 
     # Add configurations
     for config in configurations:
@@ -157,7 +157,7 @@ def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]
                 cascade_conf.add_dict(dict(tomllib.load(Path(config).open("rb"))))
             else:
                 raise MS2RescoreConfigurationError(
-                    "Unknown file extension for configuration file. Should be `json` or " "`toml`."
+                    "Unknown file extension for configuration file. Should be `json` or `toml`."
                 )
         elif isinstance(config, Namespace):
             cascade_conf.add_namespace(config, subkey="ms2rescore")
@@ -175,12 +175,9 @@ def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]
     config = _validate_processes(config)
     config = _validate_regular_expressions(config)
 
-    # Convert feature_generators and rescoring_engine names to lowercase
+    # Convert feature_generator names to lowercase
     config["ms2rescore"]["feature_generators"] = {
         k.lower(): v for k, v in config["ms2rescore"]["feature_generators"].items()
-    }
-    config["ms2rescore"]["rescoring_engine"] = {
-        k.lower(): v for k, v in config["ms2rescore"]["rescoring_engine"].items()
     }
 
     return config

@@ -1,6 +1,6 @@
 [project]
 name = "ms2rescore"
-version = "3.2.1"
+version = "4.0.0"
 description = " Modular and user-friendly platform for AI-assisted rescoring of peptide identifications."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -8,7 +8,6 @@ keywords = [
     "MS2Rescore",
     "MS2PIP",
     "DeepLC",
-    "Percolator",
     "proteomics",
     "mass spectrometry",
     "peptide identification",
@@ -36,26 +35,25 @@ dependencies = [
     "cascade-config>=0.4.0",
     "click>=7",
     "customtkinter>=5,<6",
-    "deeplc>=3.1",
-    "deeplcretrainer",
-    "im2deep>=1.1",
+    "deeplc>=4.0.0b1",
+    "im2deep>=2.0.1",
     "jinja2>=3",
     "lxml>=4.5",
-    "mokapot==0.10",                     # 0.11.0 will introduce API changes
-    "ms2pip>=4.0.0",
-    "ms2rescore_rs>=0.4",
-    "numpy>=1.25",
+    "ms2pip>=4.2.0",
+    "ms2rescore_rs>=0.5.0",
+    "numpy>=1.25,<3.0",
     "packaging>=25.0",
     "pandas>=1",
     "plotly>=5",
     "psm_utils>=1.1",
+    "pyarrow>=14",
     "pyteomics>=4.7.2",
     "rich>=12",
-    "tomli>=2; python_version < '3.11'",
+    "ristretto-ms>=0.3.0",
 ]
 
 [project.optional-dependencies]
-ionmob = ["ionmob>=0.2", "tensorflow"]
+mumble = ["mumble>=0.3.0"]
 idxml = ["pyopenms>=3.3"]
 
 [dependency-groups]
@@ -70,19 +68,18 @@ docs = [
     "sphinx_rtd_theme",
     "sphinx-argparse",
     "sphinx-autobuild",
-    "toml",
 ]
+nb = ["ipykernel", "ipywidgets", "plotly"]
+# TODO: Update upon stable release
 installer = [
     # Pinned dependencies for reproducible Windows installer builds
-    "pyinstaller",
-    "pyopenms==3.5",
-    "ionmob>=0.2",
-    "tensorflow",
-    "psm_utils==1.5.1",
-    "ms2rescore-rs==0.4.3",
-    "deeplc==3.1.13",
-    "im2deep==1.2.0",
     "cbor2",
+    "deeplc==4.0.0b1",
+    "im2deep==2.0.1",
+    "ms2rescore-rs==0.5.0",
+    "pyinstaller",
+    "psm_utils==1.5.2",
+    "pyopenms==3.5",
 ]
 
 [project.urls]
@@ -104,6 +101,12 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "ms2rescore"
 module-root = ""
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: slow end-to-end tests requiring example data (deselect with '-m not integration')",
+    "slow: tests that load real prediction models (deselect with '-m not slow')",
+]
 
 [tool.isort]
 profile = "black"

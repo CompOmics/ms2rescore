@@ -3,18 +3,17 @@
 ## Properties
 
 - **`ms2rescore`** *(object)*: General MS²Rescore settings. Cannot contain additional properties.
-  - **`feature_generators`** *(object)*: Feature generators and their configurations. Default: `{"basic": {}, "ms2pip": {"model": "HCD", "ms2_tolerance": 0.02}, "deeplc": {}, "maxquant": {}}`.
+  - **`feature_generators`** *(object)*: Feature generators and their configurations. Default: `{"basic": {}, "ms2pip": {"model": "HCD"}, "ms2": {}, "deeplc": {}}`.
     - **`.*`**: Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
     - **`basic`**: Refer to *[#/definitions/basic](#definitions/basic)*.
     - **`ms2pip`**: Refer to *[#/definitions/ms2pip](#definitions/ms2pip)*.
     - **`deeplc`**: Refer to *[#/definitions/deeplc](#definitions/deeplc)*.
-    - **`maxquant`**: Refer to *[#/definitions/maxquant](#definitions/maxquant)*.
-    - **`ionmob`**: Refer to *[#/definitions/ionmob](#definitions/ionmob)*.
     - **`im2deep`**: Refer to *[#/definitions/im2deep](#definitions/im2deep)*.
-  - **`rescoring_engine`** *(object)*: Rescoring engine to use and its configuration. Leave empty to skip rescoring and write features to file. Default: `{"mokapot": {}}`.
-    - **`.*`**: Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
-    - **`percolator`**: Refer to *[#/definitions/percolator](#definitions/percolator)*.
-    - **`mokapot`**: Refer to *[#/definitions/mokapot](#definitions/mokapot)*.
+    - **`ms2`**: Refer to *[#/definitions/ms2](#definitions/ms2)*.
+  - **`rescoring`**: Ristretto rescoring configuration. Set to {} to use the defaults below. Refer to *[#/definitions/rescoring](#definitions/rescoring)*. Default: `{"train_fdr": 0.01, "model": "svm"}`.
+  - **`psm_generator`** *(object)*: PSM generator and their configuration.
+    - **`.*`**: Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
+    - **`mumble`**: Refer to *[#/definitions/mumble](#definitions/mumble)*.
   - **`config_file`**: Path to configuration file.
     - **One of**
       - *string*
@@ -56,17 +55,12 @@
     - **One of**
       - *string*
       - *null*
-  - **`lower_score_is_better`** *(boolean)*: Bool indicating if lower score is better. Default: `false`.
   - **`max_psm_rank_input`** *(number)*: Maximum rank of PSMs to use as input for rescoring. Minimum: `1`. Default: `10`.
   - **`max_psm_rank_output`** *(number)*: Maximum rank of PSMs to return after rescoring, before final FDR calculation. Minimum: `1`. Default: `1`.
   - **`modification_mapping`** *(object)*: Mapping of modification labels to each replacement label. Default: `{}`.
   - **`fixed_modifications`** *(object)*: Mapping of amino acids with fixed modifications to the modification name. Can contain additional properties. Default: `{}`.
   - **`processes`** *(number)*: Number of parallel processes to use; -1 for all available. Minimum: `-1`. Default: `-1`.
   - **`rename_to_usi`** *(boolean)*: Convert spectrum IDs to their universal spectrum identifier.
-  - **`fasta_file`**: Path to FASTA file with protein sequences to use for protein inference.
-    - **One of**
-      - *string*
-      - *null*
   - **`write_flashlfq`**: Write results to a FlashLFQ-compatible file. Default: `false`.
     - **One of**
       - *boolean*
@@ -75,6 +69,7 @@
     - **One of**
       - *boolean*
       - *null*
+  - **`report_fdr`** *(number)*: FDR threshold used for reporting: console log identification counts, the HTML report's identification stats/charts, and FlashLFQ output filtering. Independent of rescoring.train_fdr, which controls ristretto's training instead. Minimum: `0`. Maximum: `1`. Default: `0.01`.
   - **`disable_update_check`**: Disable the automatic update check. Default: `false`.
     - **One of**
       - *boolean*
@@ -83,10 +78,16 @@
     - **One of**
       - *boolean*
       - *null*
+  - **`fragmentation_model`** *(string)*: Fragmentation model for spectrum annotation: cidhcd (a/b/y), etd (c/y/z), ethcd (a/b/c/y/z), or all (a/b/c/x/y/z). Must be one of: `["cidhcd", "etd", "ethcd", "all"]`. Default: `"cidhcd"`.
+  - **`tolerance_value`** *(number)*: Fragment mass tolerance value for spectrum annotation. Minimum: `0`. Default: `20.0`.
+  - **`tolerance_mode`** *(string)*: Fragment mass tolerance mode for spectrum annotation. Must be one of: `["ppm", "Da"]`. Default: `"ppm"`.
 ## Definitions
 
 - <a id="definitions/feature_generator"></a>**`feature_generator`** *(object)*: Feature generator configuration. Can contain additional properties.
-- <a id="definitions/rescoring_engine"></a>**`rescoring_engine`** *(object)*: Rescoring engine configuration. Can contain additional properties.
+- <a id="definitions/rescoring"></a>**`rescoring`** *(object)*: Ristretto rescoring configuration. Cannot contain additional properties.
+  - **`train_fdr`** *(number)*: FDR threshold used during ristretto's semi-supervised training. Minimum: `0`. Maximum: `1`. Default: `0.01`.
+  - **`model`** *(string)*: Model used for ristretto's semi-supervised rescoring: 'svm' (iterative Percolator-style SVM, default) or 'lda' (single-pass Fisher LDA, faster but less powerful on hard datasets). Must be one of: `["svm", "lda"]`. Default: `"svm"`.
+- <a id="definitions/psm_generator"></a>**`psm_generator`** *(object)*: Additional PSM feature generator configuration. Can contain additional properties.
 - <a id="definitions/basic"></a>**`basic`** *(object)*: Basic feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/ms2pip"></a>**`ms2pip`** *(object)*: MS²PIP feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`model`** *(string)*: MS²PIP model to use (see MS²PIP documentation). Default: `"HCD"`.
@@ -96,19 +97,20 @@
     - **One of**
       - *integer*
       - *number*
-- <a id="definitions/maxquant"></a>**`maxquant`** *(object)*: MaxQuant feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
-- <a id="definitions/ionmob"></a>**`ionmob`** *(object)*: Ion mobility feature generator configuration using Ionmob. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
-  - **`ionmob_model`** *(string)*: Path to Ionmob model directory. Default: `"GRUPredictor"`.
-  - **`reference_dataset`** *(string)*: Path to Ionmob reference dataset file. Default: `"Meier_unimod.parquet"`.
-  - **`tokenizer`** *(string)*: Path to tokenizer json file. Default: `"tokenizer.json"`.
+- <a id="definitions/ms2"></a>**`ms2`** *(object)*: MS2 spectrum-based feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/im2deep"></a>**`im2deep`** *(object)*: Ion mobility feature generator configuration using IM2Deep. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`reference_dataset`** *(string)*: Path to IM2Deep reference dataset file. Default: `"Meier_unimod.parquet"`.
-- <a id="definitions/mokapot"></a>**`mokapot`** *(object)*: Mokapot rescoring engine configuration. Additional properties are passed to the Mokapot brew function. Can contain additional properties. Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
-  - **`train_fdr`** *(number)*: FDR threshold for training Mokapot. Minimum: `0`. Maximum: `1`. Default: `0.01`.
-  - **`write_weights`** *(boolean)*: Write Mokapot weights to a text file. Default: `false`.
-  - **`write_txt`** *(boolean)*: Write Mokapot results to a text file. Default: `false`.
-- <a id="definitions/percolator"></a>**`percolator`** *(object)*: Percolator rescoring engine configuration. Can contain additional properties. Refer to *[#/definitions/rescoring_engine](#definitions/rescoring_engine)*.
-  - **`init-weights`**: Weights file for scoring function. Default: `false`.
+- <a id="definitions/mumble"></a>**`mumble`** *(object)*: Mumble PSM generator configuration. Mumble proposes candidate Unimod modifications that explain each PSM's precursor mass shift (open-modification-search style). Requires the optional `mumble` dependency (`pip install ms2rescore[mumble]`). Mumble is still under active development (beta): review results and expect occasional errors, especially on unusual input. Can contain additional properties. Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
+  - **`aa_combinations`** *(integer)*: Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low. Default: `0`.
+  - **`combination_length`** *(integer)*: Maximum number of modifications to combine per mass shift. Lower combination lengths are always included as well. Default: `1`.
+  - **`exclude_mutations`** *(boolean)*: Exclude candidate modifications classified as amino acid substitutions. Default: `false`.
+  - **`fasta_file`**: Path to a FASTA file with protein sequences, used to validate amino acid combination candidates. Required if `aa_combinations` is greater than 0.
     - **One of**
       - *string*
       - *null*
+  - **`mass_error`** *(number)*: Mass error tolerance in Da used to match a PSM's mass shift to a candidate modification. Default: `0.02`.
+  - **`modification_file`**: Path to a restriction list of Unimod modifications to consider (TSV with `unimod_id`/`name`, and optionally `residue`, columns). Defaults to a curated subset bundled with Mumble. Ignored if `all_unimod_modifications` is true.
+    - **One of**
+      - *string*
+      - *null*
+  - **`all_unimod_modifications`** *(boolean)*: Consider all Unimod modifications instead of the restricted default/`modification_file` list. Substantially increases runtime and the risk of false-positive candidate modifications. Default: `false`.

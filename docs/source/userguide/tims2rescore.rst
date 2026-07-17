@@ -57,11 +57,10 @@ To use TIMS²Rescore, follow these steps:
 
       .. code-block:: bash
 
-          ms2rescore-report <output_prefix>
+          ms2rescore-report <path_to_psm_file>
 
-      Replace `<output_prefix>` with the actual output prefix of the result files to the output
-      file. For instance, if the output file is ``identifications.psms.tsv``, then the output
-      prefix is ``identifications``.
+      Replace `<path_to_psm_file>` with the path to the main PSM list output file (e.g.,
+      ``identifications.ms2rescore.tsv``).
 
 Additional options
 ------------------

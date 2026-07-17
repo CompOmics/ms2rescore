@@ -22,6 +22,14 @@ LOG_MAPPING = {
 }
 
 
+def _apply_selected_log_level(config, log_level):
+    """Copy the GUI-selected log level into the MS²Rescore config."""
+    config = config.copy()
+    config["ms2rescore"] = config["ms2rescore"].copy()
+    config["ms2rescore"]["log_level"] = log_level
+    return config
+
+
 class Function2CTk(ctk.CTk):
     """Function to CustomTkinter application."""
 
@@ -117,6 +125,7 @@ class Function2CTk(ctk.CTk):
         # Try parsing configuration
         try:
             fn_args, fn_kwargs = self.config_frame.get()
+            fn_args = (_apply_selected_log_level(fn_args[0], self.logging_level_selection.get()),)
         except Exception as e:
             self.progress_control.reset()
             PopupWindow(self, "Error", f"Error occurred while parsing configuration:\n{e}")

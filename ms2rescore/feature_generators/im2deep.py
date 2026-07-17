@@ -8,23 +8,21 @@ acid residues in the peptide. See
 
 """
 
-import contextlib
 import logging
-import os
-from inspect import getfullargspec
-from itertools import chain
-from typing import List
+from typing import List, Union
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from im2deep.calibration import LinearCCSCalibration, get_default_reference
+from im2deep.core import predict
 from im2deep.utils import im2ccs
-from im2deep.im2deep import predict_ccs
 from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
+from ms2rescore._utils import get_original_hit_mask
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +33,8 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
     def __init__(
         self,
+        multi: bool = False,
+        calibration_set_size: Union[int, float] = None,
         *args,
         processes: int = 1,
         **kwargs,
@@ -45,21 +45,34 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         Parameters
         ----------
         processes : int, optional
-            Number of parallel processes to use for IM2Deep predictions. Default is 1.
+            Number of threads to use for IM2Deep predictions. Default is 1.
         **kwargs : dict, optional
             Additional keyword arguments to `im2deep.predict_ccs`.
 
         """
         super().__init__(*args, **kwargs)
 
+        self.multi = multi
+        if self.multi:
+            raise NotImplementedError(
+                "Multi-IM mode is not yet implemented for IM2DeepFeatureGenerator."
+            )
+
+        self.calibration_set_size = calibration_set_size
+
+        self.im2deep_kwargs = kwargs or {}
         self._verbose = logger.getEffectiveLevel() <= logging.DEBUG
 
-        # Remove any kwargs that are not IM2Deep arguments
-        self.im2deep_kwargs = kwargs or {}
-        self.im2deep_kwargs = {
-            k: v for k, v in self.im2deep_kwargs.items() if k in getfullargspec(predict_ccs).args
+        self.model = self.im2deep_kwargs.get("model", None)
+        self.reference_dataset = self.im2deep_kwargs.get("reference_dataset", None)
+
+        # Prepare IM2Deep predict kwargs
+        self.predict_kwargs = {
+            k: v
+            for k, v in self.im2deep_kwargs.items()
+            if k in ["device", "batch_size", "num_threads"]
         }
-        self.im2deep_kwargs["n_jobs"] = processes
+        self.predict_kwargs["num_threads"] = processes if processes > 0 else None
 
     @property
     def feature_names(self) -> List[str]:
@@ -73,100 +86,168 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
     def add_features(self, psm_list: PSMList) -> None:
         """Add IM2Deep-derived features to PSMs"""
+
         logger.info("Adding IM2Deep-derived features to PSMs")
 
-        # Get easy-access nested version of PSMlist
-        psm_dict = psm_list.get_psm_dict()
+        # Mumble-generated candidate PSMs are unconfirmed mass-shift explanations and must never
+        # be used to calibrate IM2Deep, only the original search engine hits can.
+        original_hit_mask = get_original_hit_mask(psm_list)
+        psm_list_df = psm_list.to_dataframe()
+        psm_list_df["original_psm"] = original_hit_mask
+        psm_list_df = psm_list_df[
+            [
+                "peptidoform",
+                "ion_mobility",
+                "precursor_mz",
+                "run",
+                "qvalue",
+                "is_decoy",
+                "metadata",
+                "original_psm",
+            ]
+        ]
 
-        # Run IM2Deep for each spectrum file
-        current_run = 1
-        total_runs = sum(len(runs) for runs in psm_dict.values())
+        psm_list_df["sequence"] = psm_list_df["peptidoform"].apply(lambda x: x.modified_sequence)
+        psm_list_df["charge"] = [pep.precursor_charge for pep in psm_list_df["peptidoform"]]
+        psm_list_df["ccs_observed_im2deep"] = im2ccs(
+            psm_list_df["ion_mobility"],
+            psm_list_df["precursor_mz"],
+            psm_list_df["charge"],
+        )
 
-        for runs in psm_dict.values():
-            # Reset IM2Deep predictor for each collection of runs
-            for run, psms in runs.items():
-                logger.info(
-                    f"Running IM2Deep for PSMs from run ({current_run}/{total_runs}): `{run}`..."
-                )
+        # Make predictions with IM2Deep
+        logger.info("Predicting CCS values with IM2Deep...")
+        # float64 so the per-run calibrated write-back below stays dtype-consistent (predict
+        # returns float32; calibration.transform returns object).
+        psm_list_df["predicted_CCS_uncalibrated"] = np.asarray(
+            predict(psm_list, model=self.model, predict_kwargs=self.predict_kwargs),
+            dtype="float64",
+        )
 
-                # Disable wild logging to stdout by TensorFlow, unless in debug mode
-                with (
-                    contextlib.redirect_stdout(open(os.devnull, "w", encoding="utf-8"))
-                    if not self._verbose
-                    else contextlib.nullcontext()
-                ):
-                    # Make new PSM list for this run (chain PSMs per spectrum to flat list)
-                    psm_list_run = PSMList(psm_list=list(chain.from_iterable(psms.values())))
+        # getting reference CCS values for calibration
+        source_dataframe = self._get_reference_dataframe()
 
-                    logger.debug("Calibrating IM2Deep...")
+        # Create dataframe with high confidence hits for calibration
+        logger.info("Calibrating predicted CCS values per run...")
+        for run in psm_list_df["run"].unique():
+            run_df = psm_list_df[psm_list_df["run"] == run].copy()
 
-                    # Convert ion mobility to CCS and calibrate CCS values
-                    psm_list_run_df = psm_list_run.to_dataframe()
-                    psm_list_run_df["charge"] = [
-                        pep.precursor_charge for pep in psm_list_run_df["peptidoform"]
-                    ]
-                    psm_list_run_df["ccs_observed"] = im2ccs(
-                        psm_list_run_df["ion_mobility"],
-                        psm_list_run_df["precursor_mz"],
-                        psm_list_run_df["charge"],
-                    )
+            calibration_df = self._get_im_calibration_data(run_df)
+            if calibration_df.empty:
+                raise ValueError(f"Run '{run}' has no target PSMs available for calibration.")
 
-                    # Create dataframe with high confidence hits for calibration
-                    cal_psm_df = self.make_calibration_df(psm_list_run_df)
+            calibration = LinearCCSCalibration()
+            calibration.fit(
+                psm_df_target=calibration_df,
+                psm_df_source=source_dataframe,
+            )
 
-                    # Make predictions with IM2Deep
-                    logger.debug("Predicting CCS values...")
-                    predictions = predict_ccs(
-                        psm_list_run, cal_psm_df, write_output=False, **self.im2deep_kwargs
-                    )
+            calibrated_im = calibration.transform(
+                run_df[["peptidoform", "predicted_CCS_uncalibrated"]]
+            )
 
-                    # Add features to PSMs
-                    logger.debug("Adding features to PSMs...")
-                    observations = psm_list_run_df["ccs_observed"]
-                    ccs_diffs_run = np.abs(predictions - observations)
-                    for i, psm in enumerate(psm_list_run):
-                        psm["rescoring_features"].update(
-                            {
-                                "ccs_observed_im2deep": observations[i],
-                                "ccs_predicted_im2deep": predictions[i],
-                                "ccs_error_im2deep": ccs_diffs_run[i],
-                                "abs_ccs_error_im2deep": np.abs(ccs_diffs_run[i]),
-                                "perc_ccs_error_im2deep": np.abs(ccs_diffs_run[i])
-                                / observations[i]
-                                * 100,
-                            }
-                        )
+            # Update predictions with calibrated values. transform() returns an object-dtype
+            # array; cast to float64 so the write-back does not upcast the column (pandas
+            # incompatible-dtype FutureWarning).
+            psm_list_df.loc[psm_list_df["run"] == run, "predicted_CCS_uncalibrated"] = np.asarray(
+                calibrated_im, dtype="float64"
+            )
 
-                current_run += 1
+        # Apply calibration shifts
+        psm_list_df.rename(
+            columns={"predicted_CCS_uncalibrated": "ccs_predicted_im2deep"}, inplace=True
+        )
+        psm_list_df["ccs_error_im2deep"] = (
+            psm_list_df["ccs_predicted_im2deep"] - psm_list_df["ccs_observed_im2deep"]
+        )
+        psm_list_df["abs_ccs_error_im2deep"] = np.abs(psm_list_df["ccs_error_im2deep"])
+        psm_list_df["perc_ccs_error_im2deep"] = (
+            np.abs(psm_list_df["ccs_error_im2deep"]) / psm_list_df["ccs_observed_im2deep"] * 100
+        )
 
-    @staticmethod
-    def make_calibration_df(psm_list_df: pd.DataFrame, threshold: float = 0.25) -> pd.DataFrame:
-        """
-        Make dataframe for calibration of IM2Deep predictions.
+        psm_list_feature_dicts = psm_list_df[self.feature_names].to_dict(orient="records")
+        # Add features to PSMs
+        logger.debug("Adding features to PSMs...")
+        for psm, features in zip(psm_list, psm_list_feature_dicts):
+            psm.rescoring_features.update(features)
+
+    def _get_im_calibration_data(self, run_df) -> pd.DataFrame:
+        """Get calibration data (observed and predicted CCS values) from run dataframe.
+
+        Only target (non-decoy), original (non-Mumble) PSMs are used for calibration.
 
         Parameters
         ----------
-        psm_list_df
-            DataFrame with PSMs.
-        threshold
-            Percentage of highest scoring identified target PSMs to use for calibration,
-            default 0.25.
+        run_df : pd.DataFrame
+            Dataframe containing PSMs for a single run, with columns:
+            'ccs_observed_im2deep', 'ccs_predicted_im2deep', 'qvalue', 'is_decoy', 'original_psm'
 
         Returns
         -------
         pd.DataFrame
-            DataFrame with high confidence hits for calibration.
-
+            DataFrame with 'peptidoform' and 'CCS' columns for calibration.
         """
-        identified_psms = psm_list_df[
-            (psm_list_df["qvalue"] < 0.01)
-            & (~psm_list_df["is_decoy"])
-            & (psm_list_df["charge"] < 5)  # predictions do not go higher for IM2Deep
-        ]
-        calibration_psms = identified_psms[
-            identified_psms["qvalue"] < identified_psms["qvalue"].quantile(1 - threshold)
-        ]
-        logger.debug(
-            f"Number of high confidence hits for calculating shift: {len(calibration_psms)}"
+        # Filter to target, original-hit PSMs only. Mumble candidates are unconfirmed mass-shift
+        # explanations and must not calibrate the model.
+        target_df = run_df[~run_df["is_decoy"] & run_df["original_psm"]].copy()
+        target_df = target_df.sort_values("qvalue", ascending=True)
+
+        # Determine number of calibration PSMs
+        if isinstance(self.calibration_set_size, float):
+            if not 0 < self.calibration_set_size <= 1:
+                raise ValueError(
+                    "If `calibration_set_size` is a float, it cannot be smaller than "
+                    "or equal to 0 or larger than 1."
+                )
+            num_calibration_psms = round(len(target_df) * self.calibration_set_size)
+        elif isinstance(self.calibration_set_size, int):
+            if self.calibration_set_size > len(target_df):
+                logger.warning(
+                    f"Requested number of calibration PSMs ({self.calibration_set_size}) "
+                    f"is larger than total number of target PSMs ({len(target_df)}). Using "
+                    "all target PSMs for calibration."
+                )
+                num_calibration_psms = len(target_df)
+            else:
+                num_calibration_psms = self.calibration_set_size
+        else:
+            # Use PSMs with q-value <= 0.01
+            num_calibration_psms = (target_df["qvalue"] <= 0.01).sum()
+
+        logger.debug(f"Using {num_calibration_psms} target PSMs for calibration")
+
+        # Select calibration PSMs (assuming they are sorted by q-value)
+        calibration_df = target_df.head(num_calibration_psms)
+
+        return calibration_df[["peptidoform", "ccs_observed_im2deep"]].rename(
+            columns={"ccs_observed_im2deep": "CCS"}
         )
-        return calibration_psms
+
+    def _get_reference_dataframe(self) -> pd.DataFrame:
+        """Load the CCS reference dataset requested by the config, or IM2Deep's default."""
+
+        if not self.reference_dataset:
+            return get_default_reference()
+        else:
+            reference_path = Path(self.reference_dataset)
+
+        if not reference_path.is_file():
+            raise FileNotFoundError(
+                f"IM2Deep reference dataset not found: {self.reference_dataset}"
+            )
+
+        logger.info("Loading IM2Deep reference dataset from %s", reference_path)
+        if reference_path.suffix.lower() in {".parquet", ".pq"}:
+            reference_df = pd.read_parquet(reference_path)
+        else:
+            reference_df = pd.read_csv(reference_path, compression="infer", keep_default_na=False)
+
+        required_columns = {"peptidoform", "CCS"}
+        missing_columns = required_columns - set(reference_df.columns)
+        if missing_columns:
+            raise ValueError(
+                f"IM2Deep reference dataset must contain columns {sorted(required_columns)}; "
+                f"missing {sorted(missing_columns)}"
+            )
+
+        return reference_df[["peptidoform", "CCS"]]

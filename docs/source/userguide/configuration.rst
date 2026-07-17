@@ -284,32 +284,66 @@ the following configuration can be used:
     max_psm_rank_output = 1
 
 
-Configuring rescoring engines
-=============================
+Configuring PSM generators
+===========================
 
-MS²Rescore supports multiple rescoring engines, such as Mokapot and Percolator. The rescoring
-engine can be selected and configured with the ``rescoring_engine`` option. For example, to use
-Mokapot with a custom train_fdr of 0.1%, the following configuration can be used:
+In addition to feature generators and rescoring engines, MS²Rescore supports optional *PSM
+generators*, configured through the ``psm_generator`` option. A PSM generator adds candidate
+PSMs to the input before feature generation and rescoring, for example to propose modifications
+that explain an otherwise unresolved precursor mass shift.
+
+Currently, `Mumble <https://github.com/compomics/mumble>`_ is the only available PSM generator:
 
 .. tab:: JSON
 
   .. code-block:: json
 
-    "rescoring_engine": {
-      "mokapot": {
-        "train_fdr": 0.001
+    "psm_generator": {
+      "mumble": {
+        "mass_error": 0.02
       }
+    }
+
+.. tab:: TOML
+
+  .. code-block:: toml
+
+    [ms2rescore.psm_generator.mumble]
+    mass_error = 0.02
+
+.. warning::
+  Mumble is beta software: it is usable, but occasional errors can still occur, especially on
+  unusual input. See :ref:`Open modification searching with Mumble` for the full configuration
+  reference, integration details, and known limitations.
+
+
+Configuring rescoring
+=====================
+
+MS²Rescore uses `ristretto <https://github.com/CompOmics/ristretto>`_, a lean semi-supervised
+rescoring implementation, as its rescoring engine. It can be configured with the ``rescoring``
+option, which exposes ``train_fdr`` and ``model`` (``svm``, the default, or the faster but less
+powerful ``lda``). On a difficult dataset, where the default 1% ``train_fdr`` doesn't yield any
+accepted PSMs for ristretto's semi-supervised training, a higher value such as 10% can help:
+
+.. tab:: JSON
+
+  .. code-block:: json
+
+    "rescoring": {
+      "train_fdr": 0.1
+    }
 
 .. tab:: TOML
 
     .. code-block:: toml
 
-      [ms2rescore.rescoring_engine.mokapot]
-      train_fdr = 0.001
+      [ms2rescore.rescoring]
+      train_fdr = 0.1
 
+Set ``rescoring`` to ``{}`` to use the defaults shown above.
 
-All options for the rescoring engines can be found in the :ref:`ms2rescore.rescoring_engines`
-section.
+See the :ref:`ms2rescore.rescoring` section for the module used to interface with ristretto.
 
 
 

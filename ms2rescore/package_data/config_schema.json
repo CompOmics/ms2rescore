@@ -24,42 +24,37 @@
                         "deeplc": {
                             "$ref": "#/definitions/deeplc"
                         },
-                        "maxquant": {
-                            "$ref": "#/definitions/maxquant"
-                        },
-                        "ionmob": {
-                            "$ref": "#/definitions/ionmob"
-                        },
                         "im2deep": {
                             "$ref": "#/definitions/im2deep"
+                        },
+                        "ms2": {
+                            "$ref": "#/definitions/ms2"
                         }
                     },
                     "default": {
                         "basic": {},
                         "ms2pip": {
-                            "model": "HCD",
-                            "ms2_tolerance": 0.02
+                            "model": "HCD"
                         },
-                        "deeplc": {},
-                        "maxquant": {}
+                        "ms2": {},
+                        "deeplc": {}
                     }
                 },
-                "rescoring_engine": {
-                    "description": "Rescoring engine to use and its configuration. Leave empty to skip rescoring and write features to file.",
+                "rescoring": {
+                    "description": "Ristretto rescoring configuration. Set to {} to use the defaults below.",
+                    "allOf": [{ "$ref": "#/definitions/rescoring" }],
+                    "default": { "train_fdr": 0.01, "model": "svm" }
+                },
+                "psm_generator": {
+                    "description": "PSM generator and their configuration.",
                     "type": "object",
                     "minProperties": 0,
                     "maxProperties": 1,
                     "patternProperties": {
-                        ".*": { "$ref": "#/definitions/rescoring_engine" },
-                        "percolator": {
-                            "$ref": "#/definitions/percolator"
-                        },
-                        "mokapot": {
-                            "$ref": "#/definitions/mokapot"
+                        ".*": { "$ref": "#/definitions/psm_generator" },
+                        "mumble": {
+                            "$ref": "#/definitions/mumble"
                         }
-                    },
-                    "default": {
-                        "mokapot": {}
                     }
                 },
                 "config_file": {
@@ -126,11 +121,6 @@
                     "default": null,
                     "format": "regex"
                 },
-                "lower_score_is_better": {
-                    "description": "Bool indicating if lower score is better",
-                    "type": "boolean",
-                    "default": false
-                },
                 "max_psm_rank_input": {
                     "description": "Maximum rank of PSMs to use as input for rescoring",
                     "type": "number",
@@ -165,10 +155,6 @@
                     "description": "Convert spectrum IDs to their universal spectrum identifier",
                     "type": "boolean"
                 },
-                "fasta_file": {
-                    "description": "Path to FASTA file with protein sequences to use for protein inference",
-                    "oneOf": [{ "type": "string" }, { "type": "null" }]
-                },
                 "write_flashlfq": {
                     "description": "Write results to a FlashLFQ-compatible file",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -179,6 +165,13 @@
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": true
                 },
+                "report_fdr": {
+                    "description": "FDR threshold used for reporting: console log identification counts, the HTML report's identification stats/charts, and FlashLFQ output filtering. Independent of rescoring.train_fdr, which controls ristretto's training instead.",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.01
+                },
                 "disable_update_check": {
                     "description": "Disable the automatic update check",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -188,6 +181,24 @@
                     "description": "Write a txt report using cProfile for profiling",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": false
+                },
+                "fragmentation_model": {
+                    "description": "Fragmentation model for spectrum annotation: cidhcd (a/b/y), etd (c/y/z), ethcd (a/b/c/y/z), or all (a/b/c/x/y/z)",
+                    "type": "string",
+                    "enum": ["cidhcd", "etd", "ethcd", "all"],
+                    "default": "cidhcd"
+                },
+                "tolerance_value": {
+                    "description": "Fragment mass tolerance value for spectrum annotation",
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0.02
+                },
+                "tolerance_mode": {
+                    "description": "Fragment mass tolerance mode for spectrum annotation",
+                    "type": "string",
+                    "enum": ["ppm", "Da"],
+                    "default": "Da"
                 }
             }
         }
@@ -198,8 +209,28 @@
             "type": "object",
             "additionalProperties": true
         },
-        "rescoring_engine": {
-            "description": "Rescoring engine configuration",
+        "rescoring": {
+            "description": "Ristretto rescoring configuration.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "train_fdr": {
+                    "description": "FDR threshold used during ristretto's semi-supervised training",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.01
+                },
+                "model": {
+                    "description": "Model used for ristretto's semi-supervised rescoring: 'svm' (iterative Percolator-style SVM, default) or 'lda' (single-pass Fisher LDA, faster but less powerful on hard datasets)",
+                    "type": "string",
+                    "enum": ["svm", "lda"],
+                    "default": "svm"
+                }
+            }
+        },
+        "psm_generator": {
+            "description": "Additional PSM feature generator configuration",
             "type": "object",
             "additionalProperties": true
         },
@@ -241,34 +272,11 @@
                 }
             }
         },
-        "maxquant": {
+        "ms2": {
             "$ref": "#/definitions/feature_generator",
-            "description": "MaxQuant feature generator configuration",
+            "description": "MS2 spectrum-based feature generator configuration",
             "type": "object",
             "additionalProperties": true
-        },
-        "ionmob": {
-            "$ref": "#/definitions/feature_generator",
-            "description": "Ion mobility feature generator configuration using Ionmob",
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-                "ionmob_model": {
-                    "description": "Path to Ionmob model directory",
-                    "type": "string",
-                    "default": "GRUPredictor"
-                },
-                "reference_dataset": {
-                    "description": "Path to Ionmob reference dataset file",
-                    "type": "string",
-                    "default": "Meier_unimod.parquet"
-                },
-                "tokenizer": {
-                    "description": "Path to tokenizer json file",
-                    "type": "string",
-                    "default": "tokenizer.json"
-                }
-            }
         },
         "im2deep": {
             "$ref": "#/definitions/feature_generator",
@@ -283,40 +291,45 @@
                 }
             }
         },
-        "mokapot": {
-            "$ref": "#/definitions/rescoring_engine",
-            "description": "Mokapot rescoring engine configuration. Additional properties are passed to the Mokapot brew function.",
+        "mumble": {
+            "$ref": "#/definitions/psm_generator",
+            "description": "Mumble PSM generator configuration. Mumble proposes candidate Unimod modifications that explain each PSM's precursor mass shift (open-modification-search style). Requires the optional `mumble` dependency (`pip install ms2rescore[mumble]`). Mumble is still under active development (beta): review results and expect occasional errors, especially on unusual input.",
             "type": "object",
             "additionalProperties": true,
             "properties": {
-                "train_fdr": {
-                    "description": "FDR threshold for training Mokapot",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "default": 0.01
+                "aa_combinations": {
+                    "description": "Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low.",
+                    "type": "integer",
+                    "default": 0
                 },
-                "write_weights": {
-                    "description": "Write Mokapot weights to a text file",
+                "combination_length": {
+                    "description": "Maximum number of modifications to combine per mass shift. Lower combination lengths are always included as well.",
+                    "type": "integer",
+                    "default": 1
+                },
+                "exclude_mutations": {
+                    "description": "Exclude candidate modifications classified as amino acid substitutions.",
                     "type": "boolean",
                     "default": false
                 },
-                "write_txt": {
-                    "description": "Write Mokapot results to a text file",
-                    "type": "boolean",
-                    "default": false
-                }
-            }
-        },
-        "percolator": {
-            "$ref": "#/definitions/rescoring_engine",
-            "description": "Percolator rescoring engine configuration",
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-                "init-weights": {
-                    "description": "Weights file for scoring function",
+                "fasta_file": {
+                    "description": "Path to a FASTA file with protein sequences, used to validate amino acid combination candidates. Required if `aa_combinations` is greater than 0.",
                     "oneOf": [{ "type": "string" }, { "type": "null" }],
+                    "default": null
+                },
+                "mass_error": {
+                    "description": "Mass error tolerance in Da used to match a PSM's mass shift to a candidate modification.",
+                    "type": "number",
+                    "default": 0.02
+                },
+                "modification_file": {
+                    "description": "Path to a restriction list of Unimod modifications to consider (TSV with `unimod_id`/`name`, and optionally `residue`, columns). Defaults to a curated subset bundled with Mumble. Ignored if `all_unimod_modifications` is true.",
+                    "oneOf": [{ "type": "string" }, { "type": "null" }],
+                    "default": null
+                },
+                "all_unimod_modifications": {
+                    "description": "Consider all Unimod modifications instead of the restricted default/`modification_file` list. Substantially increases runtime and the risk of false-positive candidate modifications.",
+                    "type": "boolean",
                     "default": false
                 }
             }

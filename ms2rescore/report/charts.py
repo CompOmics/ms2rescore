@@ -1,17 +1,89 @@
 """Collection of Plotly-based charts for reporting results of MS²Rescore."""
 
+import importlib.resources
 import warnings
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
 
-import mokapot
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.subplots
 import pyteomics.auxiliary
+from numpy.typing import ArrayLike
 from psm_utils.psm_list import PSMList
+from ristretto import RescoreResult
+
+# Fixed color per feature generator (ColorBrewer "Dark2", colorblind-safe and mutually distinct).
+# Used both for the feature-generator overview charts and for the generator-specific charts, so a
+# generator keeps the same color everywhere in the report.
+FEATURE_GENERATOR_COLORS = {
+    "ms2pip": "#1B9E77",  # Teal
+    "deeplc": "#D95F02",  # Orange
+    "im2deep": "#3C93C2",  # Blue
+    "ms2": "#7570B3",  # Violet
+    "basic": "#666666",  # Gray
+    "psm_file": "#E6AB02",  # Gold
+    "other": "#66A61E",  # Olive
+}
+
+# Semantic colors reused across charts.
+_COLOR_TARGET = "#2c6fbb"  # Blue
+_COLOR_DECOY = "#c0392b"  # Red
+_COLOR_REFERENCE = "#7a7a7a"  # Neutral gray for reference/identity lines
+_COLOR_NEUTRAL = "#a7b3bf"  # Muted slate for background distributions
+
+# Categorical color sequence (Dark2) for charts without an explicit mapping.
+_COLORWAY = list(FEATURE_GENERATOR_COLORS.values())
+
+# Shared Plotly template giving every chart the same typographic and grid style as the report.
+_TEMPLATE = go.layout.Template(
+    layout=go.Layout(
+        font=dict(family="Lato, sans-serif", size=13, color="#2b2b2b"),
+        title=dict(
+            font=dict(family="Oswald, sans-serif", size=18, color="#1a1a2e"),
+            x=0.02,
+            xanchor="left",
+        ),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        colorway=_COLORWAY,
+        margin=dict(l=60, r=30, t=60, b=50),
+        xaxis=dict(
+            gridcolor="#ececec",
+            zeroline=False,
+            showline=True,
+            linecolor="#cfcfcf",
+            ticks="outside",
+            tickcolor="#cfcfcf",
+            ticklen=4,
+            automargin=True,
+        ),
+        yaxis=dict(
+            gridcolor="#ececec",
+            zeroline=False,
+            showline=True,
+            linecolor="#cfcfcf",
+            ticks="outside",
+            tickcolor="#cfcfcf",
+            ticklen=4,
+            automargin=True,
+        ),
+        legend=dict(
+            bgcolor="rgba(255, 255, 255, 0.7)",
+            bordercolor="#e0e0e0",
+            borderwidth=1,
+        ),
+        hoverlabel=dict(font=dict(family="Lato, sans-serif", size=12), bordercolor="white"),
+    )
+)
+
+
+def _style(fig: go.Figure) -> go.Figure:
+    """Apply the shared MS²Rescore chart template to a figure and return it."""
+    fig.update_layout(template=_TEMPLATE)
+    return fig
 
 
 class _ECDF:
@@ -76,7 +148,8 @@ def score_histogram(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
         barmode="overlay",
         histnorm="",
         labels={"is_decoy": "PSM type", "False": "target", "True": "decoy"},
-        opacity=0.5,
+        opacity=0.6,
+        color_discrete_map={"target": _COLOR_TARGET, "decoy": _COLOR_DECOY},
     )
 
     # Get score thresholds
@@ -90,9 +163,9 @@ def score_histogram(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
         except IndexError:  # No PSMs below threshold
             pass
         else:
-            fig.add_vline(x=score_threshold, line_dash="dash", line_color="black")
+            fig.add_vline(x=score_threshold, line_dash="dash", line_color=_COLOR_REFERENCE)
 
-    return fig
+    return _style(fig)
 
 
 def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
@@ -133,6 +206,7 @@ def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
             x=decoy_ecdf,
             y=target_ecdf,
             mode="markers",
+            marker=dict(color=_COLOR_TARGET),
         )
     )
     fig.add_trace(
@@ -140,7 +214,7 @@ def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
             x=[0, 1],
             y=[0, pi_zero],
             mode="lines",
-            line=go.scatter.Line(color="red"),
+            line=go.scatter.Line(color=_COLOR_REFERENCE, dash="dash"),
             showlegend=True,
             name="pi0",
         )
@@ -150,7 +224,7 @@ def pp_plot(psms: Union[PSMList, pd.DataFrame]) -> go.Figure:
         yaxis_title="Ftp",
         showlegend=False,
     )
-    return fig
+    return _style(fig)
 
 
 def fdr_plot(
@@ -190,240 +264,12 @@ def fdr_plot(
         y="count",
         log_x=log,
         labels={"count": "Number of identified target PSMs", "qvalue": "FDR threshold"},
+        color_discrete_sequence=[_COLOR_TARGET],
     )
     if fdr_thresholds:
         for threshold in fdr_thresholds:
-            fig.add_vline(x=threshold, line_dash="dash", line_color="red")
-    return fig
-
-
-def score_scatter_plot(
-    before: mokapot.LinearConfidence,
-    after: mokapot.LinearConfidence,
-    level: str = "psms",
-    indexer: str = "index",
-    fdr_threshold: float = 0.01,
-) -> go.Figure:
-    """
-    Plot PSM scores before and after rescoring.
-
-    Parameters
-    ----------
-    before
-        Mokapot linear confidence results before rescoring.
-    after
-        Mokapot linear confidence results after rescoring.
-    level
-        Level of confidence estimates to plot. Must be one of "psms", "peptides", or "proteins".
-    indexer
-        Column with index for each PSM, peptide, or protein to use for merging data frames.
-
-    """
-    if not before or not after:
-        figure = go.Figure()
-        figure.add_annotation(
-            text="No data available for comparison.",
-            showarrow=False,
-        )
-        return figure
-
-    # Restructure data
-    merge_columns = [indexer, "mokapot score", "mokapot q-value", "mokapot PEP"]
-    ce_psms_targets = pd.merge(
-        left=before.confidence_estimates[level],
-        right=after.confidence_estimates[level][merge_columns],
-        on=indexer,
-        suffixes=(" before", " after"),
-    )
-    ce_psms_decoys = pd.merge(
-        left=before.decoy_confidence_estimates[level],
-        right=after.decoy_confidence_estimates[level][merge_columns],
-        on=indexer,
-        suffixes=(" before", " after"),
-    )
-    ce_psms_targets["PSM type"] = "target"
-    ce_psms_decoys["PSM type"] = "decoy"
-    ce_psms = pd.concat([ce_psms_targets, ce_psms_decoys], axis=0)
-
-    # Get score thresholds
-    try:
-        score_threshold_before = (
-            ce_psms[ce_psms["mokapot q-value before"] <= fdr_threshold]
-            .sort_values("mokapot q-value before", ascending=False)["mokapot score before"]
-            .iloc[0]
-        )
-    except IndexError:  # No PSMs below threshold
-        score_threshold_before = None
-    try:
-        score_threshold_after = (
-            ce_psms[ce_psms["mokapot q-value after"] <= fdr_threshold]
-            .sort_values("mokapot q-value after", ascending=False)["mokapot score after"]
-            .iloc[0]
-        )
-    except IndexError:  # No PSMs below threshold
-        score_threshold_after = None
-
-    # Plot
-    fig = px.scatter(
-        data_frame=ce_psms,
-        x="mokapot score before",
-        y="mokapot score after",
-        color="PSM type",
-        marginal_x="histogram",
-        marginal_y="histogram",
-        opacity=0.1,
-        labels={
-            "mokapot score before": "PSM score (before rescoring)",
-            "mokapot score after": "PSM score (after rescoring)",
-        },
-    )
-    # draw FDR thresholds
-    if score_threshold_before:
-        fig.add_vline(x=score_threshold_before, line_dash="dash", row=1, col=1)
-        fig.add_vline(x=score_threshold_before, line_dash="dash", row=2, col=1)
-    if score_threshold_after:
-        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=1)
-        fig.add_hline(y=score_threshold_after, line_dash="dash", row=1, col=2)
-
-    return fig
-
-
-def fdr_plot_comparison(
-    before: mokapot.LinearConfidence,
-    after: mokapot.LinearConfidence,
-    level: str = "psms",
-    indexer: str = "index",
-) -> go.Figure:
-    """
-    Plot number of identifications in function of FDR threshold before/after rescoring.
-
-    Parameters
-    ----------
-    before
-        Mokapot linear confidence results before rescoring.
-    after
-        Mokapot linear confidence results after rescoring.
-    level
-        Level of confidence estimates to plot. Must be one of "psms", "peptides", or "proteins".
-    indexer
-        Column with index for each PSM, peptide, or protein to use for merging dataframes.
-
-    """
-    if not before or not after:
-        figure = go.Figure()
-        figure.add_annotation(
-            text="No data available for comparison.",
-            showarrow=False,
-        )
-        return figure
-
-    # Prepare data
-    ce_psms_targets_melted = (
-        pd.merge(
-            left=before.confidence_estimates[level],
-            right=after.confidence_estimates[level][
-                [indexer, "mokapot score", "mokapot q-value", "mokapot PEP"]
-            ],
-            on=indexer,
-            suffixes=(" before", " after"),
-        )
-        .rename(
-            columns={
-                "mokapot q-value before": "before rescoring",
-                "mokapot q-value after": "after rescoring",
-            }
-        )
-        .melt(
-            id_vars=["index", "peptide", "is_target"],
-            value_vars=["before rescoring", "after rescoring"],
-            var_name="before/after",
-            value_name="q-value",
-        )
-    )
-
-    # Plot
-    fig = px.ecdf(
-        data_frame=ce_psms_targets_melted,
-        x="q-value",
-        color="before/after",
-        log_x=True,
-        ecdfnorm=None,
-        labels={
-            "q-value": "FDR threshold",
-            "before/after": "",
-        },
-        color_discrete_map={
-            "before rescoring": "#316395",
-            "after rescoring": "#319545",
-        },
-    )
-    fig.add_vline(x=0.01, line_dash="dash", line_color="black")
-    fig.update_layout(yaxis_title="Identified PSMs")
-    return fig
-
-
-def identification_overlap(
-    before: mokapot.LinearConfidence,
-    after: mokapot.LinearConfidence,
-) -> go.Figure:
-    """
-    Plot stacked bar charts of removed, retained, and gained PSMs, peptides, and proteins.
-
-    Parameters
-    ----------
-    before
-        Mokapot linear confidence results before rescoring.
-    after
-        Mokapot linear confidence results after rescoring.
-
-    """
-    if not before or not after:
-        figure = go.Figure()
-        figure.add_annotation(
-            text="No data available for comparison.",
-            showarrow=False,
-        )
-        return figure
-
-    levels = before.levels  # ["psms", "peptides", "proteins"] if all available
-    indexers = ["index", "peptide", "mokapot protein group"]
-
-    overlap_data = defaultdict(dict)
-    for level, indexer in zip(levels, indexers):
-        df_before = before.confidence_estimates[level]
-        df_after = after.confidence_estimates[level]
-        if df_before is None and df_after is None:
-            continue
-
-        set_before = set(df_before[df_before["mokapot q-value"] <= 0.01][indexer])
-        set_after = set(df_after[df_after["mokapot q-value"] <= 0.01][indexer])
-
-        overlap_data["removed"][level] = -len(set_before - set_after)
-        overlap_data["retained"][level] = len(set_after.intersection(set_before))
-        overlap_data["gained"][level] = len(set_after - set_before)
-
-    colors = ["#953331", "#316395", "#319545"]
-    fig = plotly.subplots.make_subplots(rows=3, cols=1)
-
-    for i, level in enumerate(levels):
-        for (item, data), color in zip(overlap_data.items(), colors):
-            if level not in data:
-                continue
-            fig.add_trace(
-                go.Bar(
-                    y=["protein groups" if level == "proteins" else level],
-                    x=[data[level]],
-                    marker={"color": color},
-                    orientation="h",
-                    name=item,
-                    showlegend=True if i == 0 else False,
-                ),
-                row=i + 1,
-                col=1,
-            )
-    fig.update_layout(barmode="relative")
-
-    return fig
+            fig.add_vline(x=threshold, line_dash="dash", line_color=_COLOR_REFERENCE)
+    return _style(fig)
 
 
 def feature_weights(
@@ -448,7 +294,7 @@ def feature_weights(
         .reset_index()
     )
 
-    return px.bar(
+    fig = px.bar(
         data_frame=bar_data,
         x="weight",
         y="feature",
@@ -463,6 +309,7 @@ def feature_weights(
         },
         color_discrete_map=color_discrete_map,
     )
+    return _style(fig)
 
 
 def feature_weights_by_generator(
@@ -490,7 +337,7 @@ def feature_weights_by_generator(
         .sort_values("weight")
     )
 
-    return px.bar(
+    fig = px.bar(
         data_frame=bar_data,
         x="weight",
         y="feature_generator",
@@ -505,12 +352,14 @@ def feature_weights_by_generator(
         },
         color_discrete_map=color_discrete_map,
     )
+    return _style(fig)
 
 
 def ms2pip_correlation(
     features: pd.DataFrame,
     is_decoy: Union[pd.Series, np.ndarray],
     qvalue: Union[pd.Series, np.ndarray],
+    color: Optional[str] = None,
 ) -> go.Figure:
     """
     Plot MS²PIP correlation for target PSMs with q-value <= 0.01.
@@ -523,28 +372,31 @@ def ms2pip_correlation(
         Boolean array indicating whether each PSM is a decoy.
     qvalue
         Array of q-values for each PSM.
+    color
+        Bar color. Defaults to the MS²PIP feature-generator color.
 
     """
     data = features["spec_pearson_norm"][(qvalue < 0.01) & (~is_decoy)]
     fig = px.histogram(
         x=data,
         labels={"x": "Pearson correlation"},
+        color_discrete_sequence=[color or FEATURE_GENERATOR_COLORS["ms2pip"]],
     )
     # Draw vertical line at median
     fig.add_vline(
         x=data.median(),
         line_width=3,
         line_dash="dash",
-        line_color="red",
+        line_color=_COLOR_REFERENCE,
         annotation_text=f"Median: {data.median():.2f}",
         annotation_position="top left",
     )
-    return fig
+    return _style(fig)
 
 
 def calculate_feature_qvalues(
     features: pd.DataFrame,
-    is_decoy: pd.Series,
+    is_decoy: ArrayLike,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate q-values and ECDF AUC for all rescoring features.
@@ -592,7 +444,15 @@ def calculate_feature_qvalues(
                 )
 
         # Calculate ECDF AUC as measure of overall individual performance of feature
-        ecdf_aucs = [np.trapz(y=np.max(q) - np.sort(q)) for q in q_values]
+        ecdf_aucs = []
+        for q in q_values:
+            sorted_q = np.sort(q)
+            y_vals = np.max(q) - sorted_q
+            if hasattr(np, "trapezoid"):
+                auc = np.trapezoid(y_vals)  # Numpy 2.0 and later
+            else:
+                auc = np.trapz(y_vals)  # type: ignore[reportAttributeAccessIssue] # Numpy 1.x
+            ecdf_aucs.append(auc)
 
         # Select and save q-value calculation with best AUC (score reversed or not)
         idx_best = np.argmax(ecdf_aucs)
@@ -625,7 +485,7 @@ def feature_ecdf_auc_bar(
         Mapping of feature generator names to colors for plotting.
 
     """
-    return px.bar(
+    fig = px.bar(
         data_frame=feature_ecdf_auc.sort_values("ecdf_auc", ascending=True),
         x="ecdf_auc",
         y="feature",
@@ -639,3 +499,433 @@ def feature_ecdf_auc_bar(
         },
         color_discrete_map=color_discrete_map,
     )
+    return _style(fig)
+
+
+def rt_scatter(
+    df: pd.DataFrame,
+    predicted_column: str = "Predicted retention time",
+    observed_column: str = "Observed retention time",
+    xaxis_label: str = "Observed retention time",
+    yaxis_label: str = "Predicted retention time",
+    plot_title: str = "Predicted vs. observed retention times",
+    marker_color: Optional[str] = None,
+) -> go.Figure:
+    """
+    Plot a scatter plot of the predicted vs. observed retention times.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe containing the predicted and observed retention times.
+    predicted_column : str, optional
+        Name of the column containing the predicted retention times, by default
+        ``Predicted retention time``.
+    observed_column : str, optional
+        Name of the column containing the observed retention times, by default
+        ``Observed retention time``.
+    xaxis_label : str, optional
+        X-axis label, by default ``Observed retention time``.
+    yaxis_label : str, optional
+        Y-axis label, by default ``Predicted retention time``.
+    plot_title : str, optional
+        Scatter plot title, by default ``Predicted vs. observed retention times``
+    marker_color : str, optional
+        Color of the scatter points. Defaults to the Plotly template color. Pass the feature
+        generator color to match the point color to the rest of the report.
+
+    """
+    # Draw scatter
+    fig = px.scatter(
+        df,
+        x=observed_column,
+        y=predicted_column,
+        opacity=0.3,
+        color_discrete_sequence=[marker_color] if marker_color else None,
+    )
+
+    # Draw diagonal reference line
+    fig.add_scatter(
+        x=[min(df[observed_column]), max(df[observed_column])],
+        y=[min(df[observed_column]), max(df[observed_column])],
+        mode="lines",
+        line=dict(color=_COLOR_REFERENCE, width=2, dash="dash"),
+    )
+
+    # Hide legend
+    fig.update_layout(
+        title=plot_title,
+        showlegend=False,
+        xaxis_title=xaxis_label,
+        yaxis_title=yaxis_label,
+    )
+
+    return _style(fig)
+
+
+def rt_distribution_baseline(
+    df: pd.DataFrame,
+    predicted_column: str = "Predicted retention time",
+    observed_column: str = "Observed retention time",
+    highlight_color: Optional[str] = None,
+) -> go.Figure:
+    """
+    Plot a distribution plot of the relative mean absolute error of the current
+    DeepLC performance compared to the baseline performance.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe containing the predicted and observed retention times.
+    predicted_column : str, optional
+        Name of the column containing the predicted retention times, by default
+        ``Predicted retention time``.
+    observed_column : str, optional
+        Name of the column containing the observed retention times, by default
+        ``Observed retention time``.
+    highlight_color : str, optional
+        Color of the current-performance line. Defaults to the DeepLC feature-generator color.
+
+    """
+    # Get baseline data from deeplc package
+    try:
+        import deeplc.package_data
+
+        baseline_ref = (
+            importlib.resources.files(deeplc.package_data)
+            / "baseline_performance"
+            / "baseline_predictions.csv"
+        )
+        with importlib.resources.as_file(baseline_ref) as baseline_path:
+            baseline_df = pd.read_csv(baseline_path)
+    except (ImportError, FileNotFoundError):
+        # If deeplc is not installed or baseline data not found, return empty figure
+        fig = go.Figure()
+        fig.add_annotation(
+            text="DeepLC baseline data not available. Install DeepLC to view performance comparison.",
+            showarrow=False,
+        )
+        return _style(fig)
+
+    baseline_df["rel_mae_best"] = baseline_df[
+        ["rel_mae_transfer_learning", "rel_mae_new_model", "rel_mae_calibrate"]
+    ].min(axis=1)
+    baseline_df.fillna(0.0, inplace=True)
+
+    # Calculate current RMAE and percentile compared to baseline
+    mae = sum(abs(df[observed_column] - df[predicted_column])) / len(df.index)
+    mae_rel = (mae / max(df[observed_column])) * 100
+    percentile = round((baseline_df["rel_mae_transfer_learning"] < mae_rel).mean() * 100, 1)
+
+    # Calculate x-axis range with 5% padding
+    all_values = np.append(baseline_df["rel_mae_transfer_learning"].values, mae_rel)
+    padding = (all_values.max() - all_values.min()) / 20  # 5% padding
+    x_min = all_values.min() - padding
+    x_max = all_values.max() + padding
+
+    # Make labels human-readable
+    hover_label_mapping = {
+        "train_number": "Training dataset size",
+        "rel_mae_transfer_learning": "RMAE with transfer learning",
+        "rel_mae_new_model": "RMAE with new model from scratch",
+        "rel_mae_calibrate": "RMAE with calibrating existing model",
+        "rel_mae_best": "RMAE with best method",
+    }
+    label_mapping = hover_label_mapping.copy()
+    label_mapping.update({"Unnamed: 0": "Dataset"})
+
+    # Generate plot
+    fig = px.histogram(
+        data_frame=baseline_df,
+        x="rel_mae_best",
+        marginal="rug",
+        hover_data=hover_label_mapping.keys(),
+        hover_name="Unnamed: 0",
+        labels=label_mapping,
+        opacity=0.8,
+        color_discrete_sequence=[_COLOR_NEUTRAL],
+    )
+    fig.add_vline(
+        x=mae_rel,
+        line_width=3,
+        line_dash="dash",
+        line_color=highlight_color or FEATURE_GENERATOR_COLORS["deeplc"],
+        annotation_text=f"Current performance (percentile {percentile}%)",
+        annotation_position="top left",
+        name="Current performance",
+        row=1,
+    )
+    fig.update_xaxes(range=[x_min, x_max])
+    fig.update_layout(
+        title=(f"Current DeepLC performance compared to {len(baseline_df.index)} datasets"),
+        xaxis_title="Relative mean absolute error (%)",
+    )
+
+    return _style(fig)
+
+
+def _best_per_spectrum(psms: pd.DataFrame) -> pd.DataFrame:
+    """
+    Collapse a ``RescoreResult.psms`` table to the single best-scoring row per spectrum.
+
+    Groups by ``(run, spectrum_id)``, not just ``spectrum_id`` (which can collide across
+    input files). Needed wherever a chart wants one point/row per physical spectrum: under
+    ``max_psm_rank_output > 1``, a spectrum can have multiple candidate rows.
+
+    """
+    return psms.sort_values("score", ascending=False).drop_duplicates(
+        subset=["run", "spectrum_id"], keep="first"
+    )
+
+
+def score_scatter_plot(
+    before: RescoreResult,
+    after: RescoreResult,
+    fdr_threshold: float = 0.01,
+) -> go.Figure:
+    """
+    Plot PSM scores before and after rescoring, best-scoring candidate per spectrum.
+
+    Collapses ``before``/``after`` to one row per ``(run, spectrum_id)`` -- the
+    best-scoring candidate on each side, independently -- before comparing. Under
+    ``max_psm_rank_output > 1`` either side can have multiple candidate rows per spectrum,
+    and rescoring can legitimately promote a different peptidoform as a spectrum's winner,
+    so this is a spectrum-level comparison, not a peptidoform-level one.
+
+    Parameters
+    ----------
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
+    fdr_threshold
+        FDR threshold for drawing threshold lines.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with score comparison.
+
+    """
+    if before.psms.empty or after.psms.empty:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after score data available for comparison.",
+            showarrow=False,
+        )
+        return _style(figure)
+
+    before_best = _best_per_spectrum(before.psms)[["run", "spectrum_id", "score", "qvalue"]].rename(
+        columns={"score": "score_before", "qvalue": "qvalue_before"}
+    )
+    after_best = _best_per_spectrum(after.psms)[
+        ["run", "spectrum_id", "score", "qvalue", "is_decoy"]
+    ].rename(columns={"score": "score_after", "qvalue": "qvalue_after"})
+    plot_df = before_best.merge(after_best, on=["run", "spectrum_id"], how="inner")
+    plot_df["PSM type"] = plot_df["is_decoy"].map({True: "decoy", False: "target"})
+
+    # Get score thresholds
+    try:
+        score_threshold_before = (
+            plot_df[plot_df["qvalue_before"] <= fdr_threshold]
+            .sort_values("qvalue_before", ascending=False)["score_before"]
+            .iloc[0]
+        )
+    except IndexError:
+        score_threshold_before = None
+
+    try:
+        score_threshold_after = (
+            plot_df[plot_df["qvalue_after"] <= fdr_threshold]
+            .sort_values("qvalue_after", ascending=False)["score_after"]
+            .iloc[0]
+        )
+    except IndexError:
+        score_threshold_after = None
+
+    # Plot
+    fig = px.scatter(
+        data_frame=plot_df,
+        x="score_before",
+        y="score_after",
+        color="PSM type",
+        marginal_x="histogram",
+        marginal_y="histogram",
+        opacity=0.1,
+        labels={
+            "score_before": "Spectrum score (before rescoring)",
+            "score_after": "Spectrum score (after rescoring)",
+        },
+        color_discrete_map={"target": _COLOR_TARGET, "decoy": _COLOR_DECOY},
+    )
+
+    # Draw FDR thresholds
+    if score_threshold_before:
+        fig.add_vline(x=score_threshold_before, line_dash="dash", line_color=_COLOR_REFERENCE, row=1, col=1)
+        fig.add_vline(x=score_threshold_before, line_dash="dash", line_color=_COLOR_REFERENCE, row=2, col=1)
+    if score_threshold_after:
+        fig.add_hline(y=score_threshold_after, line_dash="dash", line_color=_COLOR_REFERENCE, row=1, col=1)
+        fig.add_hline(y=score_threshold_after, line_dash="dash", line_color=_COLOR_REFERENCE, row=1, col=2)
+
+    return _style(fig)
+
+
+def fdr_plot_comparison(
+    before: RescoreResult, after: RescoreResult, fdr_threshold: float = 0.01
+) -> go.Figure:
+    """
+    Plot number of identified spectra as a function of FDR threshold, before vs. after.
+
+    Collapses each of ``before``/``after`` independently to one row per ``(run,
+    spectrum_id)`` -- the best-scoring candidate -- before counting, so a spectrum with
+    multiple ambiguous candidate rows (``max_psm_rank_output > 1``) isn't counted more than
+    once.
+
+    Parameters
+    ----------
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
+    fdr_threshold
+        FDR threshold to draw as a reference line.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with FDR comparison.
+
+    """
+    if before.psms.empty or after.psms.empty:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after q-value data available for comparison.",
+            showarrow=False,
+        )
+        return _style(figure)
+
+    before_best = _best_per_spectrum(before.psms)
+    after_best = _best_per_spectrum(after.psms)
+
+    plot_data = pd.concat(
+        [
+            before_best.loc[~before_best["is_decoy"], ["qvalue"]]
+            .rename(columns={"qvalue": "q-value"})
+            .assign(**{"before/after": "before rescoring"}),
+            after_best.loc[~after_best["is_decoy"], ["qvalue"]]
+            .rename(columns={"qvalue": "q-value"})
+            .assign(**{"before/after": "after rescoring"}),
+        ]
+    )
+
+    # Plot
+    fig = px.ecdf(
+        data_frame=plot_data,
+        x="q-value",
+        color="before/after",
+        log_x=True,
+        ecdfnorm=None,
+        labels={
+            "q-value": "FDR threshold",
+            "before/after": "",
+        },
+        color_discrete_map={
+            "before rescoring": _COLOR_NEUTRAL,
+            "after rescoring": "#24a143",
+        },
+    )
+    fig.add_vline(x=fdr_threshold, line_dash="dash", line_color=_COLOR_REFERENCE)
+    fig.update_layout(yaxis_title="Identified spectra")
+    return _style(fig)
+
+
+def _group_keys(df: pd.DataFrame, group_cols: Union[str, List[str]]) -> list:
+    """Build hashable group keys from one column, or a compound key from several."""
+    if isinstance(group_cols, str):
+        return list(df[group_cols])
+    return list(zip(*(df[c] for c in group_cols)))
+
+
+def identification_overlap(
+    before: RescoreResult,
+    after: RescoreResult,
+    fdr_threshold: float = 0.01,
+) -> go.Figure:
+    """
+    Plot stacked bar charts of removed, retained, and gained IDs at each rollup level.
+
+    Compares ristretto's own before/after rollup tables directly -- spectrum, peptidoform,
+    peptide, and (optionally) protein -- rather than re-deriving sets from a merged per-PSM
+    dataframe. The latter would only be correct at the peptidoform/peptide/protein level if
+    every spectrum kept the same winning peptidoform between before and after, which is
+    exactly what rescoring is expected to change for at least some spectra.
+
+    Parameters
+    ----------
+    before
+        Result of evaluating the PSMs' pre-rescoring score with ristretto.
+    after
+        Result of rescoring the PSMs with ristretto.
+    fdr_threshold
+        FDR threshold for counting identifications.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with identification overlap.
+
+    """
+    levels = [
+        ("spectra", before.psms, after.psms, ["run", "spectrum_id"]),
+        ("peptidoforms", before.peptidoforms, after.peptidoforms, "peptidoform"),
+    ]
+    if before.peptides is not None and after.peptides is not None:
+        levels.append(("peptides", before.peptides, after.peptides, "peptide"))
+    if before.proteins is not None and after.proteins is not None:
+        levels.append(("protein groups", before.proteins, after.proteins, "protein"))
+
+    overlap_data = defaultdict(dict)
+    for level_name, before_df, after_df, group_cols in levels:
+        if before_df.empty or after_df.empty:
+            continue
+        before_mask = (before_df["qvalue"] <= fdr_threshold) & ~before_df["is_decoy"]
+        after_mask = (after_df["qvalue"] <= fdr_threshold) & ~after_df["is_decoy"]
+
+        ids_before = set(_group_keys(before_df[before_mask], group_cols))
+        ids_after = set(_group_keys(after_df[after_mask], group_cols))
+        overlap_data["removed"][level_name] = -len(ids_before - ids_after)
+        overlap_data["retained"][level_name] = len(ids_after & ids_before)
+        overlap_data["gained"][level_name] = len(ids_after - ids_before)
+
+    if not overlap_data["retained"]:
+        figure = go.Figure()
+        figure.add_annotation(
+            text="No before/after data available for comparison.",
+            showarrow=False,
+        )
+        return _style(figure)
+
+    colors = [_COLOR_DECOY, _COLOR_TARGET, "#24a143"]
+    level_names = list(overlap_data["retained"].keys())
+    fig = plotly.subplots.make_subplots(rows=len(level_names), cols=1)
+
+    for i, level_name in enumerate(level_names):
+        for (item, data), color in zip(overlap_data.items(), colors):
+            if level_name not in data:
+                continue
+            fig.add_trace(
+                go.Bar(
+                    y=[level_name],
+                    x=[data[level_name]],
+                    marker={"color": color},
+                    orientation="h",
+                    width=0.4,
+                    name=item,
+                    showlegend=True if i == 0 else False,
+                ),
+                row=i + 1,
+                col=1,
+            )
+    fig.update_layout(barmode="relative")
+
+    return _style(fig)

@@ -50,7 +50,6 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable/", None),
     "plotly": ("https://plotly.com/python-api-reference/", None),
     "psm_utils": ("https://psm-utils.readthedocs.io/en/stable/", None),
-    "mokapot": ("https://mokapot.readthedocs.io/en/stable/", None),
 }
 
 # nbsphinx options

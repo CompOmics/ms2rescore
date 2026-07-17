@@ -29,6 +29,13 @@ Check the list of :py:mod:`psm_utils` tags in the
 file extension, the file type can also be inferred from the file name. In that case,
 ``psm_file_type`` option can be set to ``infer``.
 
+.. note::
+   If a previous MS²Rescore run crashed during feature generation or rescoring, an intermediate
+   file (``<prefix>.intermediate.tsv``) is automatically saved. This file contains all PSMs
+   with features that were successfully added up to that point. You can resume processing by
+   providing this file as the PSM file (``-p <prefix>.intermediate.tsv -t tsv``) to skip
+   already completed feature generation steps.
+
 
 Spectrum file(s)
 ================

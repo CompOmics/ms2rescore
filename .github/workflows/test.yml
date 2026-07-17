@@ -17,7 +17,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Run Ruff
-        run: uvx ruff check --output-format=github .
+        run: uvx ruff check --output-format=github ./ms2rescore/
 
   test-python-package:
     needs: check-python-package
@@ -35,8 +35,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
 
+      # Temporarily skip mumble on 3.14 until rustyms supports it
       - name: Install the project
-        run: uv sync --all-extras --dev
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.14" ]; then
+            uv sync --extra idxml --dev
+          else
+            uv sync --all-extras --dev
+          fi
+
 
       - name: Run tests
         run: uv run pytest

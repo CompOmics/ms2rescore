@@ -2,4 +2,9 @@
 psm_file = "examples/data/search/sage/results.sage.tsv"
 psm_file_type = "sage"
 spectrum_path = "examples/data/spectra/qExactive01819.mzML"
-fasta_file = "examples/data/fasta/uniprot-human-reviewed-trypsin-june-2021_concatenated_target_decoy.fasta"
+
+[ms2rescore.feature_generators]
+"basic" = {}
+"ms2pip" = { "model" = "HCD", "ms2_tolerance" = 0.02 }
+"ms2" = {}
+"deeplc" = { "deeplc_retrain" = false }

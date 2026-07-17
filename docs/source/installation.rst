@@ -27,6 +27,22 @@ Or, in a fresh `conda environment <https://docs.conda.io/projects/conda/en/lates
 Bioconda packages are only available for Linux and macOS.
 
 
+Optional dependencies
+=====================
+
+Some features require additional dependencies that are not installed by default. Install them
+with the relevant extra, for example:
+
+.. code-block:: bash
+
+    pip install ms2rescore[mumble]
+
+- ``mumble``: enables the `Mumble <https://github.com/compomics/mumble>`_ PSM generator, which
+  proposes candidate modifications for PSMs with an unresolved precursor mass shift. Mumble is
+  **beta** software; see :ref:`Open modification searching with Mumble` before enabling it.
+- ``idxml``: enables reading OpenMS idXML PSM files.
+
+
 Windows installer
 =================
 
@@ -59,23 +75,6 @@ where ``<working-directory>`` is the absolute path to the directory with your MS
 files, ``<tag>`` is the container version tag, and ``<ms2rescore-arguments>`` are the ms2rescore
 command line options (see :ref:`Command line interface`).
 
-
-Installing Percolator
-=====================
-
-To use :ref:`percolator` as rescoring engine, it must be installed separately. Percolator is
-available for most platforms and can be downloaded from the
-`GitHub releases page <https://github.com/percolator/percolator/releases/latest>`_. Ensure that
-the ``percolator`` executable is in your ``PATH``. On Windows, this can be done by checking the
-``Add percolator to the system PATH for current user`` option during installation:
-
-.. figure:: ../_static/img/percolator-install-path.png
-   :width: 60%
-   :alt: Percolator installation on Windows
-
-.. note::
-   Alternatively, :ref:`mokapot` can be used as rescoring engine, which does not require a separate
-   installation.
 
 For development
 ===============

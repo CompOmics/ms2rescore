@@ -15,10 +15,7 @@ from urllib.request import Request, urlopen
 
 from packaging.version import Version
 
-try:
-    import tomllib as toml  # type: ignore
-except ImportError:
-    import tomli as toml  # type: ignore
+import tomllib as toml
 
 from ms2rescore.exceptions import MS2RescoreError
 

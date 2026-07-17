@@ -15,22 +15,26 @@ If you use DeepLC through MS²Rescore, please cite:
 
 """
 
-import contextlib
 import logging
-import os
-from collections import defaultdict
-from inspect import getfullargspec
-from itertools import chain
+import warnings
 from typing import List, Union
 
 import numpy as np
+from deeplc.calibration import SplineTransformerCalibration
+
+# NOTE: `_best_correlating_head` is a private DeepLC function. Imported here intentionally to
+# reuse DeepLC's multitask head-selection logic. To be replaced once DeepLC exposes a public API.
+from deeplc.core import _best_correlating_head, finetune, predict
 from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
+from ms2rescore._utils import get_original_hit_mask
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 logger = logging.getLogger(__name__)
+
+# Suppress verbose onnx2torch logging
+logging.getLogger("onnx2torch").setLevel(logging.WARNING)
 
 
 class DeepLCFeatureGenerator(FeatureGeneratorBase):
@@ -41,7 +45,6 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
     def __init__(
         self,
         *args,
-        lower_score_is_better: bool = False,
         calibration_set_size: Union[int, float, None] = None,
         processes: int = 1,
         **kwargs,
@@ -54,8 +57,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
         Parameters
         ----------
-        lower_score_is_better
-            Whether a lower PSM score denotes a better matching PSM. Default: False
+
         calibration_set_size: int or float
             Amount of best PSMs to use for DeepLC calibration. If this value is lower
             than the number of available PSMs, all PSMs will be used. (default: 0.15)
@@ -72,34 +74,44 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         """
         super().__init__(*args, **kwargs)
 
-        self.lower_psm_score_better = lower_score_is_better
         self.calibration_set_size = calibration_set_size
-        self.processes = processes
         self.deeplc_kwargs = kwargs or {}
 
         self._verbose = logger.getEffectiveLevel() <= logging.DEBUG
 
-        # Lazy-load DeepLC
-        from deeplc import DeepLC
+        self.model = self.deeplc_kwargs.get("model", None)
 
-        self.DeepLC = DeepLC
+        self.calibration = None
 
-        # Remove any kwargs that are not DeepLC arguments
-        self.deeplc_kwargs = {
-            k: v for k, v in self.deeplc_kwargs.items() if k in getfullargspec(DeepLC).args
-        }
-        self.deeplc_kwargs.update({"config_file": None})
+        # Prepare DeepLC predict kwargs
+        self.predict_kwargs = {
+            k: v
+            for k, v in self.deeplc_kwargs.items()
+            if k in ["device", "batch_size", "num_threads"]
+        }  # getfullargspec(predict).args does not work on this outer predict function
+        self.predict_kwargs["num_threads"] = processes if processes > 0 else None
 
-        # Set default DeepLC arguments
+        # Prepare DeepLC finetune kwargs
         if "deeplc_retrain" not in self.deeplc_kwargs:
             self.deeplc_kwargs["deeplc_retrain"] = False
+            return  # skip the rest of the init if no retraining
 
-        self.deeplc_predictor = None
-        if "path_model" in self.deeplc_kwargs:
-            self.user_model = self.deeplc_kwargs.pop("path_model")
-            logging.debug(f"Using user-provided DeepLC model {self.user_model}.")
-        else:
-            self.user_model = None
+        if self.deeplc_kwargs["deeplc_retrain"]:
+            self.finetune_kwargs = {
+                k: v
+                for k, v in self.deeplc_kwargs.items()
+                if k
+                in [
+                    "epochs",
+                    "device",
+                    "batch_size",
+                    "learning_rate",
+                    "patience",
+                    "trainable_layers",
+                    "validation_split",
+                ]
+            }
+            self.finetune_kwargs["num_threads"] = processes if processes > 0 else None
 
     @property
     def feature_names(self) -> List[str]:
@@ -114,133 +126,267 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
     def add_features(self, psm_list: PSMList) -> None:
         """Add DeepLC-derived features to PSMs."""
+        warnings.filterwarnings("ignore", category=UserWarning, module="deeplc._features")
 
         logger.info("Adding DeepLC-derived features to PSMs.")
+        # Mumble-generated candidate PSMs are unconfirmed mass-shift explanations and must never
+        # be used to calibrate or fine-tune DeepLC, only the original search engine hits can.
+        original_hit_mask = get_original_hit_mask(psm_list)
+        psm_list_df = psm_list.to_dataframe()
+        psm_list_df["original_psm"] = original_hit_mask
+        psm_list_df = psm_list_df[
+            [
+                "peptidoform",
+                "retention_time",
+                "run",
+                "qvalue",
+                "is_decoy",
+                "original_psm",
+            ]
+        ]
+        psm_list_df["sequence"] = psm_list_df["peptidoform"].apply(lambda x: x.modified_sequence)
 
-        # Get easy-access nested version of PSMList
-        psm_dict = psm_list.get_psm_dict()
+        if self.deeplc_kwargs["deeplc_retrain"]:
+            # Filter high-confidence target PSMs once for transfer learning
+            target_mask = (
+                (psm_list["qvalue"] <= 0.01) & (~psm_list["is_decoy"]) & original_hit_mask
+            )
+            target_psms = psm_list[target_mask]
 
-        # Run DeepLC for each spectrum file
-        current_run = 1
-        total_runs = sum(len(runs) for runs in psm_dict.values())
+            # Determine best run for transfer learning
+            best_run = self._best_run_by_shared_proteoforms(
+                target_psms["run"],
+                target_psms["peptidoform"],
+            )
 
-        for runs in psm_dict.values():
-            # Reset DeepLC predictor for each collection of runs
-            self.deeplc_predictor = None
-            self.selected_model = None
-            for run, psms in runs.items():
-                peptide_rt_diff_dict = defaultdict(
-                    lambda: {
-                        "observed_retention_time_best": np.inf,
-                        "predicted_retention_time_best": np.inf,
-                        "rt_diff_best": np.inf,
-                    }
-                )
-                logger.info(
-                    f"Running DeepLC for PSMs from run ({current_run}/{total_runs}): `{run}`..."
-                )
+            # Fine-tune on best run
+            best_run_psms = target_psms[target_psms["run"] == best_run]
+            logger.debug(
+                f"Fine-tuning DeepLC on run '{best_run}'... with {len(best_run_psms)} PSMs"
+            )
+            self.model = finetune(
+                best_run_psms,
+                model=self.model,
+                train_kwargs=self.finetune_kwargs,
+            )
 
-                # Disable wild logging to stdout by Tensorflow, unless in debug mode
+        # Ensure a positional index so DataFrame rows map 1:1 to pred_matrix rows
+        psm_list_df = psm_list_df.reset_index(drop=True)
 
-                with (
-                    contextlib.redirect_stdout(open(os.devnull, "w", encoding="utf-8"))
-                    if not self._verbose
-                    else contextlib.nullcontext()
-                ):
-                    # Make new PSM list for this run (chain PSMs per spectrum to flat list)
-                    psm_list_run = PSMList(psm_list=list(chain.from_iterable(psms.values())))
+        # Predict retention times for all PSMs at once. The default DeepLC model is a multitask
+        # model, so `return_matrix=True` yields the full (n_psms, n_heads) prediction matrix. The
+        # best-correlating head is selected per run below, rather than defaulting to head 0.
+        logger.info("Predicting retention times with DeepLC...")
+        pred_matrix = predict(
+            psm_list,
+            model=self.model,
+            predict_kwargs=self.predict_kwargs,
+            return_matrix=True,
+        )
 
-                    psm_list_calibration = self._get_calibration_psms(psm_list_run)
-                    logger.debug(f"Calibrating DeepLC with {len(psm_list_calibration)} PSMs...")
-                    self.deeplc_predictor = self.DeepLC(
-                        n_jobs=self.processes,
-                        verbose=self._verbose,
-                        path_model=self.selected_model or self.user_model,
-                        **self.deeplc_kwargs,
-                    )
-                    self.deeplc_predictor.calibrate_preds(psm_list_calibration)
-                    # Still calibrate for each run, but do not try out all model options.
-                    # Just use model that was selected based on first run
-                    if not self.selected_model:
-                        self.selected_model = list(self.deeplc_predictor.model.keys())
-                        self.deeplc_kwargs["deeplc_retrain"] = False
-                        logger.debug(
-                            f"Selected DeepLC model {self.selected_model} based on "
-                            "calibration of first run. Using this model (after new "
-                            "calibrations) for the remaining runs."
-                        )
+        # Calibrate predictions per run, selecting the best-correlating head from each run's
+        # calibration reference PSMs.
+        logger.info("Selecting best head and calibrating predicted retention times per run...")
+        psm_list_df = psm_list_df.sort_values("qvalue")
+        psm_list_df["predicted_retention_time"] = np.nan
+        for run in psm_list_df["run"].unique():
+            run_df = psm_list_df[psm_list_df["run"] == run]
 
-                    logger.debug("Predicting retention times...")
-                    predictions = np.array(self.deeplc_predictor.make_preds(psm_list_run))
-                    observations = psm_list_run["retention_time"]
-                    rt_diffs_run = np.abs(predictions - observations)
+            # Get calibration data (target PSMs only): row indices into pred_matrix + observed RTs
+            calibration_idx, observed_rt_calibration = self._get_calibration_data(run_df)
+            if len(observed_rt_calibration) == 0:
+                raise ValueError(f"Run '{run}' has no target PSMs available for calibration.")
 
-                    logger.debug("Adding features to PSMs...")
-                    for i, psm in enumerate(psm_list_run):
-                        psm["rescoring_features"].update(
-                            {
-                                "observed_retention_time": observations[i],
-                                "predicted_retention_time": predictions[i],
-                                "rt_diff": rt_diffs_run[i],
-                            }
-                        )
-                        peptide = psm.peptidoform.proforma.split("\\")[0]  # remove charge
-                        if peptide_rt_diff_dict[peptide]["rt_diff_best"] > rt_diffs_run[i]:
-                            peptide_rt_diff_dict[peptide] = {
-                                "observed_retention_time_best": observations[i],
-                                "predicted_retention_time_best": predictions[i],
-                                "rt_diff_best": rt_diffs_run[i],
-                            }
-                    for psm in psm_list_run:
-                        psm["rescoring_features"].update(
-                            peptide_rt_diff_dict[psm.peptidoform.proforma.split("\\")[0]]
-                        )
-                current_run += 1
+            # Select the head that best correlates with observed RT on the calibration PSMs
+            reference_matrix = pred_matrix[calibration_idx]
+            head = _best_correlating_head(reference_matrix, observed_rt_calibration)
+            logger.debug(f"Run '{run}': selected DeepLC head {head}")
 
-    def _get_calibration_psms(self, psm_list: PSMList):
-        """Get N best scoring target PSMs for calibration."""
-        psm_list_targets = psm_list[~psm_list["is_decoy"]]
-        if self.calibration_set_size:
-            n_psms = self._get_number_of_calibration_psms(psm_list_targets)
-            indices = np.argsort(psm_list_targets["score"])
-            indices = indices[:n_psms] if self.lower_psm_score_better else indices[-n_psms:]
-            return psm_list_targets[indices]
-        else:
-            identified_psms = psm_list_targets[psm_list_targets["qvalue"] <= 0.01]
-            if len(identified_psms) == 0:
-                raise ValueError(
-                    "No target PSMs with q-value <= 0.01 found. Please set calibration set size for calibrating deeplc."
-                )
-            elif (len(identified_psms) < 500) & (self.deeplc_kwargs["deeplc_retrain"]):
-                logger.warning(
-                    " Less than 500 target PSMs with q-value <= 0.01 found for retraining. Consider turning of deeplc_retrain, as this is likely not enough data for retraining."
-                )
-            return identified_psms
+            # Fit calibration on the selected head and transform all predictions for this run
+            calibration = SplineTransformerCalibration()
+            calibration.fit(
+                target=observed_rt_calibration,
+                source=reference_matrix[:, head],
+            )
 
-    def _get_number_of_calibration_psms(self, psm_list):
-        """Get number of calibration PSMs given `calibration_set_size` and total number of PSMs."""
+            run_idx = run_df.index.values
+            calibrated_rt = calibration.transform(pred_matrix[run_idx, head])
+
+            # Update predictions with calibrated values
+            psm_list_df.loc[psm_list_df["run"] == run, "predicted_retention_time"] = calibrated_rt
+
+        del pred_matrix
+
+        psm_list_df = (
+            psm_list_df.sort_index()
+        )  # restore original PSM order after sort_values above
+        psm_list_df["observed_retention_time"] = psm_list_df["retention_time"]
+        psm_list_df["rt_diff"] = (
+            psm_list_df["observed_retention_time"] - psm_list_df["predicted_retention_time"]
+        ).abs()
+        psm_list_df_best = psm_list_df.loc[
+            psm_list_df.groupby(["run", "sequence"])["rt_diff"].idxmin()
+        ]
+
+        psm_list_df = psm_list_df.merge(
+            psm_list_df_best[
+                [
+                    "run",
+                    "sequence",
+                    "observed_retention_time",
+                    "predicted_retention_time",
+                    "rt_diff",
+                ]
+            ],
+            on=["run", "sequence"],
+            how="left",
+            suffixes=("", "_best"),
+        )
+
+        psm_list_feature_dicts = psm_list_df[self.feature_names].to_dict(orient="records")
+        # Add features to PSMs
+        logger.debug("Adding features to PSMs...")
+        for psm, features in zip(psm_list, psm_list_feature_dicts):
+            psm.rescoring_features.update(features)
+
+    def _get_calibration_data(self, run_df) -> tuple[np.ndarray, np.ndarray]:
+        """Get calibration data (pred_matrix row indices and observed RTs) from run dataframe.
+
+        Only target (non-decoy), original (non-Mumble) PSMs are used for calibration.
+
+        Parameters
+        ----------
+        run_df : pd.DataFrame
+            Dataframe containing PSMs for a single run, pre-sorted by qvalue ascending, with a
+            positional index into the prediction matrix and columns: 'retention_time', 'qvalue',
+            'is_decoy', 'original_psm'
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            Row indices (into pred_matrix) and observed retention times for calibration
+        """
+        # Filter to target, original-hit PSMs only (run_df is pre-sorted by qvalue). Mumble
+        # candidates are unconfirmed mass-shift explanations and must not calibrate the model.
+        target_df = run_df[~run_df["is_decoy"] & run_df["original_psm"]]
+
+        # Determine number of calibration PSMs
         if isinstance(self.calibration_set_size, float):
             if not 0 < self.calibration_set_size <= 1:
                 raise ValueError(
                     "If `calibration_set_size` is a float, it cannot be smaller than "
                     "or equal to 0 or larger than 1."
                 )
-            else:
-                num_calibration_psms = round(len(psm_list) * self.calibration_set_size)
+            num_calibration_psms = round(len(target_df) * self.calibration_set_size)
         elif isinstance(self.calibration_set_size, int):
-            if self.calibration_set_size > len(psm_list):
+            if self.calibration_set_size > len(target_df):
                 logger.warning(
-                    f"Requested number of calibration PSMs ({self.calibration_set_size}"
-                    f") is larger than total number of PSMs ({len(psm_list)}). Using "
-                    "all PSMs for calibration."
+                    f"Requested number of calibration PSMs ({self.calibration_set_size}) "
+                    f"is larger than total number of target PSMs ({len(target_df)}). Using "
+                    "all target PSMs for calibration."
                 )
-                num_calibration_psms = len(psm_list)
+                num_calibration_psms = len(target_df)
             else:
                 num_calibration_psms = self.calibration_set_size
         else:
-            raise TypeError(
-                "Expected float or int for `calibration_set_size`. Got "
-                f"{type(self.calibration_set_size)} instead. "
+            # Use PSMs with q-value <= 0.01
+            num_calibration_psms = (target_df["qvalue"] <= 0.01).sum()
+
+        logger.debug(f"Using {num_calibration_psms} target PSMs for calibration")
+
+        calibration_df = target_df.head(num_calibration_psms)
+
+        return (
+            calibration_df.index.values,
+            calibration_df["retention_time"].values,
+        )
+
+    @staticmethod
+    def _best_run_by_shared_proteoforms(runs, proteoforms):
+        """
+        Return the run whose proteoform set has the largest total overlap with all other runs:
+            score(run_i) = sum_{j != i} |P_i ∩ P_j|
+
+        Tie / degenerate handling (per request):
+        - If no run shares anything (all scores == 0): warn and return the first run (by first appearance).
+        - If multiple runs are tied for best score: return the first among them (by first appearance).
+        """
+        logger.debug("Determining best run for transfer learning based on shared proteoforms.")
+        runs = np.asarray(runs)
+        proteoforms = np.asarray(proteoforms)
+        if runs.shape[0] != proteoforms.shape[0]:
+            raise ValueError("runs and proteoforms must have the same length.")
+        if runs.size == 0:
+            raise ValueError("Empty input: runs/proteoforms must contain at least one entry.")
+
+        # Preserve run order by first appearance
+        run_to_idx = {}
+        run_order = []
+        run_idx = np.empty(runs.shape[0], dtype=np.int64)
+        for i, r in enumerate(runs):
+            if r not in run_to_idx:
+                run_to_idx[r] = len(run_order)
+                run_order.append(r)
+            run_idx[i] = run_to_idx[r]
+
+        # Fast path: sparse incidence matrix
+        try:
+            from scipy.sparse import coo_matrix
+        except ImportError:
+            # Fallback (slower): set-based
+            run_sets = {}
+            for r, p in zip(runs, proteoforms):
+                run_sets.setdefault(r, set()).add(p)
+
+            scores = []
+            for r in run_order:
+                Pi = run_sets[r]
+                s = 0
+                for r2 in run_order:
+                    if r2 is r:
+                        continue
+                    s += len(Pi & run_sets[r2])
+                scores.append(s)
+
+            scores = np.asarray(scores, dtype=np.int64)
+            max_score = scores.max()
+            best_candidates = np.flatnonzero(scores == max_score)
+
+            if max_score == 0:
+                logger.warning(
+                    "No runs share any identified proteoforms with other runs; transfer learning "
+                    "might not be as effective."
+                )
+                return run_order[0]
+
+            return run_order[int(best_candidates[0])]
+
+        # Encode proteoforms (order does not matter for correctness)
+        _, prot_idx = np.unique(proteoforms, return_inverse=True)
+
+        # De-duplicate (run, proteoform) pairs
+        pairs = np.unique(np.stack([run_idx, prot_idx], axis=1), axis=0)
+        r = pairs[:, 0]
+        p = pairs[:, 1]
+
+        M = coo_matrix(
+            (np.ones(len(r), dtype=np.int32), (r, p)),
+            shape=(len(run_order), int(prot_idx.max()) + 1),
+        ).tocsr()
+
+        # Overlap matrix O[i,j] = |P_i ∩ P_j|
+        overlap = (M @ M.T).toarray()
+        np.fill_diagonal(overlap, 0)
+
+        scores = overlap.sum(axis=1).astype(np.int64)
+        max_score = int(scores.max())
+        best_candidates = np.flatnonzero(scores == max_score)
+
+        if max_score == 0:
+            logger.warning(
+                "No runs share any identified proteoforms with other runs; transfer learning "
+                "might not be as effective."
             )
-        logger.debug(f"Using {num_calibration_psms} PSMs for calibration")
-        return num_calibration_psms
+            return run_order[0]
+
+        return run_order[int(best_candidates[0])]

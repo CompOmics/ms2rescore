@@ -11,13 +11,11 @@
                 "deeplc_retrain": false
             },
             "im2deep": {},
-            "maxquant": {}
+            "ms2": {}
         },
-        "rescoring_engine": {
-            "mokapot": {
-                "write_weights": true,
-                "write_txt": true
-            }
+        "rescoring": {
+            "train_fdr": 0.01,
+            "model": "svm"
         },
         "psm_file": null
     }

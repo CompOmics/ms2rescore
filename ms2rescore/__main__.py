@@ -6,6 +6,7 @@ import importlib.resources
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Union
 
@@ -139,15 +140,6 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="number of parallel processes available to MS²Rescore",
     )
     parser.add_argument(
-        "-f",
-        "--fasta-file",
-        metavar="FILE",
-        action="store",
-        type=str,
-        dest="fasta_file",
-        help="path to FASTA file",
-    )
-    parser.add_argument(
         "--write-report",
         action="store_true",
         default=None,
@@ -196,7 +188,13 @@ def profile(fnc, filepath):
     def inner(*args, **kwargs):
         with cProfile.Profile() as profiler:
             return_value = fnc(*args, **kwargs)
-        profiler.dump_stats(filepath + ".profile.prof")
+
+        # Add timestamp to profiler output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        profile_filename = f"{filepath}.profile_{timestamp}.prof"
+        profiler.dump_stats(profile_filename)
+        LOGGER.info(f"Profile data written to: {profile_filename}")
+
         return return_value
 
     return inner
@@ -218,7 +216,11 @@ def main(tims=False):
     configurations = []
     if tims:
         configurations.append(
-            json.load(importlib.resources.open_text(package_data, "config_default_tims.json"))
+            json.loads(
+                importlib.resources.files(package_data)
+                .joinpath("config_default_tims.json")
+                .read_text()
+            )
         )
     if cli_args.config_file:
         configurations.append(cli_args.config_file)
@@ -248,6 +250,7 @@ def main(tims=False):
     # Run MS²Rescore
     try:
         if config["ms2rescore"]["profile"]:
+            LOGGER.info("Profiling enabled")
             profiled_rescore = profile(rescore, config["ms2rescore"]["output_path"])
             profiled_rescore(configuration=config)
         else:

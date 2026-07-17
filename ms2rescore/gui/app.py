@@ -15,6 +15,8 @@ from joblib import parallel_backend
 from ms2pip.constants import MODELS as ms2pip_models
 from PIL import Image
 from psm_utils.io import FILETYPES
+from rich.console import Console
+from rich.logging import RichHandler
 
 import ms2rescore.gui.widgets as widgets
 import ms2rescore.package_data.img as pkg_data_img
@@ -25,8 +27,7 @@ from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
 from ms2rescore.gui.function2ctk import Function2CTk, PopupWindow
 
-with importlib.resources.path(pkg_data_img, "config_icon.png") as resource:
-    _IMG_DIR = Path(resource).parent
+_IMG_DIR = Path(str(importlib.resources.files(pkg_data_img)))
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -67,15 +68,7 @@ CITATIONS = [
         "https://doi.org/10.1038/s41592-021-01301-5",
     ),
     (
-        "ionmob: Teschner et al. Bioinformatics (2023)",
-        "https://doi.org/10.1093/bioinformatics/btad486",
-    ),
-    (
-        "Mokapot: Fondrie et al. JPR (2021)",
-        "https://doi.org/10.1021/acs.jproteome.0c01010",
-    ),
-    (
-        "Percolator: Käll et al. Nat Methods (2007)",
+        "Semi-supervised learning: Käll et al. Nat Methods (2007)",
         "https://doi.org/10.1038/nmeth1113",
     ),
 ]
@@ -197,7 +190,7 @@ class ConfigFrame(ctk.CTkTabview):
 
         self.configure(width=CONFIG_WIDTH)
 
-        for tab in ["Main", "Advanced", "Feature generators", "Rescoring engine"]:
+        for tab in ["Main", "Advanced", "Feature generators", "Rescoring"]:
             self.add(tab)
             self.tab(tab).grid_columnconfigure(0, weight=1)
             self.tab(tab).grid_rowconfigure(0, weight=1)
@@ -212,8 +205,8 @@ class ConfigFrame(ctk.CTkTabview):
         self.fgen_config = FeatureGeneratorConfig(self.tab("Feature generators"))
         self.fgen_config.grid(row=0, column=0, padx=5, sticky="nsew")
 
-        self.rescoring_engine_config = RescoringEngineConfig(self.tab("Rescoring engine"))
-        self.rescoring_engine_config.grid(row=0, column=0, padx=5, sticky="nsew")
+        self.rescoring_config = RescoringConfiguration(self.tab("Rescoring"))
+        self.rescoring_config.grid(row=0, column=0, padx=5, sticky="nsew")
 
     def get(self):
         """Create MS²Rescore config file"""
@@ -222,8 +215,10 @@ class ConfigFrame(ctk.CTkTabview):
 
         config = {"ms2rescore": main_config}
         config["ms2rescore"].update(advanced_config)
-        config["ms2rescore"]["feature_generators"] = self.fgen_config.get()
-        config["ms2rescore"]["rescoring_engine"] = self.rescoring_engine_config.get()
+        feature_generators, annotation_config = self.fgen_config.get()
+        config["ms2rescore"]["feature_generators"] = feature_generators
+        config["ms2rescore"].update(annotation_config)
+        config["ms2rescore"].update(self.rescoring_config.get())
 
         args = (config,)  # Comma required to wrap in tuple
         kwargs = {}
@@ -361,16 +356,6 @@ class AdvancedConfiguration(ctk.CTkFrame):
         self.configure(fg_color="transparent")
         self.grid_columnconfigure(0, weight=1)
 
-        self.lower_score = widgets.LabeledSwitch(
-            self,
-            label="Lower score is better",
-            description=(
-                "When enabled, a lower search engine score is considered to denote a better PSM."
-            ),
-            wraplength=CONFIG_WIDTH - 180,
-        )
-        self.lower_score.grid(row=0, column=0, pady=(0, 10), sticky="nsew")
-
         self.usi = widgets.LabeledSwitch(
             self,
             label="Rename spectrum IDs to USIs",
@@ -380,7 +365,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             ),
             wraplength=CONFIG_WIDTH - 180,
         )
-        self.usi.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
+        self.usi.grid(row=0, column=0, pady=(0, 10), sticky="nsew")
 
         self.write_flashlfq = widgets.LabeledSwitch(
             self,
@@ -391,7 +376,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             ),
             wraplength=CONFIG_WIDTH - 180,
         )
-        self.write_flashlfq.grid(row=2, column=0, pady=(0, 10), sticky="nsew")
+        self.write_flashlfq.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
 
         self.generate_report = widgets.LabeledSwitch(
             self,
@@ -403,7 +388,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             wraplength=CONFIG_WIDTH - 180,
             default=True,
         )
-        self.generate_report.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
+        self.generate_report.grid(row=2, column=0, pady=(0, 10), sticky="nsew")
 
         self.id_decoy_pattern = widgets.LabeledEntry(
             self,
@@ -415,7 +400,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             ),
             wraplength=CONFIG_WIDTH - 180,
         )
-        self.id_decoy_pattern.grid(row=4, column=0, pady=(0, 10), sticky="nsew")
+        self.id_decoy_pattern.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
 
         self.psm_id_pattern = widgets.LabeledEntry(
             self,
@@ -427,7 +412,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             ),
             wraplength=CONFIG_WIDTH - 180,
         )
-        self.psm_id_pattern.grid(row=5, column=0, pady=(0, 10), sticky="nsew")
+        self.psm_id_pattern.grid(row=4, column=0, pady=(0, 10), sticky="nsew")
 
         self.spectrum_id_pattern = widgets.LabeledEntry(
             self,
@@ -437,7 +422,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             ),
             wraplength=CONFIG_WIDTH - 180,
         )
-        self.spectrum_id_pattern.grid(row=6, column=0, pady=(0, 10), sticky="nsew")
+        self.spectrum_id_pattern.grid(row=5, column=0, pady=(0, 10), sticky="nsew")
 
         self.processes = widgets.LabeledOptionMenu(
             self,
@@ -451,7 +436,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             values=[str(x) for x in list(range(1, min(16, multiprocessing.cpu_count()) + 1))],
             default_value=str(min(16, multiprocessing.cpu_count())),
         )
-        self.processes.grid(row=7, column=0, pady=(0, 10), sticky="nsew")
+        self.processes.grid(row=6, column=0, pady=(0, 10), sticky="nsew")
 
         self.file_prefix = widgets.LabeledFileSelect(
             self,
@@ -464,7 +449,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
             ),
             wraplength=CONFIG_WIDTH - 20,
         )
-        self.file_prefix.grid(row=8, column=0, columnspan=2, sticky="nsew")
+        self.file_prefix.grid(row=7, column=0, columnspan=2, sticky="nsew")
 
         self.config_file = widgets.LabeledFileSelect(
             self,
@@ -476,12 +461,11 @@ class AdvancedConfiguration(ctk.CTkFrame):
             ),
             wraplength=CONFIG_WIDTH - 20,
         )
-        self.config_file.grid(row=9, column=0, columnspan=2, sticky="nsew")
+        self.config_file.grid(row=8, column=0, columnspan=2, sticky="nsew")
 
     def get(self) -> Dict:
         """Get the configured values as a dictionary."""
         return {
-            "lower_score_is_better": bool(int(self.lower_score.get())),  # str repr of 0 or 1
             "rename_to_usi": self.usi.get(),
             "write_flashlfq": self.write_flashlfq.get(),
             "write_report": self.generate_report.get(),
@@ -514,16 +498,12 @@ class FeatureGeneratorConfig(ctk.CTkFrame):
         self.im2deep_config = Im2DeepConfiguration(self)
         self.im2deep_config.grid(row=3, column=0, pady=(0, 20), sticky="nsew")
 
-        self.ionmob_config = IonmobConfiguration(self)
-        self.ionmob_config.grid(row=4, column=0, pady=(0, 20), sticky="nsew")
-
     def get(self) -> Dict:
         """Return the configuration as a dictionary."""
         basic_enabled, basic_config = self.basic_config.get()
-        ms2pip_enabled, ms2pip_config = self.ms2pip_config.get()
+        ms2pip_enabled, ms2pip_config, annotation_config = self.ms2pip_config.get()
         deeplc_enabled, deeplc_config = self.deeplc_config.get()
         im2deep_enabled, im2deep_config = self.im2deep_config.get()
-        ionmob_enabled, ionmob_config = self.ionmob_config.get()
 
         config = {}
         if basic_enabled:
@@ -532,12 +512,10 @@ class FeatureGeneratorConfig(ctk.CTkFrame):
             config["ms2pip"] = ms2pip_config
         if deeplc_enabled:
             config["deeplc"] = deeplc_config
-        if ionmob_enabled:
-            config["ionmob"] = ionmob_config
         if im2deep_enabled:
             config["im2deep"] = im2deep_config
 
-        return config
+        return config, annotation_config
 
 
 class BasicFeatureConfiguration(ctk.CTkFrame):
@@ -580,22 +558,40 @@ class MS2PIPConfiguration(ctk.CTkFrame):
         )
         self.model.grid(row=2, column=0, pady=(0, 10), sticky="nsew")
 
+        self.fragmentation_model = widgets.LabeledOptionMenu(
+            self,
+            label="Fragmentation model",
+            values=["cidhcd", "etd", "ethcd", "all"],
+            default_value="cidhcd",
+        )
+        self.fragmentation_model.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
+
         self.ms2_tolerance = widgets.LabeledFloatSpinbox(
             self,
             label="MS² error tolerance in Da",
             step_size=0.01,
             initial_value=0.02,
         )
-        self.ms2_tolerance.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
+        self.ms2_tolerance.grid(row=4, column=0, pady=(0, 10), sticky="nsew")
+
+        self.tolerance_mode = widgets.LabeledOptionMenu(
+            self,
+            label="MS² error tolerance mode",
+            values=["Da", "ppm"],
+            default_value="Da",
+        )
+        self.tolerance_mode.grid(row=5, column=0, pady=(0, 10), sticky="nsew")
 
     def get(self) -> Dict:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
-        config = {
-            "model": self.model.get(),
-            "ms2_tolerance": self.ms2_tolerance.get(),
+        feature_config = {"model": self.model.get()}
+        annotation_config = {
+            "fragmentation_model": self.fragmentation_model.get(),
+            "tolerance_value": self.ms2_tolerance.get(),
+            "tolerance_mode": self.tolerance_mode.get(),
         }
-        return enabled, config
+        return enabled, feature_config, annotation_config
 
 
 class DeepLCConfiguration(ctk.CTkFrame):
@@ -647,38 +643,9 @@ class DeepLCConfiguration(ctk.CTkFrame):
         enabled = self.enabled.get()
         config = {
             "deeplc_retrain": self.transfer_learning.get(),
-            "n_epochs": int(self.num_epochs.get()),
+            "epochs": int(self.num_epochs.get()),
             "calibration_set_size": calibration_set_size,
         }
-        return enabled, config
-
-
-class IonmobConfiguration(ctk.CTkFrame):
-    def __init__(self, *args, **kwargs):
-        """IonMob configuration frame."""
-        super().__init__(*args, **kwargs)
-
-        self.configure(fg_color="transparent")
-        self.grid_columnconfigure(0, weight=1)
-
-        self.title = widgets._Heading(self, text="Ionmob (ion mobility prediction)")
-        self.title.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="ew")
-
-        self.enabled = widgets.LabeledSwitch(self, label="Enable Ionmob", default=False)
-        self.enabled.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
-
-        self.model = widgets.LabeledEntry(
-            self,
-            label="Name of built-in model or path to custom model",
-            placeholder_text="GRUPredictor",
-            default_value="GRUPredictor",
-        )
-        self.model.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
-
-    def get(self) -> Tuple[bool, Dict[str, Any]]:
-        """Return the configuration as a dictionary."""
-        enabled = self.enabled.get()
-        config = {"ionmob_model": self.model.get()}
         return enabled, config
 
 
@@ -703,120 +670,55 @@ class Im2DeepConfiguration(ctk.CTkFrame):
         return enabled, config
 
 
-class RescoringEngineConfig(ctk.CTkFrame):
+class RescoringConfiguration(ctk.CTkFrame):
     def __init__(self, *args, **kwargs):
-        """Rescoring engine configuration frame."""
-        super().__init__(*args, **kwargs)
-
-        self.configure(fg_color="transparent")
-        self.grid_columnconfigure(0, weight=1)
-
-        self.radio_button = widgets.LabeledRadioButtons(
-            self,
-            label="Rescoring engine",
-            options=["Mokapot", "Percolator"],
-            default_value="Mokapot",
-        )
-        self.radio_button.grid(row=0, column=0, pady=(0, 10), sticky="nsew")
-
-        self.mokapot_config = MokapotRescoringConfiguration(self)
-        self.mokapot_config.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
-
-        self.percolator_config = PercolatorRescoringConfiguration(self)
-        self.percolator_config.grid(row=2, column=0, pady=(0, 10), sticky="nsew")
-
-    def get(self) -> Dict:
-        """Return the configuration as a dictionary."""
-        if self.radio_button.get().lower() == "mokapot":
-            return {self.radio_button.get().lower(): self.mokapot_config.get()}
-        elif self.radio_button.get().lower() == "percolator":
-            return {self.radio_button.get().lower(): self.percolator_config.get()}
-        else:
-            raise MS2RescoreConfigurationError(
-                f"Unknown rescoring engine: {self.radio_button.get().lower()}"
-            )
-
-
-class MokapotRescoringConfiguration(ctk.CTkFrame):
-    def __init__(self, *args, **kwargs):
-        """Rescoring engine configuration frame."""
+        """Ristretto rescoring configuration frame."""
         super().__init__(*args, **kwargs)
 
         self.configure(fg_color="transparent")
         self.grid_columnconfigure(0, weight=1)
         row_n = 0
 
-        self.title = widgets._Heading(self, text="Mokapot coffeeguration")
+        self.title = widgets._Heading(self, text="Ristretto configuration")
         self.title.grid(row=row_n, column=0, columnspan=2, pady=(0, 5), sticky="ew")
         row_n += 1
 
-        self.write_weights = widgets.LabeledSwitch(
-            self, label="Write model weights to file", default=True
-        )
-        self.write_weights.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
-        row_n += 1
-
-        self.write_txt = widgets.LabeledSwitch(self, label="Write TXT output files", default=True)
-        self.write_txt.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
-        row_n += 1
-
-        self.fasta_file = widgets.LabeledFileSelect(
+        self.train_fdr = widgets.LabeledEntry(
             self,
-            label="Select FASTA file (optional, required for protein inference)",
-            file_option="openfile",
+            label="Training FDR threshold",
+            description="FDR threshold used for positive selection during ristretto's training.",
+            placeholder_text="0.01",
         )
-        self.fasta_file.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
+        self.train_fdr.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
         row_n += 1
 
-        self.protein_kwargs = widgets.TableInput(
+        self.model = widgets.LabeledOptionMenu(
             self,
-            label="`mokapot.read_fasta` options (see Mokapot documentation)",
-            columns=2,
-            header_labels=["Parameter", "Value"],
+            label="Rescoring model",
+            description=(
+                "'svm': iterative Percolator-style SVM (default). 'lda': single-pass Fisher "
+                "LDA, faster but less powerful on hard-to-separate datasets."
+            ),
+            wraplength=CONFIG_WIDTH - 180,
+            values=["svm", "lda"],
+            default_value="svm",
         )
-        self.protein_kwargs.grid(row=row_n, column=0, sticky="nsew")
+        self.model.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
         row_n += 1
 
     def get(self) -> Dict:
         """Return the configuration as a dictionary."""
-        config = {
-            "write_weights": self.write_weights.get(),
-            "write_txt": self.write_txt.get(),
-            "fasta_file": self.fasta_file.get(),
-            "protein_kwargs": self._parse_protein_kwargs(self.protein_kwargs.get()),
-        }
-        return config
+        train_fdr_str = self.train_fdr.get()
+        if train_fdr_str == "":
+            train_fdr = 0.01
+        elif not train_fdr_str.replace(".", "", 1).isdigit():
+            raise MS2RescoreConfigurationError(
+                f"Error parsing {train_fdr_str}\nMake sure the training FDR is a number."
+            )
+        else:
+            train_fdr = float(train_fdr_str)
 
-    @staticmethod
-    def _parse_protein_kwargs(table_output):
-        """Parse text input modifications mapping"""
-        protein_kwargs = {}
-        for mod in table_output:
-            if mod[0] and mod[1]:
-                protein_kwargs[mod[0].strip()] = mod[1].strip()
-        return protein_kwargs
-
-
-class PercolatorRescoringConfiguration(ctk.CTkFrame):
-    def __init__(self, *args, **kwargs):
-        """Rescoring engine configuration frame."""
-        super().__init__(*args, **kwargs)
-
-        self.configure(fg_color="transparent")
-        self.grid_columnconfigure(0, weight=1)
-
-        self.title = widgets._Heading(self, text="Percolator coffeeguration")
-        self.title.grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="ew")
-
-        self.weights_file = widgets.LabeledFileSelect(
-            self, label="Pretrained Percolator model weights", file_option="openfile"
-        )
-        self.weights_file.grid(row=1, column=0, columnspan=2, sticky="nsew")
-
-    def get(self) -> Dict:
-        """Return the configuration as a dictionary."""
-        config = {"init-weights": self.weights_file.get()}
-        return config
+        return {"rescoring": {"train_fdr": train_fdr, "model": self.model.get()}}
 
 
 class UpdateDialog(PopupWindow):
@@ -859,8 +761,8 @@ def _check_updates_sync(root):
         pass
 
 
-def _setup_logging(log_level: str, log_file: str):
-    """Setup file logging for GUI."""
+def _setup_logging(log_level: str, log_file: str) -> Console:
+    """Set up file logging plus a recording Rich console for the HTML log export."""
     log_level_map = {
         "critical": logging.CRITICAL,
         "error": logging.ERROR,
@@ -868,12 +770,24 @@ def _setup_logging(log_level: str, log_file: str):
         "info": logging.INFO,
         "debug": logging.DEBUG,
     }
+    level = log_level_map.get(log_level, logging.INFO)
+
     file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
-    file_handler.setLevel(log_level_map.get(log_level, logging.INFO))
-    logging.getLogger().addHandler(file_handler)
+    file_handler.setLevel(level)
+
+    console = Console(record=True)
+    rich_handler = RichHandler(console=console, rich_tracebacks=True, show_path=False)
+    rich_handler.setLevel(level)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(rich_handler)
+
+    return console
 
 
 def function(config):
@@ -886,11 +800,15 @@ def function(config):
     config = parse_configurations(config_list)
 
     # Set up file logging for GUI
-    _setup_logging(
+    console = _setup_logging(
         config["ms2rescore"]["log_level"], config["ms2rescore"]["output_path"] + ".log.txt"
     )
 
-    rescore(configuration=config)
+    try:
+        rescore(configuration=config)
+    finally:
+        console.save_html(config["ms2rescore"]["output_path"] + ".log.html")
+
     if config["ms2rescore"]["write_report"]:
         webbrowser.open_new_tab(config["ms2rescore"]["output_path"] + ".report.html")
 
@@ -904,7 +822,7 @@ def app():
     )
     root.protocol("WM_DELETE_WINDOW", sys.exit)
     dpi = root.winfo_fpixels("1i")
-    root.geometry(f"{int(15*dpi)}x{int(10*dpi)}")
+    root.geometry(f"{int(15 * dpi)}x{int(10 * dpi)}")
     root.minsize(int(13 * dpi), int(9 * dpi))
     root.title("MS²Rescore")
     if platform.system() != "Linux":

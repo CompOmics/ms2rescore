@@ -10,14 +10,12 @@
             "deeplc": {
                 "deeplc_retrain": false
             },
-            "maxquant": {}
+            "ms2": {}
         },
-        "rescoring_engine": {
-            "mokapot": {
-                "train_fdr": 0.01,
-                "write_weights": true,
-                "write_txt": true
-            }
+        "psm_generator": {},
+        "rescoring": {
+            "train_fdr": 0.01,
+            "model": "svm"
         },
         "config_file": null,
         "psm_file": null,
@@ -31,15 +29,17 @@
         "spectrum_id_pattern": null,
         "psm_id_rt_pattern": null,
         "psm_id_im_pattern": null,
-        "lower_score_is_better": false,
         "max_psm_rank_input": 10,
         "max_psm_rank_output": 1,
         "modification_mapping": {},
         "fixed_modifications": {},
         "processes": -1,
         "rename_to_usi": false,
-        "fasta_file": null,
         "write_flashlfq": false,
-        "write_report": false
+        "write_report": true,
+        "report_fdr": 0.01,
+        "fragmentation_model": "cidhcd",
+        "tolerance_value": 0.02,
+        "tolerance_mode": "Da"
     }
 }
