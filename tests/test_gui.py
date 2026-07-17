@@ -2,7 +2,11 @@
 
 import logging
 
-from ms2rescore.gui.app import _setup_logging
+import pytest
+
+pytest.importorskip("tkinter")
+
+from ms2rescore.gui.app import _setup_logging  # noqa: E402
 
 
 def test_setup_logging_writes_txt_and_html_log(tmp_path):
