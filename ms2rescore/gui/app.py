@@ -215,7 +215,9 @@ class ConfigFrame(ctk.CTkTabview):
 
         config = {"ms2rescore": main_config}
         config["ms2rescore"].update(advanced_config)
-        config["ms2rescore"]["feature_generators"] = self.fgen_config.get()
+        feature_generators, annotation_config = self.fgen_config.get()
+        config["ms2rescore"]["feature_generators"] = feature_generators
+        config["ms2rescore"].update(annotation_config)
         config["ms2rescore"].update(self.rescoring_config.get())
 
         args = (config,)  # Comma required to wrap in tuple
@@ -499,7 +501,7 @@ class FeatureGeneratorConfig(ctk.CTkFrame):
     def get(self) -> Dict:
         """Return the configuration as a dictionary."""
         basic_enabled, basic_config = self.basic_config.get()
-        ms2pip_enabled, ms2pip_config = self.ms2pip_config.get()
+        ms2pip_enabled, ms2pip_config, annotation_config = self.ms2pip_config.get()
         deeplc_enabled, deeplc_config = self.deeplc_config.get()
         im2deep_enabled, im2deep_config = self.im2deep_config.get()
 
@@ -513,7 +515,7 @@ class FeatureGeneratorConfig(ctk.CTkFrame):
         if im2deep_enabled:
             config["im2deep"] = im2deep_config
 
-        return config
+        return config, annotation_config
 
 
 class BasicFeatureConfiguration(ctk.CTkFrame):
@@ -556,22 +558,40 @@ class MS2PIPConfiguration(ctk.CTkFrame):
         )
         self.model.grid(row=2, column=0, pady=(0, 10), sticky="nsew")
 
+        self.fragmentation_model = widgets.LabeledOptionMenu(
+            self,
+            label="Fragmentation model",
+            values=["cidhcd", "etd", "ethcd", "all"],
+            default_value="cidhcd",
+        )
+        self.fragmentation_model.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
+
         self.ms2_tolerance = widgets.LabeledFloatSpinbox(
             self,
             label="MS² error tolerance in Da",
             step_size=0.01,
             initial_value=0.02,
         )
-        self.ms2_tolerance.grid(row=3, column=0, pady=(0, 10), sticky="nsew")
+        self.ms2_tolerance.grid(row=4, column=0, pady=(0, 10), sticky="nsew")
+
+        self.tolerance_mode = widgets.LabeledOptionMenu(
+            self,
+            label="MS² error tolerance mode",
+            values=["Da", "ppm"],
+            default_value="Da",
+        )
+        self.tolerance_mode.grid(row=5, column=0, pady=(0, 10), sticky="nsew")
 
     def get(self) -> Dict:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
-        config = {
-            "model": self.model.get(),
-            "ms2_tolerance": self.ms2_tolerance.get(),
+        feature_config = {"model": self.model.get()}
+        annotation_config = {
+            "fragmentation_model": self.fragmentation_model.get(),
+            "tolerance_value": self.ms2_tolerance.get(),
+            "tolerance_mode": self.tolerance_mode.get(),
         }
-        return enabled, config
+        return enabled, feature_config, annotation_config
 
 
 class DeepLCConfiguration(ctk.CTkFrame):
@@ -623,7 +643,7 @@ class DeepLCConfiguration(ctk.CTkFrame):
         enabled = self.enabled.get()
         config = {
             "deeplc_retrain": self.transfer_learning.get(),
-            "n_epochs": int(self.num_epochs.get()),
+            "epochs": int(self.num_epochs.get()),
             "calibration_set_size": calibration_set_size,
         }
         return enabled, config

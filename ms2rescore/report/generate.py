@@ -229,11 +229,17 @@ def _get_features_context(
     # Retention-time and ion-mobility charts on high-confidence targets
     high_conf_features = features[(~is_decoy) & (psm_df["qvalue"] <= fdr_threshold)]
     if "deeplc" in feature_names:
-        _add_deeplc_chart(
-            context, high_conf_features, fdr_threshold, color=color_map.get("deeplc")
-        )
+        try:
+            _add_deeplc_chart(
+                context, high_conf_features, fdr_threshold, color=color_map.get("deeplc")
+            )
+        except Exception as e:
+            logger.warning("Could not generate DeepLC performance plot: %s", e)
     if "im2deep" in feature_names:
-        _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
+        try:
+            _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
+        except Exception as e:
+            logger.warning("Could not generate IM2Deep performance plot: %s", e)
 
     return context
 

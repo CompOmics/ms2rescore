@@ -370,7 +370,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         p = pairs[:, 1]
 
         M = coo_matrix(
-            (np.ones(len(r), dtype=np.int8), (r, p)),
+            (np.ones(len(r), dtype=np.int32), (r, p)),
             shape=(len(run_order), int(prot_idx.max()) + 1),
         ).tocsr()
 

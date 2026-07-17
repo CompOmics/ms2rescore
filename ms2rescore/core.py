@@ -44,32 +44,15 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Parse PSMs
     psm_list = parse_psms(config, psm_list)
-
-    # Evaluate PSMs' pre-rescoring score with ristretto, for report baselines
-    before_result = _ristretto_utils.evaluate_before(psm_list, config)
     usi_by_native_id = None
-    if config["rename_to_usi"]:
-        # Build the (run, native spectrum_id) -> USI lookup now, while psm_list still has its
-        # native spectrum_id (the actual rename, further below, must stay after spectrum-file
-        # matching, which needs that native ID). Reused below for the actual rename, and here
-        # to remap before_result's spectrum_id into the same representation psm_list will end
-        # up with, so the report can match "before" and "after" rows by spectrum. The USI
-        # omits the peptidoform, so every candidate PSM of a given spectrum maps to the same
-        # USI, making (run, spectrum_id) a safe, collision-free lookup key.
-        usi_by_native_id = {
-            (psm.run, psm.spectrum_id): f"mzspec:{psm.collection}:{psm.run}:scan:{psm.spectrum_id}"
-            for psm in psm_list
-        }
-        before_result.psms["spectrum_id"] = [
-            usi_by_native_id[(run, spectrum_id)]
-            for run, spectrum_id in zip(before_result.psms["run"], before_result.psms["spectrum_id"])
-        ]
-    n_id_before = (
-        (before_result.psms["qvalue"] <= config["report_fdr"]) & ~before_result.psms["is_decoy"]
-    ).sum()
-    logger.info(
-        f"Found {n_id_before} identified PSMs at {config['report_fdr']:.2%} FDR before rescoring."
-    )
+
+    # Validate feature generator names early so stale configs fail with a clear message.
+    for fgen_name in config["feature_generators"]:
+        if fgen_name not in FEATURE_GENERATORS:
+            raise exceptions.MS2RescoreConfigurationError(
+                f"Unknown or removed feature generator '{fgen_name}'. "
+                f"Available generators: {', '.join(sorted(FEATURE_GENERATORS))}."
+            )
 
     # Define feature names; get existing feature names from PSM file
     feature_names = dict()
@@ -193,6 +176,33 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
                 "deterministic. See the Mumble user guide for details."
             )
 
+    # Evaluate PSMs' pre-rescoring score with ristretto for the report baseline, after all
+    # feature-availability and mumble filtering so before/after statistics compare the same
+    # surviving PSM population.
+    before_result = _ristretto_utils.evaluate_before(psm_list, config)
+    if config["rename_to_usi"]:
+        # Build the (run, native spectrum_id) -> USI lookup now, while psm_list still has its
+        # native spectrum_id (the actual rename, further below, must stay after spectrum-file
+        # matching, which needs that native ID). Reused below for the actual rename, and here
+        # to remap before_result's spectrum_id into the same representation psm_list will end
+        # up with, so the report can match "before" and "after" rows by spectrum. The USI
+        # omits the peptidoform, so every candidate PSM of a given spectrum maps to the same
+        # USI, making (run, spectrum_id) a safe, collision-free lookup key.
+        usi_by_native_id = {
+            (psm.run, psm.spectrum_id): f"mzspec:{psm.collection}:{psm.run}:scan:{psm.spectrum_id}"
+            for psm in psm_list
+        }
+        before_result.psms["spectrum_id"] = [
+            usi_by_native_id[(run, spectrum_id)]
+            for run, spectrum_id in zip(before_result.psms["run"], before_result.psms["spectrum_id"])
+        ]
+    n_id_before = (
+        (before_result.psms["qvalue"] <= config["report_fdr"]) & ~before_result.psms["is_decoy"]
+    ).sum()
+    logger.info(
+        f"Found {n_id_before} identified PSMs at {config['report_fdr']:.2%} FDR before rescoring."
+    )
+
     # Write feature names to file
     _write_feature_names(feature_names, output_file_root)
 
@@ -216,8 +226,9 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
         # Reraise exception
         raise
 
-    # Post-rescoring processing. before_result was already trimmed to max_psm_rank_output,
-    # same as after_result, so this comparison stays fair regardless of its value.
+    # Post-rescoring processing. before_result and after_result were both evaluated on the same
+    # surviving PSM population and trimmed to max_psm_rank_output the same way, so this
+    # comparison stays fair regardless of its value.
     n_after = (
         (after_result.psms["qvalue"] <= config["report_fdr"]) & ~after_result.psms["is_decoy"]
     ).sum()

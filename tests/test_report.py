@@ -278,13 +278,13 @@ def test_build_stat_card_reports_increase():
 def test_n_identified_counts_targets_below_threshold():
     # Mumble-generated candidates are excluded upstream, in rescoring.evaluate_before, so
     # _n_identified itself does no masking -- just qvalue/is_decoy.
-    df = pd.DataFrame(
-        {"qvalue": [0.001, 0.001, 0.02], "is_decoy": [False, True, False]}
-    )
+    df = pd.DataFrame({"qvalue": [0.001, 0.001, 0.02], "is_decoy": [False, True, False]})
     assert _n_identified(df, 0.01) == 1
 
 
-_EMPTY_ROLLUP = pd.DataFrame(columns=["peptidoform", "score", "qvalue", "pep", "is_decoy", "n_psms"])
+_EMPTY_ROLLUP = pd.DataFrame(
+    columns=["peptidoform", "score", "qvalue", "pep", "is_decoy", "n_psms"]
+)
 
 
 def test_identification_overlap_disambiguates_spectrum_id_by_run():

@@ -143,17 +143,19 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     original_mask = np.array([_is_original_psm(psm) for psm in psm_list])
     psm_list = psm_list[original_mask]
 
-    train_fdr = config["rescoring"].get("train_fdr", 0.01)
+    train_fdr = config.get("rescoring", {}).get("train_fdr", 0.01)
+    max_psm_rank_output = config.get("max_psm_rank_output", 1)
+    decoy_pattern = config.get("id_decoy_pattern")
     features_df = _build_features_dataframe(
         psm_list, set(), infer_score_direction(psm_list, train_fdr)
     )
     return _trim_and_evaluate(
         features_df,
-        config["max_psm_rank_output"],
+        max_psm_rank_output,
         run_col="run",
         peptide_col="peptide",
         protein_col="protein" if "protein" in features_df.columns else None,
-        decoy_pattern=config["id_decoy_pattern"],
+        decoy_pattern=decoy_pattern,
     )
 
 
@@ -193,13 +195,15 @@ def evaluate_after_from_psm_list(psm_list: PSMList, config: Dict) -> RescoreResu
 
     """
     features_df = _build_features_dataframe(psm_list, set(), lower_score_is_better=False)
+    max_psm_rank_output = config.get("max_psm_rank_output", 1)
+    decoy_pattern = config.get("id_decoy_pattern")
     return _trim_and_evaluate(
         features_df,
-        config["max_psm_rank_output"],
+        max_psm_rank_output,
         run_col="run",
         peptide_col="peptide",
         protein_col="protein" if "protein" in features_df.columns else None,
-        decoy_pattern=config["id_decoy_pattern"],
+        decoy_pattern=decoy_pattern,
     )
 
 

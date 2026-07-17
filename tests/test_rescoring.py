@@ -7,7 +7,7 @@ import pandas as pd
 from psm_utils import PSM, PSMList
 from ristretto import RescoreResult
 
-from ms2rescore import _ristretto_utils, rescoring
+from ms2rescore import _ristretto_utils, _utils, rescoring
 
 BASE_CONFIG = {
     "id_decoy_pattern": None,
@@ -132,6 +132,62 @@ def test_evaluate_before_disambiguates_spectrum_id_across_runs():
 
     assert len(result.psms) == 60
     assert set(result.psms["run"]) == {"runA", "runB"}
+
+
+def test_filter_mumble_psms_groups_by_run_and_spectrum_id_tuple():
+    psms = [
+        PSM(
+            peptidoform="PEPTIDE/2",
+            spectrum_id="12",
+            run="s1",
+            rescoring_features={"matched_ions_pct": 0.9},
+        ),
+        PSM(
+            peptidoform="PEPTIDE/2",
+            spectrum_id="12",
+            run="s1",
+            rescoring_features={"matched_ions_pct": 0.1},
+        ),
+        PSM(
+            peptidoform="PEPTIDE/2",
+            spectrum_id="2",
+            run="s11",
+            rescoring_features={"matched_ions_pct": 0.2},
+        ),
+        PSM(
+            peptidoform="PEPTIDE/2",
+            spectrum_id="2",
+            run="s11",
+            rescoring_features={"matched_ions_pct": 0.25},
+        ),
+    ]
+    psms[1].metadata["original_psm"] = False
+    psms[3].metadata["original_psm"] = False
+    psm_list = PSMList(psm_list=psms)
+
+    filtered = _utils.filter_mumble_psms(psm_list)
+
+    assert len(filtered) == 3
+    assert [(psm.run, psm.spectrum_id, psm.rescoring_features["matched_ions_pct"]) for psm in filtered] == [
+        ("s1", "12", 0.9),
+        ("s11", "2", 0.2),
+        ("s11", "2", 0.25),
+    ]
+
+
+def test_get_original_hit_mask_treats_string_false_as_false():
+    psm_list = PSMList(
+        psm_list=[
+            PSM(peptidoform="PEPTIDE/2", spectrum_id="1", run="run1"),
+            PSM(peptidoform="PEPTIDE/2", spectrum_id="2", run="run1"),
+        ]
+    )
+    psm_list[0].metadata["original_psm"] = "False"
+    psm_list[1].metadata["original_psm"] = "true"
+
+    mask = _utils.get_original_hit_mask(psm_list)
+
+    assert mask.tolist() == [False, True]
 
 
 def test_evaluate_before_excludes_mumble_generated_candidates():

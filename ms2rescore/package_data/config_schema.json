@@ -192,13 +192,13 @@
                     "description": "Fragment mass tolerance value for spectrum annotation",
                     "type": "number",
                     "minimum": 0,
-                    "default": 20.0
+                    "default": 0.02
                 },
                 "tolerance_mode": {
                     "description": "Fragment mass tolerance mode for spectrum annotation",
                     "type": "string",
                     "enum": ["ppm", "Da"],
-                    "default": "ppm"
+                    "default": "Da"
                 }
             }
         }

@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
+import pandas as pd
 from ms2rescore_rs import is_supported_file_type
 from psm_utils import PSMList
 
 from ms2rescore.exceptions import MS2RescoreConfigurationError
+from ms2rescore._ristretto_utils import _is_original_psm
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +108,7 @@ def get_original_hit_mask(psm_list: PSMList) -> np.ndarray:
     ``metadata["original_psm"] = False``. PSMs without this metadata (i.e., not added by
     Mumble) default to ``True``, since they are original hits by definition.
     """
-    return np.array(
-        [metadata.get("original_psm", True) for metadata in psm_list["metadata"]], dtype=bool
-    )
+    return np.array([_is_original_psm(psm) for psm in psm_list], dtype=bool)
 
 
 def filter_mumble_psms(psm_list: PSMList, threshold=1) -> PSMList:
@@ -136,9 +136,10 @@ def filter_mumble_psms(psm_list: PSMList, threshold=1) -> PSMList:
 
     matched_ions = np.array([psm.rescoring_features["matched_ions_pct"] for psm in psm_list])
 
-    # Create unique keys for each (run, spectrum_id)
-    unique_keys = np.core.defchararray.add(runs.astype(str), spectrum_indices.astype(str))
-    unique_keys_indices, inverse_indices = np.unique(unique_keys, return_inverse=True)
+    # Create unique keys for each (run, spectrum_id) using the real tuple identity.
+    inverse_indices, unique_keys_indices = pd.factorize(
+        pd.Series(list(zip(runs, spectrum_indices)), dtype="object")
+    )
 
     # Initialize an array to store the `matched_ions_pct` of original hits per group
     original_matched_ions_pct = np.full(

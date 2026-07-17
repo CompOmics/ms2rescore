@@ -63,6 +63,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         self._verbose = logger.getEffectiveLevel() <= logging.DEBUG
 
         self.model = self.im2deep_kwargs.get("model", None)
+        self.reference_dataset = self.im2deep_kwargs.get("reference_dataset", None)
 
         # Prepare IM2Deep predict kwargs
         self.predict_kwargs = {
@@ -123,7 +124,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         )
 
         # getting reference CCS values for calibration
-        source_dataframe = get_default_reference(multi=self.multi)
+        source_dataframe = self._get_reference_dataframe()
 
         # Create dataframe with high confidence hits for calibration
         logger.info("Calibrating predicted CCS values per run...")
@@ -220,3 +221,31 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         return calibration_df[["peptidoform", "ccs_observed_im2deep"]].rename(
             columns={"ccs_observed_im2deep": "CCS"}
         )
+
+    def _get_reference_dataframe(self) -> pd.DataFrame:
+        """Load the CCS reference dataset requested by the config, or IM2Deep's default."""
+
+        if not self.reference_dataset:
+            return get_default_reference()
+        elif not self.reference_dataset.is_file():
+            raise FileNotFoundError(
+                f"IM2Deep reference dataset not found: {self.reference_dataset}"
+            )
+        else:
+            reference_path = self.reference_dataset
+
+        logger.info("Loading IM2Deep reference dataset from %s", reference_path)
+        if reference_path.suffix.lower() in {".parquet", ".pq"}:
+            reference_df = pd.read_parquet(reference_path)
+        else:
+            reference_df = pd.read_csv(reference_path, compression="infer", keep_default_na=False)
+
+        required_columns = {"peptidoform", "CCS"}
+        missing_columns = required_columns - set(reference_df.columns)
+        if missing_columns:
+            raise ValueError(
+                f"IM2Deep reference dataset must contain columns {sorted(required_columns)}; "
+                f"missing {sorted(missing_columns)}"
+            )
+
+        return reference_df[["peptidoform", "CCS"]]

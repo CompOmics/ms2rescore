@@ -7,9 +7,11 @@ a model.
 import math
 
 import numpy as np
+import pandas as pd
 import pytest
 from psm_utils import PSM, PSMList
 
+import ms2rescore.feature_generators.im2deep as im2deep_module
 from ms2rescore.feature_generators.im2deep import IM2DeepFeatureGenerator
 from ms2rescore.parse_spectra import MSDataType
 
@@ -130,3 +132,39 @@ def test_get_im_calibration_data_excludes_mumble_psms():
 
     assert list(calibration_df["peptidoform"]) == ["A", "C"]
     assert list(calibration_df["CCS"]) == [500.0, 520.0]
+
+
+def test_add_features_uses_configured_reference_dataset(tmp_path, monkeypatch):
+    reference_path = tmp_path / "instrument_reference.parquet"
+    pd.DataFrame({"peptidoform": ["CUSTOMPEP"], "CCS": [123.4]}).to_parquet(
+        reference_path, index=False
+    )
+
+    captured = {}
+
+    class _FakeCalibration:
+        def fit(self, psm_df_target, psm_df_source, multi=False):
+            captured["source"] = psm_df_source.copy()
+
+        def transform(self, psm_df):
+            return psm_df["predicted_CCS_uncalibrated"].to_numpy()
+
+    monkeypatch.setattr(im2deep_module, "predict", lambda *args, **kwargs: np.array([123.4]))
+    monkeypatch.setattr(im2deep_module, "LinearCCSCalibration", _FakeCalibration)
+    monkeypatch.setattr(
+        im2deep_module,
+        "get_default_reference",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("default reference should not be used")
+        ),
+    )
+
+    psm_list = _make_psm_list()
+    psm_list = PSMList(psm_list=[psm_list[0]])
+
+    IM2DeepFeatureGenerator(reference_dataset=str(reference_path), processes=1).add_features(
+        psm_list
+    )
+
+    assert list(captured["source"]["peptidoform"]) == ["CUSTOMPEP"]
+    assert list(captured["source"]["CCS"]) == [123.4]

@@ -73,9 +73,10 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
         peptide_lengths = np.array([len(psm.peptidoform.sequence) for psm in psm_list])
 
         has_charge = None not in charge_states
-        # precursor_mz and score come back as float arrays where missing values are NaN, not None
-        has_mz = not np.isnan(precursor_mzs).any() and has_charge
-        has_score = not np.isnan(scores).any()
+        # precursor_mz and score may come back as object arrays with None or numeric arrays with
+        # NaN depending on the psm_utils version, so check missing values in a type-agnostic way.
+        has_mz = not _has_missing_values(precursor_mzs) and has_charge
+        has_score = not _has_missing_values(scores)
 
         if has_charge:
             charge_n = charge_states
@@ -136,3 +137,13 @@ def _one_hot_encode_charge(
     one_hot = mask.view("i1")
 
     return [dict(zip(heading, row)) for row in one_hot], heading
+
+
+def _has_missing_values(values) -> bool:
+    """Return True when a sequence contains None or NaN values."""
+    for value in values:
+        if value is None:
+            return True
+        if isinstance(value, float) and np.isnan(value):
+            return True
+    return False

@@ -68,13 +68,25 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
         )
         new_ids = [_match_psm_ids(old_id, pattern) for old_id in psm_list["spectrum_id"]]
 
-        # Validate that the number of unique IDs remains the same
-        if len(set(new_ids)) != len(set(psm_list["spectrum_id"])):
-            example_old_id = psm_list["spectrum_id"][0]
-            example_new_id = new_ids[0]
+        # Validate that the number of unique IDs remains the same within each run.
+        spectrum_id_df = pd.DataFrame(
+            {
+                "run": psm_list["run"],
+                "old_id": psm_list["spectrum_id"],
+                "new_id": new_ids,
+            }
+        )
+        old_unique_counts = spectrum_id_df.groupby("run")["old_id"].nunique()
+        new_unique_counts = spectrum_id_df.groupby("run")["new_id"].nunique()
+        if not old_unique_counts.equals(new_unique_counts):
+            mismatched_run = (old_unique_counts != new_unique_counts).idxmax()
+            run_rows = spectrum_id_df[spectrum_id_df["run"] == mismatched_run]
+            example_old_id = run_rows["old_id"].iloc[0]
+            example_new_id = run_rows["new_id"].iloc[0]
             raise MS2RescoreConfigurationError(
-                "'psm_id_pattern' resulted in a different number of unique PSM IDs. "
-                "This might indicate issues with the regex pattern. Please check and try again. "
+                "'psm_id_pattern' resulted in a different number of unique PSM IDs within "
+                f"run '{mismatched_run}'. This might indicate issues with the regex pattern. "
+                "Please check and try again. "
                 f"Example old ID: '{example_old_id}' -> new ID: '{example_new_id}'. "
                 " See "
                 "https://ms2rescore.readthedocs.io/en/stable/userguide/configuration/#mapping-psms-to-spectra "
@@ -83,19 +95,6 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
 
         # Assign new IDs
         psm_list["spectrum_id"] = new_ids
-
-    # Store scoring values for comparison later
-    for psm in psm_list:
-        psm.provenance_data.update(
-            {
-                "before_rescoring_score": psm.score,
-                "before_rescoring_qvalue": psm.qvalue,
-                "before_rescoring_pep": psm.pep
-                if psm.pep is not None
-                else float("nan"),  # until fixed in psm_utils
-                "before_rescoring_rank": psm.rank,
-            }
-        )
 
     # Rename and add modifications
     logger.debug("Parsing modifications...")
@@ -142,6 +141,19 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
             **mumble_config,
         )
         psm_list = psm_handler.add_modified_psms(psm_list)
+
+    # Store scoring values for comparison later
+    for psm in psm_list:
+        psm.provenance_data.update(
+            {
+                "before_rescoring_score": psm.score,
+                "before_rescoring_qvalue": psm.qvalue,
+                "before_rescoring_pep": psm.pep
+                if psm.pep is not None
+                else float("nan"),  # until fixed in psm_utils
+                "before_rescoring_rank": psm.rank,
+            }
+        )
 
     return psm_list
 

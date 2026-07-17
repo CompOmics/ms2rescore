@@ -2,14 +2,17 @@
 report/flashlfq output), plus intermediate-output recovery on mid-pipeline errors."""
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import psm_utils.io
 import pytest
 from psm_utils import PSM, PSMList
 
 from ms2rescore import core
 from ms2rescore.config_parser import parse_configurations
+from ms2rescore.exceptions import MS2RescoreConfigurationError
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 
 _RESIDUES = "ACDEFGHIKLMNPQRSTVWY"
@@ -75,6 +78,29 @@ class _FailingFeatureGenerator(FeatureGeneratorBase):
 
     def add_features(self, psm_list):
         raise RuntimeError("simulated feature generator failure")
+
+
+class _PartialFeatureGenerator(FeatureGeneratorBase):
+    """Adds a feature to every PSM except the first, forcing one removal in core.rescore()."""
+
+    @property
+    def feature_names(self):
+        return ["kept_feature"]
+
+    def add_features(self, psm_list):
+        for index, psm in enumerate(psm_list):
+            if index == 0:
+                continue
+            psm.rescoring_features["kept_feature"] = float(index)
+
+
+def _make_rescore_result(n_rows: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        psms=pd.DataFrame({"qvalue": [0.0] * n_rows, "is_decoy": [False] * n_rows}),
+        feature_weights=pd.DataFrame(),
+        peptidoforms=None,
+        proteins=None,
+    )
 
 
 def test_rescore_end_to_end_writes_expected_outputs(tmp_path):
@@ -160,3 +186,35 @@ def test_rescore_writes_intermediate_output_on_rescoring_error(tmp_path, monkeyp
     intermediate_psm_list = psm_utils.io.read_file(str(intermediate_path), filetype="tsv")
     assert len(intermediate_psm_list) == 200
     assert "search_engine_score" in intermediate_psm_list[0].rescoring_features
+
+
+def test_rescore_counts_only_surviving_psms_in_before_baseline(tmp_path, monkeypatch):
+    monkeypatch.setitem(core.FEATURE_GENERATORS, "basic", _PartialFeatureGenerator)
+
+    before_lengths = []
+
+    def _fake_evaluate_before(psm_list, config):
+        before_lengths.append(len(psm_list))
+        return _make_rescore_result(len(psm_list))
+
+    def _fake_rescore(psm_list, config, output_file_root):
+        return psm_list, _make_rescore_result(len(psm_list))
+
+    monkeypatch.setattr(core._ristretto_utils, "evaluate_before", _fake_evaluate_before)
+    monkeypatch.setattr(core.rescoring, "rescore", _fake_rescore)
+    monkeypatch.setattr(core._ristretto_utils, "write_rescoring_tables", lambda *args, **kwargs: None)
+
+    psm_path = _write_psm_file(tmp_path, _make_psm_list(seed=4))
+    config = _make_config(tmp_path, psm_path, write_report=False)
+
+    core.rescore(config)
+
+    assert before_lengths == [199]
+
+
+def test_rescore_rejects_removed_feature_generator_name(tmp_path):
+    psm_path = _write_psm_file(tmp_path, _make_psm_list(seed=5))
+    config = _make_config(tmp_path, psm_path, feature_generators={"maxquant": {}})
+
+    with pytest.raises(MS2RescoreConfigurationError, match="Unknown or removed feature generator"):
+        core.rescore(config)
