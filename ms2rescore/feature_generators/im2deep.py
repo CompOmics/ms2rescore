@@ -13,6 +13,7 @@ from typing import List, Union
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from im2deep.calibration import LinearCCSCalibration, get_default_reference
 from im2deep.core import predict
 from im2deep.utils import im2ccs
@@ -227,12 +228,13 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
         if not self.reference_dataset:
             return get_default_reference()
-        elif not self.reference_dataset.is_file():
+        else:
+            reference_path = Path(self.reference_dataset)
+
+        if not reference_path.is_file():
             raise FileNotFoundError(
                 f"IM2Deep reference dataset not found: {self.reference_dataset}"
             )
-        else:
-            reference_path = self.reference_dataset
 
         logger.info("Loading IM2Deep reference dataset from %s", reference_path)
         if reference_path.suffix.lower() in {".parquet", ".pq"}:
