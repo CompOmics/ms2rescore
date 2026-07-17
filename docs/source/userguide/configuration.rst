@@ -343,6 +343,8 @@ accepted PSMs for ristretto's semi-supervised training, a higher value such as 1
 
 Set ``rescoring`` to ``{}`` to use the defaults shown above.
 
+See the :ref:`ms2rescore.rescoring` section for the module used to interface with ristretto.
+
 
 
 All configuration options
