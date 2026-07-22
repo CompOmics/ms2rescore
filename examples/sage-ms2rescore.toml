@@ -7,4 +7,4 @@ spectrum_path = "examples/data/spectra/qExactive01819.mzML"
 "basic" = {}
 "ms2pip" = { "model" = "HCD" }
 "ms2" = {}
-"deeplc" = { "deeplc_retrain" = false }
+"deeplc" = {}

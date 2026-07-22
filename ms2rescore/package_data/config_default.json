@@ -6,9 +6,7 @@
             "ms2pip": {
                 "model": "HCD"
             },
-            "deeplc": {
-                "deeplc_retrain": false
-            },
+            "deeplc": {},
             "ms2": {}
         },
         "psm_generator": {},

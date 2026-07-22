@@ -6,9 +6,7 @@
             "ms2pip": {
                 "model": "timsTOF"
             },
-            "deeplc": {
-                "deeplc_retrain": false
-            },
+            "deeplc": {},
             "im2deep": {},
             "ms2": {}
         },
