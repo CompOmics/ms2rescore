@@ -91,6 +91,10 @@
 - <a id="definitions/basic"></a>**`basic`** *(object)*: Basic feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/ms2pip"></a>**`ms2pip`** *(object)*: MS²PIP feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`model`** *(string)*: MS²PIP model to use (see MS²PIP documentation). Default: `"HCD"`.
+  - **`model_dir`**: Directory containing MS²PIP models. Default: `null`.
+    - **One of**
+      - *string*
+      - *null*
 - <a id="definitions/deeplc"></a>**`deeplc`** *(object)*: DeepLC feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`calibration_set_size`**: Calibration set size. Default: `0.15`.
     - **One of**
@@ -98,7 +102,10 @@
       - *number*
 - <a id="definitions/ms2"></a>**`ms2`** *(object)*: MS2 spectrum-based feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/im2deep"></a>**`im2deep`** *(object)*: Ion mobility feature generator configuration using IM2Deep. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
-  - **`reference_dataset`** *(string)*: Path to IM2Deep reference dataset file. Default: `"Meier_unimod.parquet"`.
+  - **`reference_dataset`**: Path to IM2Deep reference dataset file. Defaults to IM2Deep's own bundled reference dataset if not set. Default: `null`.
+    - **One of**
+      - *string*
+      - *null*
 - <a id="definitions/mumble"></a>**`mumble`** *(object)*: Mumble PSM generator configuration. Mumble proposes candidate Unimod modifications that explain each PSM's precursor mass shift (open-modification-search style). Requires the optional `mumble` dependency (`pip install ms2rescore[mumble]`). Mumble is still under active development (beta): review results and expect occasional errors, especially on unusual input. Can contain additional properties. Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
   - **`aa_combinations`** *(integer)*: Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low. Default: `0`.
   - **`combination_length`** *(integer)*: Maximum number of modifications to combine per mass shift. Lower combination lengths are always included as well. Default: `1`.
