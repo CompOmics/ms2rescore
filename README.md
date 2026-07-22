@@ -26,7 +26,7 @@ files:
 - [MS Amanda](http://ms.imp.ac.at/?goto=msamanda) `.csv`
 - [Sage](https://github.com/lazear/sage) `.sage.tsv`
 - [PeptideShaker](https://compomics.github.io/projects/peptide-shaker.html) `.mzid`
-- [ProteomeDiscoverer](#)`.msf`
+- ProteomeDiscoverer `.msf`
 - [MSGFPlus](https://omics.pnl.gov/software/ms-gf) `.mzid`
 - [Mascot](https://www.matrixscience.com/) `.mzid`
 - [MaxQuant](https://www.maxquant.org/) `msms.txt`
