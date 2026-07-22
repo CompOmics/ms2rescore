@@ -4,8 +4,7 @@
         "feature_generators": {
             "basic": {},
             "ms2pip": {
-                "model": "timsTOF",
-                "ms2_tolerance": 0.02
+                "model": "timsTOF"
             },
             "deeplc": {
                 "deeplc_retrain": false

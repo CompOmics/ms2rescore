@@ -250,12 +250,6 @@
                     "description": "MS²PIP model to use (see MS²PIP documentation)",
                     "type": "string",
                     "default": "HCD"
-                },
-                "ms2_tolerance": {
-                    "description": "MS2 error tolerance in Da",
-                    "type": "number",
-                    "minimum": 0,
-                    "default": 0.02
                 }
             }
         },

@@ -91,7 +91,6 @@
 - <a id="definitions/basic"></a>**`basic`** *(object)*: Basic feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
 - <a id="definitions/ms2pip"></a>**`ms2pip`** *(object)*: MS²PIP feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`model`** *(string)*: MS²PIP model to use (see MS²PIP documentation). Default: `"HCD"`.
-  - **`ms2_tolerance`** *(number)*: MS2 error tolerance in Da. Minimum: `0`. Default: `0.02`.
 - <a id="definitions/deeplc"></a>**`deeplc`** *(object)*: DeepLC feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`calibration_set_size`**: Calibration set size. Default: `0.15`.
     - **One of**
