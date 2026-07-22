@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `deeplc` feature generator: `deeplc_retrain` option renamed to `finetune` (redundant naming,
+  already scoped under `deeplc`). The old name is still accepted but deprecated, and emits a
+  warning.
+
+### Fixed
+
+- Removed stale `ms2_tolerance` option from the default `ms2pip` feature generator configuration,
+  schema, and example configs. Fragment tolerance is configured centrally via the top-level
+  `tolerance_value`/`tolerance_mode` options; `MS2PIPFeatureGenerator` no longer accepts
+  `ms2_tolerance`.
+- Documented `model_dir` (`ms2pip` feature generator) in the configuration schema; it already
+  worked but was missing from the schema.
+- Corrected the configuration schema's default for `im2deep`'s `reference_dataset`, which
+  incorrectly claimed `"Meier_unimod.parquet"`. The actual default falls through to IM2Deep's own
+  bundled reference dataset.
+
 ## [4.0.0] - 2026-07-17
 
 ### Added
