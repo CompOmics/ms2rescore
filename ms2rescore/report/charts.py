@@ -39,42 +39,42 @@ _COLORWAY = list(FEATURE_GENERATOR_COLORS.values())
 # Shared Plotly template giving every chart the same typographic and grid style as the report.
 _TEMPLATE = go.layout.Template(
     layout=go.Layout(
-        font=dict(family="Lato, sans-serif", size=13, color="#2b2b2b"),
-        title=dict(
-            font=dict(family="Oswald, sans-serif", size=18, color="#1a1a2e"),
-            x=0.02,
-            xanchor="left",
-        ),
+        font={"family": "Lato, sans-serif", "size": 13, "color": "#2b2b2b"},
+        title={
+            "font": {"family": "Oswald, sans-serif", "size": 18, "color": "#1a1a2e"},
+            "x": 0.02,
+            "xanchor": "left",
+        },
         paper_bgcolor="white",
         plot_bgcolor="white",
         colorway=_COLORWAY,
-        margin=dict(l=60, r=30, t=60, b=50),
-        xaxis=dict(
-            gridcolor="#ececec",
-            zeroline=False,
-            showline=True,
-            linecolor="#cfcfcf",
-            ticks="outside",
-            tickcolor="#cfcfcf",
-            ticklen=4,
-            automargin=True,
-        ),
-        yaxis=dict(
-            gridcolor="#ececec",
-            zeroline=False,
-            showline=True,
-            linecolor="#cfcfcf",
-            ticks="outside",
-            tickcolor="#cfcfcf",
-            ticklen=4,
-            automargin=True,
-        ),
-        legend=dict(
-            bgcolor="rgba(255, 255, 255, 0.7)",
-            bordercolor="#e0e0e0",
-            borderwidth=1,
-        ),
-        hoverlabel=dict(font=dict(family="Lato, sans-serif", size=12), bordercolor="white"),
+        margin={"l": 60, "r": 30, "t": 60, "b": 50},
+        xaxis={
+            "gridcolor": "#ececec",
+            "zeroline": False,
+            "showline": True,
+            "linecolor": "#cfcfcf",
+            "ticks": "outside",
+            "tickcolor": "#cfcfcf",
+            "ticklen": 4,
+            "automargin": True,
+        },
+        yaxis={
+            "gridcolor": "#ececec",
+            "zeroline": False,
+            "showline": True,
+            "linecolor": "#cfcfcf",
+            "ticks": "outside",
+            "tickcolor": "#cfcfcf",
+            "ticklen": 4,
+            "automargin": True,
+        },
+        legend={
+            "bgcolor": "rgba(255, 255, 255, 0.7)",
+            "bordercolor": "#e0e0e0",
+            "borderwidth": 1,
+        },
+        hoverlabel={"font": {"family": "Lato, sans-serif", "size": 12}, "bordercolor": "white"},
     )
 )
 
@@ -205,7 +205,7 @@ def pp_plot(psms: PSMList | pd.DataFrame) -> go.Figure:
             x=decoy_ecdf,
             y=target_ecdf,
             mode="markers",
-            marker=dict(color=_COLOR_TARGET),
+            marker={"color": _COLOR_TARGET},
         )
     )
     fig.add_trace(
@@ -423,8 +423,8 @@ def calculate_feature_qvalues(
         Long-form data frame with ECDF AUC for each feature.
 
     """
-    feature_qvalues = dict()
-    feature_ecdf_auc = dict()
+    feature_qvalues = {}
+    feature_ecdf_auc = {}
     for fname in features:
         # Calculate q-values for reversed and non-reversed scores
         q_values = []
@@ -548,7 +548,7 @@ def rt_scatter(
         x=[min(df[observed_column]), max(df[observed_column])],
         y=[min(df[observed_column]), max(df[observed_column])],
         mode="lines",
-        line=dict(color=_COLOR_REFERENCE, width=2, dash="dash"),
+        line={"color": _COLOR_REFERENCE, "width": 2, "dash": "dash"},
     )
 
     # Hide legend
@@ -920,7 +920,7 @@ def identification_overlap(
                     orientation="h",
                     width=0.4,
                     name=item,
-                    showlegend=True if i == 0 else False,
+                    showlegend=i == 0,
                 ),
                 row=i + 1,
                 col=1,

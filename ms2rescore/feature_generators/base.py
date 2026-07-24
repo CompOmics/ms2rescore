@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 from psm_utils import PSMList
 
@@ -9,7 +10,7 @@ class FeatureGeneratorBase(ABC):
     """Base class from which all feature generators must inherit."""
 
     # List of required MS data types for feature generation
-    required_ms_data: set[MSDataType] = set()
+    required_ms_data: ClassVar[set[MSDataType]] = set()
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__()

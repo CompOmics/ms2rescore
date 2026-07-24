@@ -4,6 +4,7 @@ MS2-based feature generator.
 """
 
 import logging
+from typing import ClassVar
 
 from ms2rescore_rs import score_ms2_spectra
 from psm_utils import PSMList
@@ -25,7 +26,7 @@ ACTIVE_SERIES = {
 class MS2FeatureGenerator(FeatureGeneratorBase):
     """MS2 spectrum-based feature generator."""
 
-    required_ms_data = {MSDataType.ms2_spectra}
+    required_ms_data: ClassVar[set[MSDataType]] = {MSDataType.ms2_spectra}
 
     def __init__(
         self,

@@ -97,13 +97,13 @@ def parse_psms(config: dict, psm_list: PSMList | None) -> PSMList:
 
     # Rename and add modifications
     logger.debug("Parsing modifications...")
-    modifications_found = set(
-        [
+    modifications_found = {
+        
             re.search(r"\[([^\[\]]*)\]", x.proforma).group(1)
             for x in psm_list["peptidoform"]
             if "[" in x.proforma
-        ]
-    )
+        
+    }
     logger.debug(f"Found modifications: {modifications_found}")
     non_mapped_modifications = modifications_found - set(config["modification_mapping"].keys())
     if non_mapped_modifications:

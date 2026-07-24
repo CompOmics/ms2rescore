@@ -54,11 +54,11 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
             )
 
     # Define feature names; get existing feature names from PSM file
-    feature_names = dict()
+    feature_names = {}
     psm_list_feature_names = {
         feature_name
         for psm_list_features in psm_list["rescoring_features"]
-        for feature_name in psm_list_features.keys()
+        for feature_name in psm_list_features
     }
     feature_names["psm_file"] = psm_list_feature_names
     logger.debug(
@@ -80,7 +80,7 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
     # Add missing precursor info from spectrum file if needed
     required_ms_data = {
         ms_data
-        for fgen_name in config["feature_generators"].keys()
+        for fgen_name in config["feature_generators"]
         if fgen_name not in skip_fgens
         for ms_data in FEATURE_GENERATORS[fgen_name].required_ms_data
     }

@@ -148,7 +148,7 @@ def parse_configurations(configurations: list[dict | str | Path | Namespace]) ->
             continue
         if isinstance(config, dict):
             cascade_conf.add_dict(config)
-        elif isinstance(config, str) or isinstance(config, Path):
+        elif isinstance(config, (str, Path)):
             if Path(config).suffix.lower() == ".json":
                 cascade_conf.add_json(config)
             elif Path(config).suffix.lower() == ".toml":

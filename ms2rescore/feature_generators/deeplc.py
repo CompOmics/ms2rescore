@@ -17,7 +17,7 @@ If you use DeepLC through MS²Rescore, please cite:
 
 import logging
 import warnings
-from typing import Optional
+from typing import ClassVar
 
 import numpy as np
 from deeplc.calibration import SplineTransformerCalibration
@@ -40,7 +40,7 @@ logging.getLogger("onnx2torch").setLevel(logging.WARNING)
 class DeepLCFeatureGenerator(FeatureGeneratorBase):
     """DeepLC retention time-based feature generator."""
 
-    required_ms_data = {MSDataType.retention_time}
+    required_ms_data: ClassVar[set[MSDataType]] = {MSDataType.retention_time}
 
     # Flat kwargs forwarded to DeepLC's `predict()` and `finetune()`, keyed by which call(s) each
     # applies to. `device` and `batch_size` apply to both. getfullargspec(predict).args does not
@@ -61,7 +61,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         *args,
         calibration_set_size: float | None = None,
         processes: int = 1,
-        finetune: Optional[bool] = None,
+        finetune: bool | None = None,
         **kwargs,
     ) -> None:
         """

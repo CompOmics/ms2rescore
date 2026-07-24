@@ -10,6 +10,7 @@ acid residues in the peptide. See
 
 import logging
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -28,12 +29,12 @@ logger = logging.getLogger(__name__)
 class IM2DeepFeatureGenerator(FeatureGeneratorBase):
     """IM2Deep collision cross section feature generator."""
 
-    required_ms_data = {MSDataType.ion_mobility}
+    required_ms_data: ClassVar[set[MSDataType]] = {MSDataType.ion_mobility}
 
     def __init__(
         self,
         multi: bool = False,
-        calibration_set_size: float = None,
+        calibration_set_size: float | None = None,
         *args,
         processes: int = 1,
         **kwargs,

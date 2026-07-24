@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 
 import click
@@ -57,7 +58,7 @@ def main(psm_file, output, fdr):
 
     except Exception as e:
         logger.exception(e)
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
