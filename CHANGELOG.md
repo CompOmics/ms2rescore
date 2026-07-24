@@ -5,13 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.0.1] - 2026-07-24
 
 ### Changed
 
 - `deeplc` feature generator: `deeplc_retrain` option renamed to `finetune` (redundant naming,
   already scoped under `deeplc`). The old name is still accepted but deprecated, and emits a
   warning.
+- Docs: Extend docs with migration guide; add more details to CONTRIBUTING.rst; update changelog
+  with past releases; consolidate v4.0.0 alpha and stable release changelogs.
+- Dependencies: Bump DeepLC dependency to stable v4.0.0; rely on uv.lock for installer versions
+  instead of explicitly duplicated pins.
 
 ### Fixed
 
@@ -24,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected the configuration schema's default for `im2deep`'s `reference_dataset`, which
   incorrectly claimed `"Meier_unimod.parquet"`. The actual default falls through to IM2Deep's own
   bundled reference dataset.
+- FixReadTheDocs build by removing placeholder link that was being interpreted as cross-reference.
 
 ## [4.0.0] - 2026-07-17
 

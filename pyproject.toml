@@ -1,6 +1,6 @@
 [project]
 name = "ms2rescore"
-version = "4.0.0"
+version = "4.0.1"
 description = " Modular and user-friendly platform for AI-assisted rescoring of peptide identifications."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -70,11 +70,7 @@ docs = [
     "sphinx-autobuild",
 ]
 nb = ["ipykernel", "ipywidgets", "plotly"]
-installer = [
-    "cbor2",
-    "pyinstaller",
-    "pyopenms==3.5",
-]
+installer = ["cbor2", "pyinstaller", "pyopenms==3.5"]
 
 [project.urls]
 GitHub = "https://github.com/compomics/ms2rescore"
