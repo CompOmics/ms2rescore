@@ -4,11 +4,9 @@ import importlib.resources
 import json
 import multiprocessing as mp
 import re
+import tomllib
 from argparse import Namespace
 from pathlib import Path
-from typing import Dict, List, Union
-
-import tomllib
 
 from cascade_config import CascadeConfig
 
@@ -36,7 +34,7 @@ def _parse_output_path(configured_path, psm_file_path):
         return (Path(psm_file_path).parent / psm_file_stem).as_posix()
 
 
-def _validate_filenames(config: Dict) -> Dict:
+def _validate_filenames(config: dict) -> dict:
     """Validate and infer input/output filenames."""
     # psm_file should be provided
     if not config["ms2rescore"]["psm_file"]:
@@ -74,7 +72,7 @@ def _validate_filenames(config: Dict) -> Dict:
     return config
 
 
-def _validate_processes(config: Dict) -> Dict:
+def _validate_processes(config: dict) -> dict:
     """Validate requested processes with available cpu count."""
     n_available = mp.cpu_count()
     if (config["ms2rescore"]["processes"] == -1) or (
@@ -84,7 +82,7 @@ def _validate_processes(config: Dict) -> Dict:
     return config
 
 
-def _validate_regular_expressions(config: Dict) -> Dict:
+def _validate_regular_expressions(config: dict) -> dict:
     """Validate regular expressions in configuration."""
     for field in [
         "psm_id_pattern",
@@ -113,7 +111,7 @@ def _validate_regular_expressions(config: Dict) -> Dict:
     return config
 
 
-def parse_configurations(configurations: List[Union[dict, str, Path, Namespace]]) -> Dict:
+def parse_configurations(configurations: list[dict | str | Path | Namespace]) -> dict:
     """
     Parse and validate MS²Rescore configuration files and CLI arguments.
 

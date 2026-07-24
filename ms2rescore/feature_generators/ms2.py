@@ -4,10 +4,9 @@ MS2-based feature generator.
 """
 
 import logging
-from typing import List
 
-from psm_utils import PSMList
 from ms2rescore_rs import score_ms2_spectra
+from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
@@ -54,7 +53,7 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         self.fragmentation_model = fragmentation_model.lower()
 
     @property
-    def feature_names(self) -> List[str]:
+    def feature_names(self) -> list[str]:
         return [
             "ln_explained_intensity",
             "ln_total_intensity",

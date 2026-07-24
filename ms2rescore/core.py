@@ -1,7 +1,6 @@
 import json
 import logging
 from multiprocessing import cpu_count
-from typing import Dict, Optional
 
 import psm_utils.io
 from psm_utils import PSMList
@@ -16,7 +15,7 @@ from ms2rescore.report.data import ReportData
 logger = logging.getLogger(__name__)
 
 
-def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
+def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
     """
     Run full MS²Rescore workflow with passed configuration.
 
@@ -277,5 +276,4 @@ def _write_feature_names(feature_names, output_file_root):
     with open(output_file_root + ".feature_names.tsv", "w") as f:
         f.write("feature_generator\tfeature_name\n")
         for fgen, fgen_features in feature_names.items():
-            for feature in fgen_features:
-                f.write(f"{fgen}\t{feature}\n")
+            f.writelines(f"{fgen}\t{feature}\n" for feature in fgen_features)

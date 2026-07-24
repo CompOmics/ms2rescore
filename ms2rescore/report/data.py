@@ -5,7 +5,6 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 import psm_utils
@@ -58,23 +57,23 @@ class ReportData:
     """
 
     psm_df: pd.DataFrame
-    feature_names: Dict[str, List[str]]
+    feature_names: dict[str, list[str]]
     before: RescoreResult
     after: RescoreResult
     config: dict = field(default_factory=lambda: {"ms2rescore": {}})
-    feature_weights: Optional[pd.DataFrame] = None
-    id_stats: List[dict] = field(default_factory=list)
-    log_html: Optional[str] = None
+    feature_weights: pd.DataFrame | None = None
+    id_stats: list[dict] = field(default_factory=list)
+    log_html: str | None = None
     fdr_threshold: float = 0.01
 
     @classmethod
     def from_run(
         cls,
         psm_list: psm_utils.PSMList,
-        feature_names: Optional[Dict[str, set]] = None,
-        config: Optional[dict] = None,
-        before: Optional[RescoreResult] = None,
-        after: Optional[RescoreResult] = None,
+        feature_names: dict[str, set] | None = None,
+        config: dict | None = None,
+        before: RescoreResult | None = None,
+        after: RescoreResult | None = None,
         fdr_threshold: float = 0.01,
     ) -> "ReportData":
         """Build report data from an in-memory MS²Rescore run."""
@@ -94,7 +93,7 @@ class ReportData:
 
     @classmethod
     def from_files(
-        cls, output_path_prefix: str, fdr_threshold: Optional[float] = None
+        cls, output_path_prefix: str, fdr_threshold: float | None = None
     ) -> "ReportData":
         """
         Build report data by reading the files written by a previous run.
@@ -141,14 +140,14 @@ class ReportData:
         )
 
 
-def _normalize_feature_names(feature_names: Optional[Dict[str, set]]) -> Dict[str, List[str]]:
+def _normalize_feature_names(feature_names: dict[str, set] | None) -> dict[str, list[str]]:
     """Convert a generator -> feature-name mapping to plain lists, dropping empties."""
     if not feature_names:
         return {}
     return {gen: list(features) for gen, features in feature_names.items() if features}
 
 
-def _infer_feature_names(psm_df: pd.DataFrame) -> Dict[str, List[str]]:
+def _infer_feature_names(psm_df: pd.DataFrame) -> dict[str, list[str]]:
     """Infer the generator -> feature-name mapping from the PSM dataframe columns."""
     feature_columns = [col for col in psm_df.columns if col not in _NON_FEATURE_COLUMNS]
     if not feature_columns:
@@ -169,7 +168,7 @@ def _infer_feature_names(psm_df: pd.DataFrame) -> Dict[str, List[str]]:
     return dict(feature_names)
 
 
-def _read_feature_names_or_infer(path: Path, psm_df: pd.DataFrame) -> Dict[str, List[str]]:
+def _read_feature_names_or_infer(path: Path, psm_df: pd.DataFrame) -> dict[str, list[str]]:
     """Read feature names from file, falling back to inference from the dataframe."""
     feature_names = read_feature_names(path)
     if feature_names:

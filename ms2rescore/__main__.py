@@ -8,7 +8,6 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Union
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -164,7 +163,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _setup_logging(passed_level: str, log_file: Union[str, Path]):
+def _setup_logging(passed_level: str, log_file: str | Path):
     """Setup logging for writing to log file and Rich Console."""
     if passed_level not in LOG_MAPPING:
         raise MS2RescoreConfigurationError(

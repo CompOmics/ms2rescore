@@ -2,7 +2,6 @@
 
 import random
 import tkinter as tk
-from typing import Union
 
 import customtkinter as ctk
 
@@ -147,8 +146,8 @@ class FloatSpinbox(ctk.CTkFrame):
     def __init__(
         self,
         *args,
-        step_size: Union[int, float] = 1,
-        initial_value: Union[int, float] = 0.0,
+        step_size: float = 1,
+        initial_value: float = 0.0,
         str_format: str = ".2f",
         width=110,
         height=32,
@@ -193,7 +192,7 @@ class FloatSpinbox(ctk.CTkFrame):
             self.entry.delete(0, "end")
             self.entry.insert(0, format(value, self.str_format))
         except ValueError:
-            return None
+            return
 
     def subtract_button_callback(self):
         try:
@@ -201,9 +200,9 @@ class FloatSpinbox(ctk.CTkFrame):
             self.entry.delete(0, "end")
             self.entry.insert(0, format(value, self.str_format))
         except ValueError:
-            return None
+            return
 
-    def get(self) -> Union[float, None]:
+    def get(self) -> float | None:
         try:
             return float(self.entry.get())
         except ValueError:

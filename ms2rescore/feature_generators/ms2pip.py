@@ -29,7 +29,6 @@ If you use MS²PIP through MS²Rescore, please cite:
 """
 
 import logging
-from typing import Optional
 
 from ms2pip import correlate
 from ms2rescore_rs import (
@@ -54,7 +53,7 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
         self,
         *args,
         model: str = "HCD",
-        model_dir: Optional[str] = None,
+        model_dir: str | None = None,
         processes: int = 1,
         **kwargs,
     ) -> None:

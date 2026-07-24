@@ -8,7 +8,7 @@ import platform
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import customtkinter as ctk
 from joblib import parallel_backend
@@ -18,13 +18,13 @@ from psm_utils.io import FILETYPES
 from rich.console import Console
 from rich.logging import RichHandler
 
-import ms2rescore.gui.widgets as widgets
 import ms2rescore.package_data.img as pkg_data_img
 from ms2rescore import __version__ as ms2rescore_version
 from ms2rescore._version import check_for_update
 from ms2rescore.config_parser import parse_configurations
 from ms2rescore.core import rescore
 from ms2rescore.exceptions import MS2RescoreConfigurationError
+from ms2rescore.gui import widgets
 from ms2rescore.gui.function2ctk import Function2CTk, PopupWindow
 
 _IMG_DIR = Path(str(importlib.resources.files(pkg_data_img)))
@@ -134,7 +134,7 @@ class SideBar(ctk.CTkFrame):
 
 
 class LinkFrame(ctk.CTkFrame):
-    def __init__(self, master, links: List[Tuple[str, str, str]], *args, **kwargs):
+    def __init__(self, master, links: list[tuple[str, str, str]], *args, **kwargs):
         super().__init__(master, *args, **kwargs)
         self.heading = ctk.CTkLabel(
             self, text="Useful links", font=ctk.CTkFont(weight="bold"), anchor="w"
@@ -160,7 +160,7 @@ class LinkFrame(ctk.CTkFrame):
 
 
 class CitationFrame(ctk.CTkFrame):
-    def __init__(self, master, citations: List[Tuple[str]], *args, **kwargs):
+    def __init__(self, master, citations: list[tuple[str]], *args, **kwargs):
         super().__init__(master, *args, **kwargs)
         self.heading = ctk.CTkLabel(
             self, text="Please cite", font=ctk.CTkFont(weight="bold"), anchor="w"
@@ -310,7 +310,7 @@ class MainConfiguration(ctk.CTkFrame):
         self.fixed_modifications.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
         row_n += 1
 
-    def get(self) -> Dict:
+    def get(self) -> dict:
         """Get the configured values as a dictionary."""
         try:
             # there cannot be spaces in the file path
@@ -463,7 +463,7 @@ class AdvancedConfiguration(ctk.CTkFrame):
         )
         self.config_file.grid(row=8, column=0, columnspan=2, sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> dict:
         """Get the configured values as a dictionary."""
         return {
             "rename_to_usi": self.usi.get(),
@@ -498,7 +498,7 @@ class FeatureGeneratorConfig(ctk.CTkFrame):
         self.im2deep_config = Im2DeepConfiguration(self)
         self.im2deep_config.grid(row=3, column=0, pady=(0, 20), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> dict:
         """Return the configuration as a dictionary."""
         basic_enabled, basic_config = self.basic_config.get()
         ms2pip_enabled, ms2pip_config, annotation_config = self.ms2pip_config.get()
@@ -532,7 +532,7 @@ class BasicFeatureConfiguration(ctk.CTkFrame):
         self.enabled = widgets.LabeledSwitch(self, label="Enable Basic features", default=True)
         self.enabled.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> dict:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
         config = {}
@@ -582,7 +582,7 @@ class MS2PIPConfiguration(ctk.CTkFrame):
         )
         self.tolerance_mode.grid(row=5, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> dict:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
         feature_config = {"model": self.model.get()}
@@ -626,7 +626,7 @@ class DeepLCConfiguration(ctk.CTkFrame):
         )
         self.calibration_set_size.grid(row=4, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Dict:
+    def get(self) -> dict:
         """Return the configuration as a dictionary."""
         if self.calibration_set_size.get() == "":
             calibration_set_size = 0.15
@@ -663,10 +663,10 @@ class Im2DeepConfiguration(ctk.CTkFrame):
         self.enabled = widgets.LabeledSwitch(self, label="Enable im2deep", default=False)
         self.enabled.grid(row=1, column=0, pady=(0, 10), sticky="nsew")
 
-    def get(self) -> Tuple[bool, Dict[str, Any]]:
+    def get(self) -> tuple[bool, dict[str, Any]]:
         """Return the configuration as a dictionary."""
         enabled = self.enabled.get()
-        config: Dict[str, Any] = {}
+        config: dict[str, Any] = {}
         return enabled, config
 
 
@@ -706,7 +706,7 @@ class RescoringConfiguration(ctk.CTkFrame):
         self.model.grid(row=row_n, column=0, pady=(0, 10), sticky="nsew")
         row_n += 1
 
-    def get(self) -> Dict:
+    def get(self) -> dict:
         """Return the configuration as a dictionary."""
         train_fdr_str = self.train_fdr.get()
         if train_fdr_str == "":

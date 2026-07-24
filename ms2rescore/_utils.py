@@ -4,23 +4,22 @@ import logging
 import os
 from glob import glob
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
 from ms2rescore_rs import is_supported_file_type
 from psm_utils import PSMList
 
-from ms2rescore.exceptions import MS2RescoreConfigurationError
 from ms2rescore._ristretto_utils import _is_original_psm
+from ms2rescore.exceptions import MS2RescoreConfigurationError
 
 logger = logging.getLogger(__name__)
 
 
 def infer_spectrum_path(
-    configured_path: Union[str, Path, None],
-    run_name: Optional[str] = None,
-) -> Union[str, Path]:
+    configured_path: str | Path | None,
+    run_name: str | None = None,
+) -> str | Path:
     """
     Infer spectrum path from passed path and expected filename (e.g. from PSM file).
 

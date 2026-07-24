@@ -12,7 +12,6 @@ import logging
 import re
 from concurrent.futures import BrokenExecutor
 from dataclasses import replace
-from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -27,7 +26,7 @@ from ms2rescore.parse_psms import infer_score_direction
 logger = logging.getLogger(__name__)
 
 
-def rescore(psm_list: PSMList, config: Dict, output_file_root: str) -> Tuple[PSMList, RescoreResult]:
+def rescore(psm_list: PSMList, config: dict, output_file_root: str) -> tuple[PSMList, RescoreResult]:
     """
     Rescore PSMs with ristretto and write the new scores, q-values, and PEPs back to ``psm_list``.
 
@@ -122,7 +121,7 @@ def _write_group_metadata(
     psms: pd.DataFrame,
     rollup: pd.DataFrame,
     group_col: str,
-    decoy_pattern: Optional[str] = None,
+    decoy_pattern: str | None = None,
 ) -> None:
     """
     Write a rollup's score/qvalue/pep onto each PSM's metadata, keyed by ``group_col``.
@@ -150,10 +149,10 @@ def _write_group_metadata(
 
 def _fix_constant_pep_result(
     result: RescoreResult,
-    peptide_col: Optional[str],
-    protein_col: Optional[str],
-    decoy_pattern: Optional[str],
-) -> Tuple[RescoreResult, Optional[np.ndarray]]:
+    peptide_col: str | None,
+    protein_col: str | None,
+    decoy_pattern: str | None,
+) -> tuple[RescoreResult, np.ndarray | None]:
     """
     Detect and fix constant PEP (all 1.0) on a single ``RescoreResult``.
 
@@ -218,10 +217,10 @@ def _fix_constant_pep_result(
 def _fix_constant_pep(
     psm_list: PSMList,
     result: RescoreResult,
-    peptide_col: Optional[str] = None,
-    protein_col: Optional[str] = None,
-    decoy_pattern: Optional[str] = None,
-) -> Tuple[PSMList, RescoreResult]:
+    peptide_col: str | None = None,
+    protein_col: str | None = None,
+    decoy_pattern: str | None = None,
+) -> tuple[PSMList, RescoreResult]:
     """
     Workaround for broken PEP calculation if the best-scoring PSM is a decoy.
 

@@ -6,7 +6,7 @@ import multiprocessing
 import sys
 import tkinter as tk
 import traceback
-from typing import Callable, Union
+from collections.abc import Callable
 
 import customtkinter as ctk
 
@@ -36,7 +36,7 @@ class Function2CTk(ctk.CTk):
     def __init__(
         self,
         sidebar_frame: ctk.CTkFrame,
-        config_frame: Union[ctk.CTkTabview, ctk.CTkFrame],
+        config_frame: ctk.CTkTabview | ctk.CTkFrame,
         function: callable,
         *args,
         **kwargs,
