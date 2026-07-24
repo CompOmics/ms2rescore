@@ -71,13 +71,8 @@ docs = [
 ]
 nb = ["ipykernel", "ipywidgets", "plotly"]
 installer = [
-    # Pinned dependencies for reproducible Windows installer builds
     "cbor2",
-    "deeplc==4.0.0",
-    "im2deep==2.0.1",
-    "ms2rescore-rs==0.5.0",
     "pyinstaller",
-    "psm_utils==1.5.2",
     "pyopenms==3.5",
 ]
 

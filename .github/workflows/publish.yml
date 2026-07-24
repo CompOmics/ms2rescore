@@ -51,10 +51,10 @@ jobs:
           enable-cache: true
 
       - name: Install package and dependencies
-        run: uv sync --group installer
+        run: uv sync --group installer --locked
 
       - name: Install Inno Setup
-        uses: crazy-max/ghaction-chocolatey@v3
+        uses: crazy-max/ghaction-chocolatey@v4
         with:
           args: install innosetup -y --allow-unofficial
 
