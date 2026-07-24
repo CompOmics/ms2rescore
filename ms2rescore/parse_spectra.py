@@ -3,7 +3,6 @@
 import logging
 import re
 from enum import Enum
-from typing import Optional, Set
 
 import numpy as np
 from ms2pip._spectrum_processing import proforma_to_mass_shift
@@ -11,8 +10,8 @@ from ms2rescore_rs import MS2Spectrum, annotate_ms2_spectra, get_ms2_spectra
 from psm_utils import PSMList
 from rich.progress import track
 
-from ms2rescore.exceptions import MS2RescoreConfigurationError, MS2RescoreError
 from ms2rescore._utils import infer_spectrum_path
+from ms2rescore.exceptions import MS2RescoreConfigurationError, MS2RescoreError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ class MSDataType(str, Enum):
         return self.value
 
 
-ALL_MS_DATA_TYPES: Set[MSDataType] = {
+ALL_MS_DATA_TYPES: set[MSDataType] = {
     MSDataType.retention_time,
     MSDataType.ion_mobility,
     MSDataType.precursor_mz,
@@ -39,10 +38,10 @@ ALL_MS_DATA_TYPES: Set[MSDataType] = {
 
 def add_precursor_values(
     psm_list: PSMList,
-    required_data_types: Set[MSDataType],
-    spectrum_path: Optional[str] = None,
-    spectrum_id_pattern: Optional[str] = None,
-) -> Set[MSDataType]:
+    required_data_types: set[MSDataType],
+    spectrum_path: str | None = None,
+    spectrum_id_pattern: str | None = None,
+) -> set[MSDataType]:
     """
     Add precursor m/z, retention time, and ion mobility values to a PSM list.
 
@@ -187,7 +186,7 @@ def _acquire_observed_spectra_dict(
 
 
 def _add_precursor_values(
-    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: Optional[str] = None
+    psm_list: PSMList, spectrum_path: str, spectrum_id_pattern: str | None = None
 ) -> None:
     """Get precursor m/z, RT, and IM from spectrum files."""
     # Iterate over different runs in PSM list
@@ -270,4 +269,3 @@ def annotate_spectra(
 class SpectrumParsingError(MS2RescoreError):
     """Error while parsing spectrum file."""
 
-    pass

@@ -2,7 +2,6 @@
 
 import random
 import tkinter as tk
-from typing import Union
 
 import customtkinter as ctk
 
@@ -96,11 +95,12 @@ class LabeledRadioButtons(_LabeledWidget):
     def __init__(
         self,
         *args,
-        options=[],
+        options=None,
         default_value=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        options = options or []
         self.value = ctk.StringVar(value=default_value or options[0])
         self._radio_buttons = []
         for i, option in enumerate(options):
@@ -114,8 +114,9 @@ class LabeledRadioButtons(_LabeledWidget):
 
 
 class LabeledOptionMenu(_LabeledWidget):
-    def __init__(self, *args, vertical=False, values=[], default_value=None, **kwargs):
+    def __init__(self, *args, vertical=False, values=None, default_value=None, **kwargs):
         super().__init__(*args, **kwargs)
+        values = values or []
         self.value = ctk.StringVar(value=default_value or values[0])
         self._option_menu = ctk.CTkOptionMenu(self, variable=self.value, values=values)
         self._option_menu.grid(
@@ -147,8 +148,8 @@ class FloatSpinbox(ctk.CTkFrame):
     def __init__(
         self,
         *args,
-        step_size: Union[int, float] = 1,
-        initial_value: Union[int, float] = 0.0,
+        step_size: float = 1,
+        initial_value: float = 0.0,
         str_format: str = ".2f",
         width=110,
         height=32,
@@ -193,7 +194,7 @@ class FloatSpinbox(ctk.CTkFrame):
             self.entry.delete(0, "end")
             self.entry.insert(0, format(value, self.str_format))
         except ValueError:
-            return None
+            return
 
     def subtract_button_callback(self):
         try:
@@ -201,9 +202,9 @@ class FloatSpinbox(ctk.CTkFrame):
             self.entry.delete(0, "end")
             self.entry.insert(0, format(value, self.str_format))
         except ValueError:
-            return None
+            return
 
-    def get(self) -> Union[float, None]:
+    def get(self) -> float | None:
         try:
             return float(self.entry.get())
         except ValueError:
@@ -329,7 +330,7 @@ class TableInput(_LabeledWidget):
         self,
         *args,
         columns=2,
-        header_labels=["A", "B"],
+        header_labels=None,
         **kwargs,
     ):
         """
@@ -345,7 +346,7 @@ class TableInput(_LabeledWidget):
         """
         super().__init__(*args, **kwargs)
         self.columns = columns
-        self.header_labels = header_labels
+        self.header_labels = header_labels or ["A", "B"]
 
         self.uniform_hash = str(random.getrandbits(128))
 

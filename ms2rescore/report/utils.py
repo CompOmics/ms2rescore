@@ -4,7 +4,6 @@ import logging
 from collections import defaultdict
 from csv import DictReader
 from pathlib import Path
-from typing import List, Optional
 
 import pandas as pd
 import psm_utils
@@ -22,7 +21,7 @@ _STAT_CARD_COLORS = {
 _FDR_THRESHOLD = 0.01
 
 
-def read_feature_names(feature_names_path: Optional[Path]) -> dict:
+def read_feature_names(feature_names_path: Path | None) -> dict:
     """Read feature names and mapping with feature generator from file."""
     feature_names = defaultdict(list)
     if not feature_names_path or not feature_names_path.is_file():
@@ -52,7 +51,7 @@ def _n_identified(df: pd.DataFrame, fdr_threshold: float) -> int:
 
 def compute_protein_stats(
     before: RescoreResult, after: RescoreResult, fdr_threshold: float = _FDR_THRESHOLD
-) -> Optional[List[dict]]:
+) -> list[dict] | None:
     """
     Compare protein-group-level identifications before and after rescoring.
 
@@ -73,7 +72,7 @@ def compute_protein_stats(
 
 def compute_id_stats(
     before: RescoreResult, after: RescoreResult, fdr_threshold: float = _FDR_THRESHOLD
-) -> List[dict]:
+) -> list[dict]:
     """Build the PSM/peptide/(optional) protein overview stat cards from before/after results."""
     stats = []
 

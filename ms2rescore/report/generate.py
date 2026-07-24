@@ -3,20 +3,17 @@
 import importlib.resources
 import json
 import logging
+import tomllib
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
 from plotly.offline import get_plotlyjs_version
 from ristretto import RescoreResult
 
-import tomllib
-
 import ms2rescore
-import ms2rescore.report.charts as charts
-import ms2rescore.report.templates as templates
+from ms2rescore.report import charts, templates
 from ms2rescore.report.data import ReportData
 
 logger = logging.getLogger(__name__)
@@ -41,7 +38,7 @@ TEXTS = tomllib.loads(importlib.resources.files(templates).joinpath("texts.toml"
 def generate_report(
     output_path_prefix: str,
     data: ReportData,
-    output_file: Optional[Path] = None,
+    output_file: Path | None = None,
 ):
     """
     Generate the HTML report from an in-memory :py:class:`~ms2rescore.report.data.ReportData`.
@@ -64,7 +61,7 @@ def generate_report(
     context = {
         "plotlyjs_version": get_plotlyjs_version(),
         "metadata": {
-            "generated_on": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "generated_on": datetime.now().astimezone().strftime("%d/%m/%Y %H:%M:%S"),
             "ms2rescore_version": ms2rescore.__version__,
             "psm_filename": _get_psm_filenames(data),
         },
@@ -178,7 +175,7 @@ def _get_target_decoy_context(psm_df: pd.DataFrame, fdr_threshold: float) -> dic
 def _get_features_context(
     psm_df: pd.DataFrame,
     feature_names: dict,
-    feature_weights: Optional[pd.DataFrame],
+    feature_weights: pd.DataFrame | None,
     is_decoy: pd.Series,
     fdr_threshold: float,
 ) -> dict:
@@ -233,13 +230,13 @@ def _get_features_context(
             _add_deeplc_chart(
                 context, high_conf_features, fdr_threshold, color=color_map.get("deeplc")
             )
-        except Exception as e:
-            logger.warning("Could not generate DeepLC performance plot: %s", e)
+        except Exception:
+            logger.exception("Could not generate DeepLC performance plot")
     if "im2deep" in feature_names:
         try:
             _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
-        except Exception as e:
-            logger.warning("Could not generate IM2Deep performance plot: %s", e)
+        except Exception:
+            logger.exception("Could not generate IM2Deep performance plot")
 
     return context
 
@@ -264,8 +261,8 @@ def _add_feature_weights_chart(context, feature_weights, feature_names_inv, colo
                 ),
             }
         )
-    except Exception as e:
-        logger.warning("Could not generate feature weights plot: %s", e)
+    except Exception:
+        logger.exception("Could not generate feature weights plot")
 
 
 def _add_deeplc_chart(context, high_conf_features, fdr_threshold, color=None):
@@ -322,7 +319,7 @@ def _get_config_context(config: dict) -> dict:
     }
 
 
-def _get_log_context(output_path_prefix: str, log_html: Optional[str]) -> dict:
+def _get_log_context(output_path_prefix: str, log_html: str | None) -> dict:
     """Return context for the log tab, reading the log file when not provided in memory."""
     if log_html is not None:
         return {"log": log_html}
@@ -339,7 +336,7 @@ def _get_log_context(output_path_prefix: str, log_html: Optional[str]) -> dict:
     return {"log": "<i>Log file could not be found.</i>"}
 
 
-def _render_and_write(output_path_prefix: str, output_file: Optional[Path] = None, **context):
+def _render_and_write(output_path_prefix: str, output_file: Path | None = None, **context):
     """Render the base template with context and write it to the HTML report file."""
     if output_file:
         report_path = Path(output_file).resolve()

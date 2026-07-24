@@ -8,14 +8,12 @@ back to reading ``pyproject.toml`` from the repository root (PEP 621: ``[project
 import importlib.metadata
 import json
 import logging
+import tomllib as toml
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from packaging.version import Version
-
-import tomllib as toml
 
 from ms2rescore.exceptions import MS2RescoreError
 
@@ -28,17 +26,16 @@ _GITHUB_TIMEOUT_SECONDS = 2.5
 class UpdateCheckError(MS2RescoreError):
     """An error occurred while checking for software updates."""
 
-    pass
 
 
-def _version_from_metadata() -> Optional[Version]:
+def _version_from_metadata() -> Version | None:
     try:
         return Version(importlib.metadata.version("ms2rescore"))
     except importlib.metadata.PackageNotFoundError:
         return None
 
 
-def _version_from_pyproject() -> Optional[Version]:
+def _version_from_pyproject() -> Version | None:
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     if not pyproject.is_file():
         return None
@@ -56,7 +53,7 @@ def _version_from_pyproject() -> Optional[Version]:
     return None
 
 
-def _get_latest_version(timeout_seconds: float) -> Tuple[Version, Optional[str]]:
+def _get_latest_version(timeout_seconds: float) -> tuple[Version, str | None]:
     """Check GitHub latest release and return the version string."""
     # Prepare GitHub API request
     url = f"https://api.github.com/repos/{_GITHUB_REPO}/releases/latest"
@@ -95,13 +92,13 @@ def get_version() -> str:
 
 
 def check_for_update(
-    timeout_seconds: Optional[float] = None,
-) -> Dict[str, Optional[Union[str, bool]]]:
+    timeout_seconds: float | None = None,
+) -> dict[str, str | bool | None]:
     """Check GitHub latest release and report whether an update exists."""
     timeout_seconds = timeout_seconds or _GITHUB_TIMEOUT_SECONDS
 
     # Initialize result dictionary
-    result: Dict[str, Optional[Union[str, bool]]] = {
+    result: dict[str, str | bool | None] = {
         "update_available": False,
         "current_version": None,
         "latest_version": None,
@@ -128,5 +125,6 @@ def check_for_update(
         result["update_available"] = latest_version > current_version
     except Exception:
         # If current_version can't be parsed, don't treat as updateable
+        LOGGER.exception("Update check failed")
         result["update_available"] = False
     return result

@@ -27,8 +27,8 @@ filterwarnings(
     module="pyopenms",
 )
 
-from ms2rescore._version import get_version  # noqa: E402
-from ms2rescore.config_parser import parse_configurations  # noqa: E402
-from ms2rescore.core import rescore  # noqa: E402
+from ms2rescore._version import get_version
+from ms2rescore.config_parser import parse_configurations
+from ms2rescore.core import rescore
 
 __version__ = get_version()

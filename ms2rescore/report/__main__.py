@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 
 import click
@@ -55,9 +56,9 @@ def main(psm_file, output, fdr):
 
         logger.info(f"✓ Report generated: {output_path}")
 
-    except Exception as e:
-        logger.exception(e)
-        exit(1)
+    except Exception:
+        logger.exception("Report generation failed")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,6 @@ rerunning rescoring).
 """
 
 import logging
-from typing import Dict, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def _build_features_dataframe(
     psm_list: PSMList,
-    feature_names: Set[str],
+    feature_names: set[str],
     lower_score_is_better: bool,
 ) -> pd.DataFrame:
     """
@@ -71,9 +70,9 @@ def _trim_and_evaluate(
     max_rank: int,
     *,
     run_col: str,
-    peptide_col: Optional[str],
-    protein_col: Optional[str],
-    decoy_pattern: Optional[str],
+    peptide_col: str | None,
+    protein_col: str | None,
+    decoy_pattern: str | None,
 ) -> RescoreResult:
     """
     Compete to at most ``max_rank`` PSMs per spectrum, then compute q-values/PEP/rollups.
@@ -128,7 +127,7 @@ def _is_original_psm(psm) -> bool:
     return bool(value)
 
 
-def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
+def evaluate_before(psm_list: PSMList, config: dict) -> RescoreResult:
     """
     Evaluate the PSMs' current (pre-rescoring) score with ristretto, for report baselines.
 
@@ -159,7 +158,7 @@ def evaluate_before(psm_list: PSMList, config: Dict) -> RescoreResult:
     )
 
 
-def evaluate_before_from_provenance(psm_list: PSMList, config: Dict) -> RescoreResult:
+def evaluate_before_from_provenance(psm_list: PSMList, config: dict) -> RescoreResult:
     """
     Rebuild the "before" ``RescoreResult`` for standalone report regeneration.
 
@@ -181,7 +180,7 @@ def evaluate_before_from_provenance(psm_list: PSMList, config: Dict) -> RescoreR
     return evaluate_before(psm_list, config)
 
 
-def evaluate_after_from_psm_list(psm_list: PSMList, config: Dict) -> RescoreResult:
+def evaluate_after_from_psm_list(psm_list: PSMList, config: dict) -> RescoreResult:
     """
     Rebuild the "after" ``RescoreResult`` for standalone report regeneration.
 

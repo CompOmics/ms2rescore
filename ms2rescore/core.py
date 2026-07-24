@@ -1,7 +1,6 @@
 import json
 import logging
 from multiprocessing import cpu_count
-from typing import Dict, Optional
 
 import psm_utils.io
 from psm_utils import PSMList
@@ -16,7 +15,7 @@ from ms2rescore.report.data import ReportData
 logger = logging.getLogger(__name__)
 
 
-def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
+def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
     """
     Run full MS²Rescore workflow with passed configuration.
 
@@ -55,11 +54,11 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
             )
 
     # Define feature names; get existing feature names from PSM file
-    feature_names = dict()
+    feature_names = {}
     psm_list_feature_names = {
         feature_name
         for psm_list_features in psm_list["rescoring_features"]
-        for feature_name in psm_list_features.keys()
+        for feature_name in psm_list_features
     }
     feature_names["psm_file"] = psm_list_feature_names
     logger.debug(
@@ -81,7 +80,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
     # Add missing precursor info from spectrum file if needed
     required_ms_data = {
         ms_data
-        for fgen_name in config["feature_generators"].keys()
+        for fgen_name in config["feature_generators"]
         if fgen_name not in skip_fgens
         for ms_data in FEATURE_GENERATORS[fgen_name].required_ms_data
     }
@@ -208,7 +207,7 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
 
     # Rename PSMs to USIs if requested, reusing the lookup built above
     if config["rename_to_usi"]:
-        logging.debug(f"Creating USIs for {len(psm_list)} PSMs")
+        logger.debug(f"Creating USIs for {len(psm_list)} PSMs")
         psm_list["spectrum_id"] = [usi_by_native_id[(psm.run, psm.spectrum_id)] for psm in psm_list]
 
     # Rescore PSMs
@@ -268,8 +267,8 @@ def rescore(configuration: Dict, psm_list: Optional[PSMList] = None) -> None:
                 fdr_threshold=config["report_fdr"],
             )
             generate.generate_report(output_file_root, report_data)
-        except exceptions.ReportGenerationError as e:
-            logger.exception(e)
+        except exceptions.ReportGenerationError:
+            logger.exception("Report generation failed")
 
 
 def _write_feature_names(feature_names, output_file_root):
@@ -277,5 +276,4 @@ def _write_feature_names(feature_names, output_file_root):
     with open(output_file_root + ".feature_names.tsv", "w") as f:
         f.write("feature_generator\tfeature_name\n")
         for fgen, fgen_features in feature_names.items():
-            for feature in fgen_features:
-                f.write(f"{fgen}\t{feature}\n")
+            f.writelines(f"{fgen}\t{feature}\n" for feature in fgen_features)

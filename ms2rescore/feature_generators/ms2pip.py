@@ -29,7 +29,7 @@ If you use MS²PIP through MS²Rescore, please cite:
 """
 
 import logging
-from typing import Optional
+from typing import ClassVar
 
 from ms2pip import correlate
 from ms2rescore_rs import (
@@ -48,13 +48,13 @@ logger = logging.getLogger(__name__)
 class MS2PIPFeatureGenerator(FeatureGeneratorBase):
     """Generate MS²PIP-based features from spectra preloaded on the input PSMs."""
 
-    required_ms_data = {MSDataType.ms2_spectra}
+    required_ms_data: ClassVar[set[MSDataType]] = {MSDataType.ms2_spectra}
 
     def __init__(
         self,
         *args,
         model: str = "HCD",
-        model_dir: Optional[str] = None,
+        model_dir: str | None = None,
         processes: int = 1,
         **kwargs,
     ) -> None:

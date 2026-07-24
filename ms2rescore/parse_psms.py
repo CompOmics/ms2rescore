@@ -1,6 +1,5 @@
 import logging
 import re
-from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -13,7 +12,7 @@ from ms2rescore.exceptions import MS2RescoreConfigurationError
 logger = logging.getLogger(__name__)
 
 
-def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
+def parse_psms(config: dict, psm_list: PSMList | None) -> PSMList:
     """
     Parse PSMs and prepare for rescoring.
 
@@ -98,13 +97,13 @@ def parse_psms(config: Dict, psm_list: Union[PSMList, None]) -> PSMList:
 
     # Rename and add modifications
     logger.debug("Parsing modifications...")
-    modifications_found = set(
-        [
+    modifications_found = {
+        
             re.search(r"\[([^\[\]]*)\]", x.proforma).group(1)
             for x in psm_list["peptidoform"]
             if "[" in x.proforma
-        ]
-    )
+        
+    }
     logger.debug(f"Found modifications: {modifications_found}")
     non_mapped_modifications = modifications_found - set(config["modification_mapping"].keys())
     if non_mapped_modifications:
@@ -238,7 +237,7 @@ def infer_score_direction(psm_list: PSMList, train_fdr: float = 0.01) -> bool:
     return lower_score_is_better
 
 
-def _find_decoys(psm_list: PSMList, id_decoy_pattern: Optional[str] = None):
+def _find_decoys(psm_list: PSMList, id_decoy_pattern: str | None = None):
     """Find decoys in PSMs, log amount, and raise error if none found."""
     logger.debug("Finding decoys...")
     if id_decoy_pattern:
@@ -278,8 +277,8 @@ def _match_psm_ids(old_id, regex_pattern):
 
 def _parse_values_from_spectrum_id(
     psm_list: PSMList,
-    psm_id_rt_pattern: Optional[str] = None,
-    psm_id_im_pattern: Optional[str] = None,
+    psm_id_rt_pattern: str | None = None,
+    psm_id_im_pattern: str | None = None,
 ):
     """Parse retention time and or ion mobility values from the spectrum_id."""
     for pattern, label, key in zip(

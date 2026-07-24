@@ -8,7 +8,6 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Union
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -23,7 +22,7 @@ from ms2rescore.exceptions import MS2RescoreConfigurationError
 try:
     import matplotlib.pyplot as plt
 
-    plt.set_loglevel("warning")
+    plt.set_loglevel("WARNING")
 except ImportError:
     pass
 
@@ -164,7 +163,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _setup_logging(passed_level: str, log_file: Union[str, Path]):
+def _setup_logging(passed_level: str, log_file: str | Path):
     """Setup logging for writing to log file and Rich Console."""
     if passed_level not in LOG_MAPPING:
         raise MS2RescoreConfigurationError(
@@ -190,7 +189,7 @@ def profile(fnc, filepath):
             return_value = fnc(*args, **kwargs)
 
         # Add timestamp to profiler output filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
         profile_filename = f"{filepath}.profile_{timestamp}.prof"
         profiler.dump_stats(profile_filename)
         LOGGER.info(f"Profile data written to: {profile_filename}")
@@ -255,8 +254,8 @@ def main(tims=False):
             profiled_rescore(configuration=config)
         else:
             rescore(configuration=config)
-    except Exception as e:
-        LOGGER.exception(e)
+    except Exception:
+        LOGGER.exception("Unhandled error during rescoring")
         sys.exit(1)
     finally:
         CONSOLE.save_html(config["ms2rescore"]["output_path"] + ".log.html")

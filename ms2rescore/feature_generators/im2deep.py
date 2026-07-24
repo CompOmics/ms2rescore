@@ -9,19 +9,19 @@ acid residues in the peptide. See
 """
 
 import logging
-from typing import List, Union
+from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from im2deep.calibration import LinearCCSCalibration, get_default_reference
 from im2deep.core import predict
 from im2deep.utils import im2ccs
 from psm_utils import PSMList
 
+from ms2rescore._utils import get_original_hit_mask
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
-from ms2rescore._utils import get_original_hit_mask
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +29,12 @@ logger = logging.getLogger(__name__)
 class IM2DeepFeatureGenerator(FeatureGeneratorBase):
     """IM2Deep collision cross section feature generator."""
 
-    required_ms_data = {MSDataType.ion_mobility}
+    required_ms_data: ClassVar[set[MSDataType]] = {MSDataType.ion_mobility}
 
     def __init__(
         self,
         multi: bool = False,
-        calibration_set_size: Union[int, float] = None,
+        calibration_set_size: float | None = None,
         *args,
         processes: int = 1,
         **kwargs,
@@ -74,7 +74,7 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         self.predict_kwargs["num_threads"] = processes if processes > 0 else None
 
     @property
-    def feature_names(self) -> List[str]:
+    def feature_names(self) -> list[str]:
         return [
             "ccs_observed_im2deep",
             "ccs_predicted_im2deep",
