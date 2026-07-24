@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   incorrectly claimed `"Meier_unimod.parquet"`. The actual default falls through to IM2Deep's own
   bundled reference dataset.
 - FixReadTheDocs build by removing placeholder link that was being interpreted as cross-reference.
+- Fixed missing feature-weights chart in HTML report.
 
 ## [4.0.0] - 2026-07-17
 

@@ -328,7 +328,7 @@ def feature_weights_by_generator(
     """
     bar_data = (
         feature_weights.groupby(["feature", "feature_generator"])
-        .median()
+        .median(numeric_only=True)
         .abs()
         .reset_index()
         .groupby("feature_generator")
