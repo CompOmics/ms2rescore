@@ -17,6 +17,16 @@ what to update in existing configuration files, scripts, and pipelines when upgr
    upgraded to their latest major versions. The main PSM output file and rescoring result
    tables were renamed. See below for the concrete changes to make.
 
+Computational performance
+--------------------------
+
+Internal benchmarking across several representative datasets shows that 4.0 uses substantially
+less CPU time than 3.2.x, mainly thanks to the reworked feature generation step and the faster
+rescoring engine. Peak memory usage is higher in 4.0, and scales with the size of the raw spectrum
+files. Spectra are now read once into memory instead of separately per worker process, so this is
+worth taking into account on memory-constrained machines or with large acquisitions. Identification
+rates are unchanged between versions.
+
 Rescoring engine: mokapot/Percolator → ristretto
 -------------------------------------------------
 
