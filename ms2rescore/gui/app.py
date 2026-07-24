@@ -642,7 +642,7 @@ class DeepLCConfiguration(ctk.CTkFrame):
 
         enabled = self.enabled.get()
         config = {
-            "deeplc_retrain": self.transfer_learning.get(),
+            "finetune": self.transfer_learning.get(),
             "epochs": int(self.num_epochs.get()),
             "calibration_set_size": calibration_set_size,
         }

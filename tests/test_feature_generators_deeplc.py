@@ -4,6 +4,8 @@ Uses real DeepLC prediction (bundled model, no network) with retraining disabled
 the run fast and deterministic in structure. Marked ``slow`` because it loads a model.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 from psm_utils import PSM, PSMList
@@ -55,9 +57,43 @@ def _make_psm_list(run="run1", is_decoy=False) -> PSMList:
 def test_static_contract():
     """Feature names and required MS data are an external contract; pin them deliberately."""
     assert DeepLCFeatureGenerator.required_ms_data == {MSDataType.retention_time}
-    names = DeepLCFeatureGenerator(deeplc_retrain=False).feature_names
+    names = DeepLCFeatureGenerator(finetune=False).feature_names
     assert names == EXPECTED_FEATURE_NAMES
     assert len(names) == len(set(names))
+
+
+def test_deeplc_retrain_alias_is_deprecated():
+    """The old `deeplc_retrain` kwarg still works but warns and maps onto `finetune`."""
+    with pytest.deprecated_call():
+        gen = DeepLCFeatureGenerator(deeplc_retrain=True)
+    assert gen.finetune is True
+
+
+def test_finetune_takes_precedence_over_deprecated_alias():
+    """If both are given, the new `finetune` kwarg wins over the deprecated alias."""
+    with pytest.deprecated_call():
+        gen = DeepLCFeatureGenerator(deeplc_retrain=True, finetune=False)
+    assert gen.finetune is False
+
+
+def test_flat_kwargs_distribute_to_predict_and_finetune():
+    """Flat `device=`/`epochs=`-style kwargs are the sanctioned API and must not warn."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        gen = DeepLCFeatureGenerator(finetune=True, device="cpu", epochs=5, batch_size=16)
+    assert gen.predict_kwargs["device"] == "cpu"
+    assert gen.predict_kwargs["batch_size"] == 16
+    assert "epochs" not in gen.predict_kwargs
+    assert gen.finetune_kwargs["device"] == "cpu"
+    assert gen.finetune_kwargs["batch_size"] == 16
+    assert gen.finetune_kwargs["epochs"] == 5
+
+
+def test_pipeline_config_noise_does_not_warn():
+    """Unrelated config keys forwarded by the pipeline (e.g. from other sections) must not warn."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        DeepLCFeatureGenerator(finetune=False, psm_file=None, output_path=None, log_level="info")
 
 
 @pytest.mark.slow
@@ -65,7 +101,7 @@ def test_prediction_calibrates_onto_observed_scale():
     """Real DeepLC run: all features populated, rt_diff arithmetic correct, and calibration
     actually maps predictions onto the observed RT scale (small residuals, not collapsed)."""
     psm_list = _make_psm_list()
-    DeepLCFeatureGenerator(deeplc_retrain=False, processes=1).add_features(psm_list)
+    DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
     for psm in psm_list:
         for name in EXPECTED_FEATURE_NAMES:
@@ -95,7 +131,7 @@ def test_no_target_psms_raises_on_calibration():
     """A run with only decoys has no PSMs to calibrate against."""
     psm_list = _make_psm_list(is_decoy=True)
     with pytest.raises(ValueError, match="no target PSMs"):
-        DeepLCFeatureGenerator(deeplc_retrain=False, processes=1).add_features(psm_list)
+        DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
 
 def _fake_predict_factory(matrix):
@@ -152,7 +188,7 @@ def test_selects_best_correlating_head(monkeypatch):
         "ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat)
     )
 
-    DeepLCFeatureGenerator(deeplc_retrain=False, processes=1).add_features(psm_list)
+    DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
     preds = np.array([p.rescoring_features["predicted_retention_time"] for p in psm_list])
     rt_diffs = np.array([p.rescoring_features["rt_diff"] for p in psm_list])
@@ -181,7 +217,7 @@ def test_per_run_head_selection(monkeypatch):
         "ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat)
     )
 
-    DeepLCFeatureGenerator(deeplc_retrain=False, processes=1).add_features(psm_list)
+    DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
     for run, observed in (("run1", obs1), ("run2", obs2)):
         preds = np.array(
@@ -221,7 +257,7 @@ def test_row_alignment_preserved_across_runs(monkeypatch):
         "ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat)
     )
 
-    DeepLCFeatureGenerator(deeplc_retrain=False, processes=1).add_features(psm_list)
+    DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
     for psm, rt in zip(psm_list, obs):
         assert psm.rescoring_features["observed_retention_time"] == rt
@@ -234,7 +270,7 @@ def test_get_calibration_data_returns_indices_and_observed():
     excluding decoys, using the qvalue<=0.01 count when calibration_set_size is None."""
     import pandas as pd
 
-    gen = DeepLCFeatureGenerator(deeplc_retrain=False)
+    gen = DeepLCFeatureGenerator(finetune=False)
     gen.calibration_set_size = None
     # Index labels stand in for pred_matrix row positions.
     run_df = pd.DataFrame(
@@ -260,7 +296,7 @@ def test_get_calibration_data_excludes_mumble_psms():
     hit."""
     import pandas as pd
 
-    gen = DeepLCFeatureGenerator(deeplc_retrain=False)
+    gen = DeepLCFeatureGenerator(finetune=False)
     gen.calibration_set_size = None
     run_df = pd.DataFrame(
         {

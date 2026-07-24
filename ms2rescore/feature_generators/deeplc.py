@@ -17,7 +17,7 @@ If you use DeepLC through MS²Rescore, please cite:
 
 import logging
 import warnings
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 from deeplc.calibration import SplineTransformerCalibration
@@ -42,18 +42,34 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
     required_ms_data = {MSDataType.retention_time}
 
+    # Flat kwargs forwarded to DeepLC's `predict()` and `finetune()`, keyed by which call(s) each
+    # applies to. `device` and `batch_size` apply to both. getfullargspec(predict).args does not
+    # work on this outer predict function, so the keys are hardcoded here instead of introspected.
+    _PREDICT_KWARGS = ("device", "batch_size")
+    _FINETUNE_KWARGS = (
+        "device",
+        "batch_size",
+        "epochs",
+        "learning_rate",
+        "patience",
+        "trainable_layers",
+        "validation_split",
+    )
+
     def __init__(
         self,
         *args,
         calibration_set_size: Union[int, float, None] = None,
         processes: int = 1,
+        finetune: Optional[bool] = None,
         **kwargs,
     ) -> None:
         """
         Generate DeepLC-based features for rescoring.
 
-        DeepLC retraining is on by default. Add ``deeplc_retrain: False`` as a keyword argument to
-        disable retraining.
+        DeepLC finetuning is off by default. Set ``finetune=True`` to enable it. The deprecated
+        ``deeplc_retrain`` keyword is still accepted and mapped onto ``finetune``, with a
+        deprecation warning; an explicitly passed ``finetune`` takes precedence over it.
 
         Parameters
         ----------
@@ -63,6 +79,9 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
             than the number of available PSMs, all PSMs will be used. (default: 0.15)
         processes: {int, None}
             Number of processes to use in DeepLC. Defaults to 1.
+        finetune: bool
+            Whether to finetune DeepLC on high-confidence target PSMs before prediction.
+            Defaults to False.
         kwargs: dict
             Additional keyword arguments are passed to DeepLC.
 
@@ -77,41 +96,35 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         self.calibration_set_size = calibration_set_size
         self.deeplc_kwargs = kwargs or {}
 
-        self._verbose = logger.getEffectiveLevel() <= logging.DEBUG
-
         self.model = self.deeplc_kwargs.get("model", None)
 
         self.calibration = None
 
-        # Prepare DeepLC predict kwargs
-        self.predict_kwargs = {
-            k: v
-            for k, v in self.deeplc_kwargs.items()
-            if k in ["device", "batch_size", "num_threads"]
-        }  # getfullargspec(predict).args does not work on this outer predict function
-        self.predict_kwargs["num_threads"] = processes if processes > 0 else None
+        # `deeplc_retrain` was renamed to `finetune`; keep accepting the old kwarg for now.
+        if "deeplc_retrain" in self.deeplc_kwargs:
+            warnings.warn(
+                "The `deeplc_retrain` DeepLC option has been renamed to `finetune` and will be "
+                "removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            deprecated_finetune = self.deeplc_kwargs.pop("deeplc_retrain")
+            if finetune is None:
+                finetune = deprecated_finetune
+        self.finetune = bool(finetune)
 
-        # Prepare DeepLC finetune kwargs
-        if "deeplc_retrain" not in self.deeplc_kwargs:
-            self.deeplc_kwargs["deeplc_retrain"] = False
-            return  # skip the rest of the init if no retraining
+        self.predict_kwargs = self._select_deeplc_kwargs(self._PREDICT_KWARGS, processes)
 
-        if self.deeplc_kwargs["deeplc_retrain"]:
-            self.finetune_kwargs = {
-                k: v
-                for k, v in self.deeplc_kwargs.items()
-                if k
-                in [
-                    "epochs",
-                    "device",
-                    "batch_size",
-                    "learning_rate",
-                    "patience",
-                    "trainable_layers",
-                    "validation_split",
-                ]
-            }
-            self.finetune_kwargs["num_threads"] = processes if processes > 0 else None
+        if not self.finetune:
+            return  # skip the rest of the init if no finetuning
+
+        self.finetune_kwargs = self._select_deeplc_kwargs(self._FINETUNE_KWARGS, processes)
+
+    def _select_deeplc_kwargs(self, keys: tuple, processes: int) -> dict:
+        """Pick `deeplc_kwargs` entries by name and inject the resolved `num_threads`."""
+        selected = {k: v for k, v in self.deeplc_kwargs.items() if k in keys}
+        selected["num_threads"] = processes if processes > 0 else None
+        return selected
 
     @property
     def feature_names(self) -> List[str]:
@@ -146,7 +159,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         ]
         psm_list_df["sequence"] = psm_list_df["peptidoform"].apply(lambda x: x.modified_sequence)
 
-        if self.deeplc_kwargs["deeplc_retrain"]:
+        if self.finetune:
             # Filter high-confidence target PSMs once for transfer learning
             target_mask = (
                 (psm_list["qvalue"] <= 0.01) & (~psm_list["is_decoy"]) & original_hit_mask

@@ -5,6 +5,6 @@ spectrum_path = "examples/data/spectra/qExactive01819.mzML"
 
 [ms2rescore.feature_generators]
 "basic" = {}
-"ms2pip" = { "model" = "HCD", "ms2_tolerance" = 0.02 }
+"ms2pip" = { "model" = "HCD" }
 "ms2" = {}
-"deeplc" = { "deeplc_retrain" = false }
+"deeplc" = {}

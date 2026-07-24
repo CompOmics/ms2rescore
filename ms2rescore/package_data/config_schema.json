@@ -251,11 +251,10 @@
                     "type": "string",
                     "default": "HCD"
                 },
-                "ms2_tolerance": {
-                    "description": "MS2 error tolerance in Da",
-                    "type": "number",
-                    "minimum": 0,
-                    "default": 0.02
+                "model_dir": {
+                    "description": "Directory containing MS²PIP models",
+                    "oneOf": [{ "type": "string" }, { "type": "null" }],
+                    "default": null
                 }
             }
         },
@@ -285,9 +284,9 @@
             "additionalProperties": true,
             "properties": {
                 "reference_dataset": {
-                    "description": "Path to IM2Deep reference dataset file",
-                    "type": "string",
-                    "default": "Meier_unimod.parquet"
+                    "description": "Path to IM2Deep reference dataset file. Defaults to IM2Deep's own bundled reference dataset if not set.",
+                    "oneOf": [{ "type": "string" }, { "type": "null" }],
+                    "default": null
                 }
             }
         },

@@ -82,11 +82,19 @@ How to contribute
 - Fork `ms2rescore <https://github.com/compomics/ms2rescore>`_ on GitHub to
   make your changes.
 - Commit and push your changes to your
-  `fork <https://help.github.com/articles/pushing-to-a-remote/>`_.
+  `fork <https://help.github.com/articles/pushing-to-a-remote/>`_. Commit messages
+  should follow the `Conventional Commits <https://www.conventionalcommits.org/>`_
+  format (e.g. ``fix: ...``, ``feat: ...``, ``docs: ...``).
 - Ensure that the tests and documentation (both Python docstrings and files in
   ``/docs/source/``) have been updated according to your changes. Python
   docstrings are formatted in the
   `numpydoc style <https://numpydoc.readthedocs.io/en/latest/format.html>`_.
+- Update ``CHANGELOG.md`` as part of your pull request: add an entry describing your
+  change under the ``[Unreleased]`` section, following
+  `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_.
+- Code should be formatted with `ruff <https://docs.astral.sh/ruff/>`_, using the
+  configuration in ``pyproject.toml``. Run ``ruff format .`` and ``ruff check .``
+  before submitting your pull request.
 - Open a
   `pull request <https://help.github.com/articles/creating-a-pull-request/>`_
   with these changes. You pull request message ideally should include:

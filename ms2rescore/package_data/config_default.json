@@ -4,12 +4,9 @@
         "feature_generators": {
             "basic": {},
             "ms2pip": {
-                "model": "HCD",
-                "ms2_tolerance": 0.02
+                "model": "HCD"
             },
-            "deeplc": {
-                "deeplc_retrain": false
-            },
+            "deeplc": {},
             "ms2": {}
         },
         "psm_generator": {},

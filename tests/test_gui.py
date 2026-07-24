@@ -75,6 +75,6 @@ def test_deeplc_configuration_get_uses_epochs_key():
     enabled, deeplc_config = DeepLCConfiguration.get(config)
 
     assert enabled is True
-    assert deeplc_config["deeplc_retrain"] is True
+    assert deeplc_config["finetune"] is True
     assert deeplc_config["epochs"] == 30
     assert "n_epochs" not in deeplc_config

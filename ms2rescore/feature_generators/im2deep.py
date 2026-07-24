@@ -61,7 +61,6 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
         self.calibration_set_size = calibration_set_size
 
         self.im2deep_kwargs = kwargs or {}
-        self._verbose = logger.getEffectiveLevel() <= logging.DEBUG
 
         self.model = self.im2deep_kwargs.get("model", None)
         self.reference_dataset = self.im2deep_kwargs.get("reference_dataset", None)
