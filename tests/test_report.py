@@ -8,10 +8,9 @@ import numpy as np
 import pandas as pd
 import psm_utils.io
 import pytest
+from click.testing import CliRunner
 from psm_utils import PSM, PSMList
 from ristretto import RescoreResult
-
-from click.testing import CliRunner
 
 from ms2rescore.report import charts
 from ms2rescore.report.__main__ import main as report_main

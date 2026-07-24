@@ -757,8 +757,8 @@ def _check_updates_sync(root):
             UpdateDialog(root, ms2rescore_version, latest, url)
         # If not ok / offline / rate-limited, we do nothing (no errors to user)
     except Exception:
-        # Fully silent on any unexpected issue
-        pass
+        # Fully silent to the user; still log for debugging
+        logger.exception("Update check failed")
 
 
 def _setup_logging(log_level: str, log_file: str) -> Console:

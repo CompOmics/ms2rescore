@@ -126,7 +126,7 @@ class Function2CTk(ctk.CTk):
         try:
             fn_args, fn_kwargs = self.config_frame.get()
             fn_args = (_apply_selected_log_level(fn_args[0], self.logging_level_selection.get()),)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - any config-parsing error must be shown to the user
             self.progress_control.reset()
             PopupWindow(self, "Error", f"Error occurred while parsing configuration:\n{e}")
         else:
@@ -310,7 +310,7 @@ class _Process(multiprocessing.Process):
         try:
             self.fn(*self.fn_args, **self.fn_kwargs)
         except Exception as e:
-            logger.exception(e)
+            logger.exception("Unhandled error in worker process")
             tb = traceback.format_exc()
             self._cconn.send((e, tb))
 

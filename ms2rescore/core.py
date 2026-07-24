@@ -207,7 +207,7 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
 
     # Rename PSMs to USIs if requested, reusing the lookup built above
     if config["rename_to_usi"]:
-        logging.debug(f"Creating USIs for {len(psm_list)} PSMs")
+        logger.debug(f"Creating USIs for {len(psm_list)} PSMs")
         psm_list["spectrum_id"] = [usi_by_native_id[(psm.run, psm.spectrum_id)] for psm in psm_list]
 
     # Rescore PSMs
@@ -267,8 +267,8 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
                 fdr_threshold=config["report_fdr"],
             )
             generate.generate_report(output_file_root, report_data)
-        except exceptions.ReportGenerationError as e:
-            logger.exception(e)
+        except exceptions.ReportGenerationError:
+            logger.exception("Report generation failed")
 
 
 def _write_feature_names(feature_names, output_file_root):

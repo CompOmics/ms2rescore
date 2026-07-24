@@ -61,7 +61,7 @@ def generate_report(
     context = {
         "plotlyjs_version": get_plotlyjs_version(),
         "metadata": {
-            "generated_on": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "generated_on": datetime.now().astimezone().strftime("%d/%m/%Y %H:%M:%S"),
             "ms2rescore_version": ms2rescore.__version__,
             "psm_filename": _get_psm_filenames(data),
         },
@@ -230,13 +230,13 @@ def _get_features_context(
             _add_deeplc_chart(
                 context, high_conf_features, fdr_threshold, color=color_map.get("deeplc")
             )
-        except Exception as e:
-            logger.warning("Could not generate DeepLC performance plot: %s", e)
+        except Exception:
+            logger.exception("Could not generate DeepLC performance plot")
     if "im2deep" in feature_names:
         try:
             _add_im2deep_chart(context, high_conf_features, color=color_map.get("im2deep"))
-        except Exception as e:
-            logger.warning("Could not generate IM2Deep performance plot: %s", e)
+        except Exception:
+            logger.exception("Could not generate IM2Deep performance plot")
 
     return context
 
@@ -261,8 +261,8 @@ def _add_feature_weights_chart(context, feature_weights, feature_names_inv, colo
                 ),
             }
         )
-    except Exception as e:
-        logger.warning("Could not generate feature weights plot: %s", e)
+    except Exception:
+        logger.exception("Could not generate feature weights plot")
 
 
 def _add_deeplc_chart(context, high_conf_features, fdr_threshold, color=None):

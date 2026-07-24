@@ -160,6 +160,7 @@ def _infer_feature_names(psm_df: pd.DataFrame) -> dict[str, list[str]]:
             for feature in generator_class().feature_names:
                 feature_to_generator[feature] = generator_name
         except Exception:
+            logger.exception("Could not instantiate feature generator `%s`", generator_name)
             continue
 
     feature_names = defaultdict(list)

@@ -56,8 +56,8 @@ def main(psm_file, output, fdr):
 
         logger.info(f"✓ Report generated: {output_path}")
 
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Report generation failed")
         sys.exit(1)
 
 

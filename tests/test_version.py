@@ -64,7 +64,7 @@ def test_check_for_update_detects_update(monkeypatch):
         ua = None
         try:
             ua = req.get_header("User-agent") or req.get_header("User-Agent")
-        except Exception:
+        except Exception:  # noqa: BLE001 - fallback works regardless of urllib Request internals
             ua = getattr(req, "headers", {}).get("User-Agent")
         assert ua is not None and "ms2rescore/" in ua
         return _FakeResp(raw)

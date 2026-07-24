@@ -125,5 +125,6 @@ def check_for_update(
         result["update_available"] = latest_version > current_version
     except Exception:
         # If current_version can't be parsed, don't treat as updateable
+        LOGGER.exception("Update check failed")
         result["update_available"] = False
     return result

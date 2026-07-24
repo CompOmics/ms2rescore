@@ -152,7 +152,8 @@ def parse_configurations(configurations: list[dict | str | Path | Namespace]) ->
             if Path(config).suffix.lower() == ".json":
                 cascade_conf.add_json(config)
             elif Path(config).suffix.lower() == ".toml":
-                cascade_conf.add_dict(dict(tomllib.load(Path(config).open("rb"))))
+                with Path(config).open("rb") as f:
+                    cascade_conf.add_dict(dict(tomllib.load(f)))
             else:
                 raise MS2RescoreConfigurationError(
                     "Unknown file extension for configuration file. Should be `json` or `toml`."
@@ -160,7 +161,7 @@ def parse_configurations(configurations: list[dict | str | Path | Namespace]) ->
         elif isinstance(config, Namespace):
             cascade_conf.add_namespace(config, subkey="ms2rescore")
         else:
-            raise ValueError(
+            raise TypeError(
                 "Configuration should be a dictionary, argparse Namespace, or path to a "
                 "configuration file."
             )

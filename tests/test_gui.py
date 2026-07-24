@@ -7,8 +7,12 @@ import pytest
 
 pytest.importorskip("tkinter")
 
-from ms2rescore.gui.app import DeepLCConfiguration, MS2PIPConfiguration, _setup_logging  # noqa: E402
-from ms2rescore.gui.function2ctk import _apply_selected_log_level  # noqa: E402
+from ms2rescore.gui.app import (
+    DeepLCConfiguration,
+    MS2PIPConfiguration,
+    _setup_logging,
+)
+from ms2rescore.gui.function2ctk import _apply_selected_log_level
 
 
 def test_setup_logging_writes_txt_and_html_log(tmp_path):
