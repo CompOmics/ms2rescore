@@ -130,10 +130,14 @@ def parse_configurations(configurations: list[dict | str | Path | Namespace]) ->
 
     # Initialize CascadeConfig with validation schema and defaults
     config_schema = json.loads(
-        importlib.resources.files(package_data).joinpath("config_schema.json").read_text()
+        importlib.resources.files(package_data)
+        .joinpath("config_schema.json")
+        .read_text(encoding="utf-8")
     )
     config_default = json.loads(
-        importlib.resources.files(package_data).joinpath("config_default.json").read_text()
+        importlib.resources.files(package_data)
+        .joinpath("config_default.json")
+        .read_text(encoding="utf-8")
     )
     cascade_conf = CascadeConfig(
         validation_schema=config_schema,
