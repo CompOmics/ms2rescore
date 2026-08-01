@@ -184,7 +184,7 @@ def _read_config(path: Path) -> dict:
         logger.info("No configuration file found. Proceeding without it.")
         return {"ms2rescore": {}}
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         logger.warning("Could not read configuration file. Proceeding without it.")
         return {"ms2rescore": {}}
