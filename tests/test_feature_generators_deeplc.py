@@ -184,9 +184,7 @@ def test_selects_best_correlating_head(monkeypatch):
     mat[:, 0] = np.tile([0.0, 1.0], n)[:n]  # non-zero std, ~zero correlation with obs
     mat[:, 1] = obs + 0.5  # best head
     mat[:, 2] = 5.0  # constant -> zero std -> skipped by head selection
-    monkeypatch.setattr(
-        "ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat)
-    )
+    monkeypatch.setattr("ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat))
 
     DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
@@ -213,9 +211,7 @@ def test_per_run_head_selection(monkeypatch):
     mat[10:20, 1] = 7.0  # constant for run2 -> skipped
     mat[0:10, 2] = 7.0  # constant for run1 -> skipped
     mat[10:20, 2] = np.array(obs2) + 0.5  # run2 best head
-    monkeypatch.setattr(
-        "ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat)
-    )
+    monkeypatch.setattr("ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat))
 
     DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
@@ -253,9 +249,7 @@ def test_row_alignment_preserved_across_runs(monkeypatch):
 
     obs = np.array([rt for _, rt in interleaved])
     mat = np.column_stack([obs, obs])  # identity: predicted head == observed
-    monkeypatch.setattr(
-        "ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat)
-    )
+    monkeypatch.setattr("ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat))
 
     DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
 
@@ -328,3 +322,54 @@ def test_best_run_by_shared_proteoforms_no_overlap_returns_first():
     proteoforms = ["p1", "p2", "p3"]
     best = DeepLCFeatureGenerator._best_run_by_shared_proteoforms(runs, proteoforms)
     assert best == "A"
+
+
+class _FakeMultiHeadCalibration:
+    """
+    Stand-in for DeepLC's MultiHeadRidgeCalibration.
+
+    Fits on the whole prediction matrix, picks the best-correlating column, and records it as
+    ``selected_model_head``, matching the real class's contract closely enough to exercise the
+    generator's multi-head branch without depending on a DeepLC version that has it.
+    """
+
+    def __init__(self):
+        self.selected_model_head = None
+        self._offset = 0.0
+
+    def fit(self, target, source):
+        correlations = [
+            np.corrcoef(source[:, j], target)[0, 1] if np.std(source[:, j]) > 0 else -1.0
+            for j in range(source.shape[1])
+        ]
+        self.selected_model_head = int(np.argmax(correlations))
+        self._offset = target.mean() - source[:, self.selected_model_head].mean()
+
+    def transform(self, source):
+        return source[:, self.selected_model_head] + self._offset
+
+
+def test_uses_multihead_calibration_when_available(monkeypatch):
+    """
+    When DeepLC exposes MultiHeadRidgeCalibration, the generator uses it, not the private
+    `_best_correlating_head` fallback.
+
+    The installed DeepLC version here predates that class, so both the flag and the class are
+    faked to exercise the branch that would otherwise only run against DeepLC >= 4.3.
+    """
+    psm_list = _make_psm_list()
+    obs = np.array([100.0 + i * 30.0 for i in range(len(_PEPTIDES))])
+    mat = np.column_stack([np.zeros_like(obs), obs + 0.5])  # head 0 noise, head 1 correlates
+
+    monkeypatch.setattr("ms2rescore.feature_generators.deeplc.predict", _fake_predict_factory(mat))
+    monkeypatch.setattr("ms2rescore.feature_generators.deeplc._HAS_MULTIHEAD_CALIBRATION", True)
+    monkeypatch.setattr(
+        "ms2rescore.feature_generators.deeplc.MultiHeadRidgeCalibration",
+        _FakeMultiHeadCalibration,
+        raising=False,
+    )
+
+    DeepLCFeatureGenerator(finetune=False, processes=1).add_features(psm_list)
+
+    preds = np.array([p.rescoring_features["predicted_retention_time"] for p in psm_list])
+    assert np.corrcoef(preds, obs)[0, 1] > 0.99
