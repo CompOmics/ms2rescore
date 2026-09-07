@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.2] - 2026-09-07
+
+### Fixed
+
+- `deeplc` feature generator: support DeepLC's upcoming multi-head calibration API
+  (`MultiHeadRidgeCalibration`) when available, falling back to the current private-API path on
+  older DeepLC versions. Keeps this feature generator working across that DeepLC release either
+  way, and adopts the better multi-head combination automatically once installed.
+- Forced UTF-8 encoding on all text file reads/writes, instead of relying on the platform
+  default. Fixes `UnicodeDecodeError` on ASCII-locale systems (e.g. bioconda's Linux test
+  environment) and mis-encoding on non-UTF-8 Windows locales (e.g. French cp1252).
+
 ## [4.0.1] - 2026-07-24
 
 ### Changed
