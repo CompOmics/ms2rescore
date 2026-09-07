@@ -20,12 +20,22 @@ import warnings
 from typing import ClassVar
 
 import numpy as np
-from deeplc.calibration import SplineTransformerCalibration
-
-# NOTE: `_best_correlating_head` is a private DeepLC function. Imported here intentionally to
-# reuse DeepLC's multitask head-selection logic. To be replaced once DeepLC exposes a public API.
-from deeplc.core import _best_correlating_head, finetune, predict
+from deeplc.core import finetune, predict
 from psm_utils import PSMList
+
+try:
+    # DeepLC >= 4.3: MultiHeadRidgeCalibration combines several best-correlating heads instead of
+    # calibrating against a single one.
+    from deeplc.calibration import MultiHeadRidgeCalibration
+
+    _HAS_MULTIHEAD_CALIBRATION = True
+except ImportError:
+    # DeepLC < 4.3: no public head-selection API yet. `_best_correlating_head` is a private
+    # DeepLC function, imported here intentionally to reuse DeepLC's head-selection logic.
+    from deeplc.calibration import SplineTransformerCalibration
+    from deeplc.core import _best_correlating_head
+
+    _HAS_MULTIHEAD_CALIBRATION = False
 
 from ms2rescore._utils import get_original_hit_mask
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
@@ -210,20 +220,25 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
             if len(observed_rt_calibration) == 0:
                 raise ValueError(f"Run '{run}' has no target PSMs available for calibration.")
 
-            # Select the head that best correlates with observed RT on the calibration PSMs
             reference_matrix = pred_matrix[calibration_idx]
-            head = _best_correlating_head(reference_matrix, observed_rt_calibration)
-            logger.debug(f"Run '{run}': selected DeepLC head {head}")
-
-            # Fit calibration on the selected head and transform all predictions for this run
-            calibration = SplineTransformerCalibration()
-            calibration.fit(
-                target=observed_rt_calibration,
-                source=reference_matrix[:, head],
-            )
-
             run_idx = run_df.index.values
-            calibrated_rt = calibration.transform(pred_matrix[run_idx, head])
+
+            if _HAS_MULTIHEAD_CALIBRATION:
+                # MultiHeadRidgeCalibration combines several best-correlating heads and
+                # transforms straight from the full prediction matrix.
+                calibration = MultiHeadRidgeCalibration()
+                calibration.fit(target=observed_rt_calibration, source=reference_matrix)
+                head = calibration.selected_model_head
+                calibrated_rt = calibration.transform(pred_matrix[run_idx])
+            else:
+                # Select the head that best correlates with observed RT on the calibration PSMs,
+                # then fit and transform on that one column.
+                head = _best_correlating_head(reference_matrix, observed_rt_calibration)
+                calibration = SplineTransformerCalibration()
+                calibration.fit(target=observed_rt_calibration, source=reference_matrix[:, head])
+                calibrated_rt = calibration.transform(pred_matrix[run_idx, head])
+
+            logger.debug(f"Run '{run}': selected DeepLC head {head}")
 
             # Update predictions with calibrated values
             psm_list_df.loc[psm_list_df["run"] == run, "predicted_retention_time"] = calibrated_rt
