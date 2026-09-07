@@ -36,7 +36,7 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
     ]  # if no intermediate, takes full name
 
     # Write full configuration including defaults to file
-    with open(output_file_root + ".full-config.json", "w") as f:
+    with open(output_file_root + ".full-config.json", "w", encoding="utf-8") as f:
         json.dump(configuration, f, indent=4)
 
     logger.debug("Using %i of %i available CPUs.", int(config["processes"]), int(cpu_count()))
@@ -273,7 +273,7 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
 
 def _write_feature_names(feature_names, output_file_root):
     """Write feature names to file."""
-    with open(output_file_root + ".feature_names.tsv", "w") as f:
+    with open(output_file_root + ".feature_names.tsv", "w", encoding="utf-8") as f:
         f.write("feature_generator\tfeature_name\n")
         for fgen, fgen_features in feature_names.items():
             f.writelines(f"{fgen}\t{feature}\n" for feature in fgen_features)

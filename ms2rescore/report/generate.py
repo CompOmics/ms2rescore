@@ -32,7 +32,9 @@ PLOTLY_HTML_KWARGS = {
 # charts (DeepLC, IM2Deep, MS²PIP) reuse the same color as the feature-generator overview charts.
 FEATURE_GENERATOR_COLORS = charts.FEATURE_GENERATOR_COLORS
 
-TEXTS = tomllib.loads(importlib.resources.files(templates).joinpath("texts.toml").read_text())
+TEXTS = tomllib.loads(
+    importlib.resources.files(templates).joinpath("texts.toml").read_text(encoding="utf-8")
+)
 
 
 def generate_report(

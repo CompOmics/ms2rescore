@@ -218,7 +218,7 @@ def main(tims=False):
             json.loads(
                 importlib.resources.files(package_data)
                 .joinpath("config_default_tims.json")
-                .read_text()
+                .read_text(encoding="utf-8")
             )
         )
     if cli_args.config_file:

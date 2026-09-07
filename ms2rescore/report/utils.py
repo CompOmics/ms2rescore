@@ -28,7 +28,7 @@ def read_feature_names(feature_names_path: Path | None) -> dict:
         return feature_names
 
     try:
-        with open(feature_names_path) as f:
+        with open(feature_names_path, encoding="utf-8") as f:
             reader = DictReader(f, delimiter="\t")
             for line in reader:
                 feature_names[line["feature_generator"]].append(line["feature_name"])
