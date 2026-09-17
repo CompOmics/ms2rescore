@@ -275,7 +275,14 @@
             "$ref": "#/definitions/feature_generator",
             "description": "MS2 spectrum-based feature generator configuration",
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": true,
+            "properties": {
+                "add_mod_info": {
+                    "description": "Add modification-aware features: modification-specific neutral loss and diagnostic ion intensities, the hyperscore gain of each modification over its removal, and the hyperscore difference to the best competing PSM for the same spectrum. Requires modification names that rustyms can resolve (Unimod names or accessions). Recommended together with the mumble PSM generator.",
+                    "type": "boolean",
+                    "default": false
+                }
+            }
         },
         "im2deep": {
             "$ref": "#/definitions/feature_generator",

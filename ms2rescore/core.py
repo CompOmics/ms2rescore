@@ -98,6 +98,7 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
             fragmentation_model=config.get("fragmentation_model", "cidhcd"),
             ms2_tolerance=config.get("tolerance_value", 0.02),
             ms2_tolerance_mode=config.get("tolerance_mode", "Da"),
+            extended=bool(config["feature_generators"].get("ms2", {}).get("add_mod_info", False)),
         )
 
     # Add rescoring features

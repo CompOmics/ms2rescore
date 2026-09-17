@@ -6,7 +6,12 @@ from enum import Enum
 
 import numpy as np
 from ms2pip._spectrum_processing import proforma_to_mass_shift
-from ms2rescore_rs import MS2Spectrum, annotate_ms2_spectra, get_ms2_spectra
+from ms2rescore_rs import (
+    MS2Spectrum,
+    annotate_ms2_spectra,
+    get_ms2_spectra,
+    proforma_is_parseable,
+)
 from psm_utils import PSMList
 from rich.progress import track
 
@@ -224,6 +229,7 @@ def annotate_spectra(
     fragmentation_model: str = "cidhcd",
     ms2_tolerance: float = 0.02,
     ms2_tolerance_mode: str = "Da",
+    extended: bool = False,
 ) -> None:
     """
     Annotate MS2 spectra with fragment ion matches, in place.
@@ -245,6 +251,11 @@ def annotate_spectra(
         Fragment mass tolerance value.
     ms2_tolerance_mode
         Fragment mass tolerance mode: ``ppm`` or ``Da``.
+    extended
+        Also match neutral-loss, precursor and diagnostic ions into
+        ``extended_annotations``. Modification names are then passed to rustyms as-is
+        (falling back to numeric mass shifts per PSM when rustyms cannot parse them), so
+        that modification-specific losses and diagnostic ions can be generated.
 
     """
     LOGGER.info("Annotating MS2 spectra based on search engine identifications...")
@@ -254,6 +265,17 @@ def annotate_spectra(
     # regardless of modification name convention (Unimod name, accession, formula, etc.).
     proformas = [proforma_to_mass_shift(psm.peptidoform) for psm in psm_list]
 
+    if extended:
+        named = [str(psm.peptidoform) for psm in psm_list]
+        parseable = proforma_is_parseable(named)
+        proformas = [n if ok else p for n, ok, p in zip(named, parseable, proformas)]
+        n_fallback = len(parseable) - sum(parseable)
+        if n_fallback:
+            LOGGER.warning(
+                f"{n_fallback} peptidoforms could not be parsed by name and fall back to numeric "
+                "mass shifts; modification-specific ions are unavailable for these PSMs."
+            )
+
     annotated = annotate_ms2_spectra(
         spectra=spectra,
         proformas=proformas,
@@ -261,6 +283,7 @@ def annotate_spectra(
         mass_mode="monoisotopic",
         tolerance_value=ms2_tolerance,
         tolerance_mode=ms2_tolerance_mode,
+        extended=extended,
     )
 
     psm_list["spectrum"] = annotated

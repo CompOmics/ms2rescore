@@ -88,6 +88,9 @@ tims2rescore = "ms2rescore.__main__:main_tims"
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
 
+[tool.uv.sources]
+ms2rescore_rs = { path = "../ms2rescore-rs" }
+
 [tool.uv.build-backend]
 module-name = "ms2rescore"
 module-root = ""

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `ms2` feature generator: `add_mod_info` option (default `false`) adding modification-aware
+  features: `n_mods`, modification-specific neutral loss and diagnostic ion intensity ratios
+  (`mod_loss_n_matched`, `mod_loss_intensity_ratio`, `precursor_mod_loss_ratio`,
+  `diagnostic_ion_ratio`), the hyperscore gain of the least supported modification over its
+  removal (`delta_hyperscore_unmod`) and the hyperscore difference to the best competing PSM on
+  the same spectrum (`delta_hyperscore_vs_spectrum_best`). With the option enabled, spectra are
+  annotated with modification names instead of numeric mass shifts (per-PSM fallback when
+  rustyms cannot parse a name) so that rustyms can generate modification-specific ions.
+  Requires ms2rescore-rs >= 0.6.0.
+
+### Changed
+
+- Neutral-loss fragments (e.g. b3-H2O) are no longer counted as plain backbone ions in the `ms2`
+  and `ms2pip` feature generators (ms2rescore-rs 0.6.0 behaviour).
+
 ## [4.0.2] - 2026-09-07
 
 ### Fixed
