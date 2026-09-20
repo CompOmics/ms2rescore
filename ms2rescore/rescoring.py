@@ -26,7 +26,9 @@ from ms2rescore.parse_psms import infer_score_direction
 logger = logging.getLogger(__name__)
 
 
-def rescore(psm_list: PSMList, config: dict, output_file_root: str) -> tuple[PSMList, RescoreResult]:
+def rescore(
+    psm_list: PSMList, config: dict, output_file_root: str
+) -> tuple[PSMList, RescoreResult]:
     """
     Rescore PSMs with ristretto and write the new scores, q-values, and PEPs back to ``psm_list``.
 
@@ -238,3 +240,132 @@ def _fix_constant_pep(
     psm_list["qvalue"] = fixed_result.psms["qvalue"].to_numpy()
     psm_list["pep"] = fixed_result.psms["pep"].to_numpy()
     return psm_list, fixed_result
+
+
+# features not provided to the ranker, so they are not used for ranking
+RANKER_EXCLUDED_FEATURES = {
+    "abs_ms1_error_ppm",
+    "mass_error",
+    "theoretical_mass",
+    "experimental_mass",
+    "search_engine_score",
+}
+
+
+def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList:
+    """
+    Rerank the candidate explanations of each spectrum after rescoring.
+
+    By default (``rank_sites_scope: "spectrum"``) all candidates of a spectrum compete: the
+    original search engine hit, every mumble candidate (all modifications, all sites) and the
+    mumble decoy sites (the same modification on a residue it cannot occupy), which are the
+    known negatives. With ``rank_sites_scope: "site"`` only candidates sharing sequence and
+    modification set compete, so the ranker decides the site but not the identity.
+
+    :py:func:`ristretto.rank_within_groups` learns from within-group feature differences (group-
+    level features cancel; precursor-mass features and the search engine score are excluded, see
+    ``RANKER_EXCLUDED_FEATURES``). The group's rescoring scores, q-values and PEPs are reassigned
+    in ranker order, so the spectrum keeps its FDR status but reports the best-supported
+    explanation. Decoy sites are not returned. Target and decoy peptides never share a group;
+    only target groups are used for training.
+
+    Every returned PSM gets ``metadata["site_rank"]`` (1 = best in its group), ``"site_score"``
+    (ranker log-odds), ``"site_probability"`` (softmax over the group's real candidates) and
+    ``"mod_probability"`` (summed over candidates with the same modification set). PSMs without
+    competitors get rank 1 and probability 1.
+
+    Parameters
+    ----------
+    psm_list
+        Rescored PSMs (scores, q-values and PEPs set), without decoy sites.
+    decoy_sites
+        Decoy-site PSMs with rescoring features, set aside before rescoring.
+    config
+        MS²Rescore configuration (``rank_sites_scope``).
+
+    """
+    for psm in psm_list:  # defaults: no competitor
+        psm.metadata.update(
+            {
+                "site_rank": "1",
+                "site_score": "0.0000",
+                "site_probability": "1.0000",
+                "mod_probability": "1.0000",
+            }
+        )
+    if not len(decoy_sites):
+        logger.warning(
+            "Site ranking requested but no mumble decoy sites are present; enable "
+            "`include_mumble_decoys` in the mumble configuration. Skipping."
+        )
+        return psm_list
+
+    all_psms = PSMList(psm_list=list(psm_list) + list(decoy_sites))
+    n_scored = len(psm_list)
+    feature_names = {f for psm in all_psms for f in psm.rescoring_features}
+    df = _build_features_dataframe(all_psms, feature_names, False)
+    df["decoy_site"] = np.r_[np.zeros(n_scored, bool), np.ones(len(decoy_sites), bool)]
+    df["is_target"] = ~df["is_decoy"].fillna(False).astype(bool)
+    df["modset"] = (
+        df["peptidoform"].str.findall(r"\[([^\]]+)\]").apply(lambda m: "+".join(sorted(m)))
+    )
+    group_key = (
+        df["run"].astype(str)
+        + "|"
+        + df["spectrum_id"].astype(str)
+        + "|"
+        + df["is_decoy"].astype(str)
+    )
+    scope = config.get("rank_sites_scope", "spectrum")
+    if scope == "site":
+        group_key = group_key + "|" + df["peptide"] + "|" + df["modset"]
+    elif scope != "spectrum":
+        raise RescoringError(
+            f"Unknown rank_sites_scope: {scope!r}. Expected 'spectrum' or 'site'."
+        )
+    df["group"] = pd.factorize(group_key)[0]
+    in_group = df.groupby("group")["group"].transform("size") >= 2
+    if not in_group.any():
+        logger.warning("No spectra with multiple candidates found; skipping site ranking.")
+        return psm_list
+
+    result = ristretto.rank_within_groups(
+        df[in_group],
+        group_col="group",
+        negative_col="decoy_site",
+        initial_score_col="score",
+        feature_cols=sorted(feature_names - RANKER_EXCLUDED_FEATURES),
+        train_col="is_target",
+    )
+    logger.info(
+        f"Site ranking ({scope} scope): {in_group.sum()} candidates in "
+        f"{df.loc[in_group, 'group'].nunique()} groups; top candidate is a decoy site in "
+        f"{result.negative_top_rate:.1%} (false localisation rate estimate)."
+    )
+
+    grp = df.loc[in_group, ["group", "decoy_site", "modset"]].join(result.scores)
+    # Probabilities: softmax of the ranker score over the real candidates of a group (each
+    # candidate's share of the group's odds), and the same summed per modification set.
+    real = grp[~grp["decoy_site"]]
+    odds = np.exp(real["score"] - real.groupby("group")["score"].transform("max"))
+    grp["probability"] = odds / odds.groupby(real["group"]).transform("sum")
+    grp["mod_probability"] = (
+        grp["probability"].groupby([real["group"], real["modset"]]).transform("sum")
+    )
+    for idx, psm in zip(grp.index, (all_psms[i] for i in grp.index)):
+        psm.metadata["site_rank"] = str(int(grp.at[idx, "rank"]))
+        psm.metadata["site_score"] = f"{grp.at[idx, 'score']:.4f}"
+        if not grp.at[idx, "decoy_site"]:
+            psm.metadata["site_probability"] = f"{grp.at[idx, 'probability']:.4f}"
+            psm.metadata["mod_probability"] = f"{grp.at[idx, 'mod_probability']:.4f}"
+
+    # Reassign the rescoring outcome within each group in ranker order (scored PSMs only)
+    score, qvalue, pep = (np.asarray(psm_list[c], dtype=float) for c in ("score", "qvalue", "pep"))
+    for _, members in real.groupby("group"):
+        idx = members.index.to_numpy()
+        by_rank = idx[np.argsort(-members["score"].to_numpy())]
+        by_svm = idx[np.argsort(-score[idx])]
+        score[by_rank], qvalue[by_rank], pep[by_rank] = score[by_svm], qvalue[by_svm], pep[by_svm]
+    psm_list["score"], psm_list["qvalue"], psm_list["pep"] = score, qvalue, pep
+    psm_list.set_ranks(lower_score_better=False)
+    return psm_list

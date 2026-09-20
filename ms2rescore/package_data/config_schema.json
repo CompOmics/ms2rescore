@@ -160,6 +160,24 @@
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
                     "default": false
                 },
+                "mumble_matched_ions_threshold": {
+                    "description": "Mumble candidates whose fraction of matched fragment ions is below this fraction of the original hit's are removed before rescoring. 0 keeps every candidate.",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5
+                },
+                "rank_sites": {
+                    "description": "After rescoring, rerank the candidate explanations of each spectrum (original hit, mumble candidates at every site) with a model learned from mumble decoy sites as known negatives (requires the mumble PSM generator with `include_mumble_decoys`). The spectrum keeps its FDR status but reports the best-supported candidate; `site_rank`, `site_score`, `site_probability` and `mod_probability` are written to the PSM metadata.",
+                    "type": "boolean",
+                    "default": false
+                },
+                "rank_sites_scope": {
+                    "description": "What competes in `rank_sites`: `spectrum` (all candidates of a spectrum, the ranker decides identity and site) or `site` (only candidates with the same sequence and modifications, the ranker decides the site only).",
+                    "type": "string",
+                    "enum": ["spectrum", "site"],
+                    "default": "spectrum"
+                },
                 "write_report": {
                     "description": "Write an HTML report with various QC metrics and charts",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -278,7 +296,7 @@
             "additionalProperties": true,
             "properties": {
                 "add_mod_info": {
-                    "description": "Add modification-aware features: modification-specific neutral loss and diagnostic ion intensities, the hyperscore gain of each modification over its removal, and the hyperscore difference to the best competing PSM for the same spectrum. Requires modification names that rustyms can resolve (Unimod names or accessions). Recommended together with the mumble PSM generator.",
+                    "description": "Add modification-aware features: intensity fractions of modification-specific neutral-loss ions (backbone fragments and precursor), the hyperscore gain of each modification over its removal, and the matched fraction and intensity of the site-flanking backbone ions. Requires modification names that rustyms can resolve (Unimod names or accessions); numeric mass shifts fall back to backbone-only evidence. Recommended together with the mumble PSM generator.",
                     "type": "boolean",
                     "default": false
                 }
@@ -303,6 +321,11 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {
+                "include_mumble_decoys": {
+                    "description": "Also generate each single modification on residues it cannot occupy (one decoy site per real site). Decoy-site PSMs are flagged in metadata `mumble_decoy_site` and serve as within-spectrum negatives for site-localisation models. Increases the number of candidate PSMs.",
+                    "type": "boolean",
+                    "default": false
+                },
                 "aa_combinations": {
                     "description": "Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low.",
                     "type": "integer",

@@ -9,17 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `ms2` feature generator: `add_mod_info` option (default `false`) adding modification-aware
-  features: `n_mods`, modification-specific neutral loss and diagnostic ion intensity ratios
-  (`mod_loss_n_matched`, `mod_loss_intensity_ratio`, `precursor_mod_loss_ratio`,
-  `diagnostic_ion_ratio`), the hyperscore gain of the least supported modification over its
-  removal (`delta_hyperscore_unmod`) and the hyperscore difference to the best competing PSM on
-  the same spectrum (`delta_hyperscore_vs_spectrum_best`). With the option enabled, spectra are
-  annotated with modification names instead of numeric mass shifts (per-PSM fallback when
-  rustyms cannot parse a name) so that rustyms can generate modification-specific ions.
+- `ms2` feature generator: `add_mod_info` option (default `false`) adding six
+  modification-aware features: `mod_loss_intensity_ratio` and `precursor_mod_loss_ratio`
+  (intensity fraction of modification-specific neutral-loss ions on backbone fragments and on
+  the precursor, whole-modification losses excluded), `delta_hyperscore_unmod` (hyperscore gain
+  of the least supported modification over its removal), and `mod_site_flank_matched` and
+  `mod_site_flank_intensity_ratio` (the four backbone ions that place the modification on its
+  residue rather than a neighbour: fraction matched and their intensity fraction, minimum over
+  modifications), and `mod_mass_error_offset_ppm` (median fragment mass error of site-containing
+  ions minus that of the other ions; separates near-isobaric identities such as Phospho and
+  Sulfo, 9.5 mDa apart). Unmodified PSMs get 0. With the option enabled, spectra are annotated with
+  modification names instead of numeric mass shifts (per-PSM fallback when rustyms cannot parse
+  a name) so that rustyms can generate modification-specific ions. On a phospho-enriched mumble
+  dataset this raised the number of mass-shifted spectra whose best PSM is a phosphopeptide by
+  9% and lowered picks of the unmodified peptide by 19%, at unchanged total identifications.
   Requires ms2rescore-rs >= 0.6.0.
+- `rank_sites` option (default `false`): after rescoring, modification-site candidates of the
+  same spectrum, sequence and modification set are reranked with a site model learned from mumble
+  decoy sites (`ristretto.rank_within_groups`; requires mumble with `include_mumble_decoys`). The
+  spectrum keeps its FDR status but reports the best-supported site; `site_rank` and `site_score`
+  are written to the PSM metadata and a decoy-site based false localisation rate is logged. Decoy
+  sites never take part in FDR estimation. On a phospho-enriched mumble dataset, exact site
+  agreement with a closed search rose from 65% to 82% and phospho picks on non-S/T/Y residues fell
+  from 27% to 3%, at unchanged identifications. Requires ristretto-ms >= 0.4.0.
 
 ### Changed
+
+- DeepLC and IM2Deep are fine-tuned and calibrated only on original search engine hits whose
+  precursor mass matches the peptidoform (isotope errors allowed). In an open modification search
+  the original hit of a mass-shifted spectrum is the wrong peptidoform; using it taught the models
+  the modified peptide's retention time or CCS for the unmodified sequence and let the unmodified
+  hit outscore the correct modified candidate. Closed searches are unaffected.
 
 - Neutral-loss fragments (e.g. b3-H2O) are no longer counted as plain backbone ions in the `ms2`
   and `ms2pip` feature generators (ms2rescore-rs 0.6.0 behaviour).
