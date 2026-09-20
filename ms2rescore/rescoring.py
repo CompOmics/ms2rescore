@@ -256,11 +256,10 @@ def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList
     """
     Rerank the candidate explanations of each spectrum after rescoring.
 
-    By default (``rank_sites_scope: "spectrum"``) all candidates of a spectrum compete: the
-    original search engine hit, every mumble candidate (all modifications, all sites) and the
-    mumble decoy sites (the same modification on a residue it cannot occupy), which are the
-    known negatives. With ``rank_sites_scope: "site"`` only candidates sharing sequence and
-    modification set compete, so the ranker decides the site but not the identity.
+    All candidates of a spectrum compete: the original search engine hit, every mumble candidate
+    (all modifications, all sites) and the mumble decoy sites (the same modification on a residue
+    it cannot occupy), which are the known negatives. The ranker therefore decides both which
+    modification explains the spectrum and where it sits.
 
     :py:func:`ristretto.rank_within_groups` learns from within-group feature differences (group-
     level features cancel; precursor-mass features and the search engine score are excluded, see
@@ -281,7 +280,7 @@ def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList
     decoy_sites
         Decoy-site PSMs with rescoring features, set aside before rescoring.
     config
-        MS²Rescore configuration (``rank_sites_scope``).
+        MS²Rescore configuration.
 
     """
     for psm in psm_list:  # defaults: no competitor
@@ -309,21 +308,14 @@ def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList
     df["modset"] = (
         df["peptidoform"].str.findall(r"\[([^\]]+)\]").apply(lambda m: "+".join(sorted(m)))
     )
-    group_key = (
+    # One group per spectrum; target and decoy peptides never compete with each other.
+    df["group"] = pd.factorize(
         df["run"].astype(str)
         + "|"
         + df["spectrum_id"].astype(str)
         + "|"
         + df["is_decoy"].astype(str)
-    )
-    scope = config.get("rank_sites_scope", "spectrum")
-    if scope == "site":
-        group_key = group_key + "|" + df["peptide"] + "|" + df["modset"]
-    elif scope != "spectrum":
-        raise RescoringError(
-            f"Unknown rank_sites_scope: {scope!r}. Expected 'spectrum' or 'site'."
-        )
-    df["group"] = pd.factorize(group_key)[0]
+    )[0]
     in_group = df.groupby("group")["group"].transform("size") >= 2
     if not in_group.any():
         logger.warning("No spectra with multiple candidates found; skipping site ranking.")
@@ -338,7 +330,7 @@ def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList
         train_col="is_target",
     )
     logger.info(
-        f"Site ranking ({scope} scope): {in_group.sum()} candidates in "
+        f"Site ranking: {in_group.sum()} candidates in "
         f"{df.loc[in_group, 'group'].nunique()} groups; top candidate is a decoy site in "
         f"{result.negative_top_rate:.1%} (false localisation rate estimate)."
     )

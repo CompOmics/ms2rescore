@@ -172,12 +172,6 @@
                     "type": "boolean",
                     "default": false
                 },
-                "rank_sites_scope": {
-                    "description": "What competes in `rank_sites`: `spectrum` (all candidates of a spectrum, the ranker decides identity and site) or `site` (only candidates with the same sequence and modifications, the ranker decides the site only).",
-                    "type": "string",
-                    "enum": ["spectrum", "site"],
-                    "default": "spectrum"
-                },
                 "write_report": {
                     "description": "Write an HTML report with various QC metrics and charts",
                     "oneOf": [{ "type": "boolean" }, { "type": "null" }],
