@@ -37,7 +37,7 @@ except ImportError:
 
     _HAS_MULTIHEAD_CALIBRATION = False
 
-from ms2rescore._utils import get_original_hit_mask
+from ms2rescore._utils import get_reference_hit_mask
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
 
@@ -152,9 +152,10 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
         warnings.filterwarnings("ignore", category=UserWarning, module="deeplc._features")
 
         logger.info("Adding DeepLC-derived features to PSMs.")
-        # Mumble-generated candidate PSMs are unconfirmed mass-shift explanations and must never
-        # be used to calibrate or fine-tune DeepLC, only the original search engine hits can.
-        original_hit_mask = get_original_hit_mask(psm_list)
+        # Only original search engine hits whose precursor mass matches the peptidoform may
+        # calibrate or fine-tune DeepLC: mumble candidates are unconfirmed, and the original hit
+        # of a mass-shifted spectrum is the wrong peptidoform for that retention time.
+        original_hit_mask = get_reference_hit_mask(psm_list)
         psm_list_df = psm_list.to_dataframe()
         psm_list_df["original_psm"] = original_hit_mask
         psm_list_df = psm_list_df[
