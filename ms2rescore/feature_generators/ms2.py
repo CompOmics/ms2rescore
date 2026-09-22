@@ -174,7 +174,7 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         modified = [i for i in range(n) if n_mods[i] > 0]
         feats = {name: np.zeros(n) for name in MOD_FEATURE_NAMES}
 
-        if modified and not any(spectra[i].extended_annotations for i in modified):
+        if modified and not any(spectra[i].extended for i in modified):
             logger.warning(
                 "Spectra carry no extended annotations; modification-specific ion features "
                 "are all zero. Annotate with extended=True to enable them."
@@ -211,46 +211,47 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         )
         for i, ref in zip(chunk, reference):
             spec = spectra[i]
-            total = float(sum(spec.intensity)) or 1.0
+            intensity = spec.intensity
+            total = float(sum(intensity)) or 1.0
             # A loss of the whole modification (e.g. Sulfo -SO3) leaves the plain unmodified
             # fragment, which is present anyway for fragments not covering the true site.
             # Such ions carry no site or identity evidence and are ignored.
             whole_mod = _mod_masses(psm_list[i].peptidoform)
             generic = {
-                (k, a.series, a.position, a.charge, a.neutral_loss)
-                for k, anns in enumerate(ref.extended_annotations)
-                for a in anns
+                (k, a.series, a.position, a.charge, a.neutral_loss) for k, a in ref.extended
             }
             loss_peaks, precursor_peaks = set(), set()
-            for k, anns in enumerate(spec.extended_annotations):
-                for a in anns:
-                    if (k, a.series, a.position, a.charge, a.neutral_loss) in generic:
-                        continue
-                    if any(abs(a.loss_mass - m) < WHOLE_MOD_TOL for m in whole_mod):
-                        continue
-                    if a.ion_type == "backbone" and a.neutral_loss:
-                        loss_peaks.add(k)
-                    elif a.ion_type == "precursor" and a.neutral_loss:
-                        precursor_peaks.add(k)
+            for k, a in spec.extended:
+                if (k, a.series, a.position, a.charge, a.neutral_loss) in generic:
+                    continue
+                if any(abs(a.loss_mass - m) < WHOLE_MOD_TOL for m in whole_mod):
+                    continue
+                if a.ion_type == "backbone" and a.neutral_loss:
+                    loss_peaks.add(k)
+                elif a.ion_type == "precursor" and a.neutral_loss:
+                    precursor_peaks.add(k)
             feats["mod_loss_intensity_ratio"][i] = (
-                sum(spec.intensity[k] for k in loss_peaks) / total
+                sum(intensity[k] for k in loss_peaks) / total
             )
             feats["precursor_mod_loss_ratio"][i] = (
-                sum(spec.intensity[k] for k in precursor_peaks) / total
+                sum(intensity[k] for k in precursor_peaks) / total
             )
 
     def _leave_one_out_delta(self, psm_list, spectra, chunk, seq_lens, full_hs, feats) -> None:
         """Hyperscore gain of the least supported modification over its removal."""
-        alt_spectra, alt_proformas, alt_owner = [], [], []
+        alt_proformas, alt_owner = [], []
         for i in chunk:
             for proforma in _leave_one_out_proformas(psm_list[i].peptidoform):
-                alt_spectra.append(_raw_spectrum(spectra[i]))
                 alt_proformas.append(proforma)
                 alt_owner.append(i)
         if not alt_owner:
             return
+        # One raw copy per PSM, shared by its alternatives: reading mz/intensity converts the
+        # whole peak list out of Rust each time.
+        raw = {i: _raw_spectrum(spectra[i]) for i in set(alt_owner)}
         alt_hs = self._hyperscores(
-            self._annotate(alt_spectra, alt_proformas, False), [seq_lens[i] for i in alt_owner]
+            self._annotate([raw[i] for i in alt_owner], alt_proformas, False),
+            [seq_lens[i] for i in alt_owner],
         )
         delta = defaultdict(list)
         for i, hs in zip(alt_owner, alt_hs):
@@ -268,11 +269,18 @@ def _flank_features(peptidoform: Peptidoform, spectrum) -> tuple[float, float]:
     total intensity); a/b/c and x/y/z series are pooled by terminus.
     """
     length = len(peptidoform.parsed_sequence)
+    # ``intensity`` and ``backbone`` are Rust-side vectors: read each once, since every attribute
+    # access rebuilds the whole list.
+    intensity = spectrum.intensity
     peak_intensity: dict[tuple[str, int], float] = {}
-    for k, anns in enumerate(spectrum.peak_annotations):
-        for terminus in {("N" if a.series in N_TERM_SERIES else "C", a.position) for a in anns}:
-            peak_intensity[terminus] = peak_intensity.get(terminus, 0.0) + spectrum.intensity[k]
-    total = float(sum(spectrum.intensity)) or 1.0
+    counted: set[tuple[int, str, int]] = set()
+    for k, a in spectrum.backbone:
+        ion = ("N" if a.series in N_TERM_SERIES else "C", a.position)
+        if (k, *ion) in counted:  # one peak counts once per terminus and position
+            continue
+        counted.add((k, *ion))
+        peak_intensity[ion] = peak_intensity.get(ion, 0.0) + intensity[k]
+    total = float(sum(intensity)) or 1.0
 
     sites = [s for s, (_, mods) in enumerate(peptidoform.parsed_sequence) if mods]
     flanks = [[("N", s), ("N", s + 1), ("C", length - s - 1), ("C", length - s)] for s in sites]
@@ -308,14 +316,12 @@ def _mass_error_offset(peptidoform: Peptidoform, spectrum) -> float:
         n_min = 1
     if peptidoform.properties.get("c_term"):
         c_min = 1
+    mz = spectrum.mz
     containing, other = [], []
-    for k, anns in enumerate(spectrum.peak_annotations):
-        mz = spectrum.mz[k]
-        for a in anns:
-            ppm = a.mz_error / mz * 1e6
-            n_series = a.series in N_TERM_SERIES
-            has_site = a.position >= (n_min if n_series else c_min)
-            (containing if has_site else other).append(ppm)
+    for k, a in spectrum.backbone:
+        ppm = a.mz_error / mz[k] * 1e6
+        has_site = a.position >= (n_min if a.series in N_TERM_SERIES else c_min)
+        (containing if has_site else other).append(ppm)
     if len(containing) < MIN_IONS_FOR_OFFSET or len(other) < MIN_IONS_FOR_OFFSET:
         return 0.0
     return abs(float(np.median(containing) - np.median(other)))
