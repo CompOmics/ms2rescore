@@ -43,6 +43,7 @@ from ms2rescore.feature_generators.base import FeatureGeneratorBase, FeatureGene
 from ms2rescore.parse_spectra import MSDataType
 
 logger = logging.getLogger(__name__)
+MS2PIP_CHUNK_SIZE = 200_000
 
 
 class MS2PIPFeatureGenerator(FeatureGeneratorBase):
@@ -179,14 +180,18 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
                 "Parse and attach spectra before calling `MS2PIPFeatureGenerator.add_features()`."
             )
 
-        ms2pip_results = correlate(
-            psm_list,
-            compute_correlations=False,
-            model=self.model,
-            model_dir=self.model_dir,
-            processes=self.processes,
-        )
-        self._calculate_features(psm_list, ms2pip_results)
+        # Chunks share PSM objects with psm_list, so the features land on the original PSMs.
+        for start in range(0, len(psm_list), MS2PIP_CHUNK_SIZE):
+            chunk = psm_list[start : start + MS2PIP_CHUNK_SIZE]
+            ms2pip_results = correlate(
+                chunk,
+                compute_correlations=False,
+                model=self.model,
+                model_dir=self.model_dir,
+                processes=self.processes,
+            )
+            self._calculate_features(chunk, ms2pip_results)
+            del ms2pip_results
 
     def _calculate_features(self, psm_list, ms2pip_results):
         idx = []
