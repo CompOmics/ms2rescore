@@ -238,7 +238,7 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
 
     if config.get("rank_sites"):
         logger.info("Ranking modification-site candidates within spectra...")
-        psm_list = rescoring.rank_sites(psm_list, decoy_sites, config)
+        psm_list = rescoring.rank_sites(psm_list, decoy_sites, config, output_file_root)
 
     # Post-rescoring processing. before_result and after_result were both evaluated on the same
     # surviving PSM population and trimmed to max_psm_rank_output the same way, so this

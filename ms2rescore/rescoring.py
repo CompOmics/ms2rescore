@@ -252,7 +252,9 @@ RANKER_EXCLUDED_FEATURES = {
 }
 
 
-def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList:
+def rank_sites(
+    psm_list: PSMList, decoy_sites: PSMList, config: dict, output_file_root: str | None = None
+) -> PSMList:
     """
     Rerank the candidate explanations of each spectrum after rescoring.
 
@@ -281,6 +283,9 @@ def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList
         Decoy-site PSMs with rescoring features, set aside before rescoring.
     config
         MS²Rescore configuration.
+    output_file_root
+        If given, the learned site-model feature weights are written to
+        ``<output_file_root>.site_weights.tsv``.
 
     """
     for psm in psm_list:  # defaults: no competitor
@@ -334,6 +339,16 @@ def rank_sites(psm_list: PSMList, decoy_sites: PSMList, config: dict) -> PSMList
         f"{df.loc[in_group, 'group'].nunique()} groups; top candidate is a decoy site in "
         f"{result.negative_top_rate:.1%} (false localisation rate estimate)."
     )
+    weights = result.feature_weights.assign(mean=lambda w: w.mean(axis=1))
+    top = weights["mean"].reindex(weights["mean"].abs().sort_values(ascending=False).index).head(8)
+    logger.info(
+        "Site model feature weights (mean over folds, centred within spectrum): "
+        + ", ".join(f"{f} {v:+.2f}" for f, v in top.items())
+    )
+    if output_file_root:
+        weights.sort_values("mean", key=abs, ascending=False).to_csv(
+            f"{output_file_root}.site_weights.tsv", sep="\t"
+        )
 
     grp = df.loc[in_group, ["group", "decoy_site", "modset"]].join(result.scores)
     # Probabilities: softmax of the ranker score over the real candidates of a group (each
