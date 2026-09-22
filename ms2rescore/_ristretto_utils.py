@@ -109,6 +109,20 @@ def _trim_and_evaluate(
     )
 
 
+def count_identified_spectra(result: RescoreResult, fdr_threshold: float) -> int:
+    """
+    Number of distinct spectra with at least one target PSM at or below ``fdr_threshold``.
+
+    Counting rows instead compares unequal populations: "before" holds only the search engine's
+    own PSMs, while "after" holds every mumble candidate kept by ``max_psm_rank_output``, so one
+    spectrum contributes a single row on one side and up to ``max_psm_rank_output`` on the other.
+
+    """
+    psms = result.psms
+    identified = (psms["qvalue"] <= fdr_threshold) & ~psms["is_decoy"]
+    return len(psms.loc[identified, ["run", "spectrum_id"]].drop_duplicates())
+
+
 def _is_original_psm(psm) -> bool:
     """
     Whether a PSM is original (not mumble-generated), robust to metadata's round-trip.
