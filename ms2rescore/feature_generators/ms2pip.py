@@ -43,6 +43,9 @@ from ms2rescore.feature_generators.base import FeatureGeneratorBase, FeatureGene
 from ms2rescore.parse_spectra import MSDataType
 
 logger = logging.getLogger(__name__)
+
+# PSMs per ms2pip.correlate() call, to bound peak memory: correlate() holds a preprocessed
+# spectrum and a prediction for every PSM it is given.
 MS2PIP_CHUNK_SIZE = 200_000
 
 

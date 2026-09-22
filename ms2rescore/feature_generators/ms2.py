@@ -26,13 +26,14 @@ ACTIVE_SERIES = {
     "all": ["a", "b", "c", "x", "y", "z"],
 }
 
+# Modified PSMs per extra annotation pass, to bound the transient annotated spectra.
 CHUNK_SIZE = 5000
 WHOLE_MOD_TOL = 0.01  # Da, loss mass equal to a modification mass = whole-modification loss
 
-# Kept deliberately small. On a phospho-enriched mumble dataset, n_mods and a matched-loss
-# count pushed the model towards unmodified PSMs, and a hyperscore-minus-spectrum-best delta
-# was learned with inverted sign (target spectra have one dominant candidate and many far
-# losers, decoy spectra are flat). Diagnostic ions were absent for all modifications seen.
+# Kept deliberately small. A modification count and a matched-loss count bias the model
+# towards unmodified PSMs, and a hyperscore-minus-spectrum-best delta is learned with
+# inverted sign, because target spectra have one dominant candidate and many far losers
+# while decoy spectra are flat.
 MOD_FEATURE_NAMES = [
     "mod_loss_intensity_ratio",
     "precursor_mod_loss_ratio",
@@ -180,8 +181,6 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
                 "are all zero. Annotate with extended=True to enable them."
             )
 
-        # ponytail: chunked so transient annotated spectra stay bounded (~900k PSMs at once
-        # exhausted 80 GB); chunk size only trades Rust call overhead against peak memory.
         for i in modified:
             matched, intensity = _flank_features(psm_list[i].peptidoform, spectra[i])
             feats["mod_site_flank_matched"][i] = matched
