@@ -153,8 +153,7 @@ class DeepLCFeatureGenerator(FeatureGeneratorBase):
 
         logger.info("Adding DeepLC-derived features to PSMs.")
         # Only original search engine hits whose precursor mass matches the peptidoform may
-        # calibrate or fine-tune DeepLC: mumble candidates are unconfirmed, and the original hit
-        # of a mass-shifted spectrum is the wrong peptidoform for that retention time.
+        # calibrate or fine-tune DeepLC (see get_reference_hit_mask).
         original_hit_mask = get_reference_hit_mask(psm_list)
         psm_list_df = psm_list.to_dataframe()
         psm_list_df["original_psm"] = original_hit_mask

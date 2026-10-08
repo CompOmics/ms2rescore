@@ -113,9 +113,8 @@ def count_identified_spectra(result: RescoreResult, fdr_threshold: float) -> int
     """
     Number of distinct spectra with at least one target PSM at or below ``fdr_threshold``.
 
-    Counting rows instead compares unequal populations: "before" holds only the search engine's
-    own PSMs, while "after" holds every mumble candidate kept by ``max_psm_rank_output``, so one
-    spectrum contributes a single row on one side and up to ``max_psm_rank_output`` on the other.
+    A spectrum is counted once, however many of its PSMs (e.g. mumble candidates kept by
+    ``max_psm_rank_output``) pass the threshold.
 
     """
     psms = result.psms

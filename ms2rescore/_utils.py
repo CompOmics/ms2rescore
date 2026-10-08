@@ -112,7 +112,7 @@ def get_original_hit_mask(psm_list: PSMList) -> np.ndarray:
 
 PROTON_MASS = 1.007276466812
 NEUTRON_MASS = 1.00335483
-REFERENCE_MASS_TOLERANCE_PPM = 50.0  # timsTOF precursor accuracy is ~10 ppm; generous on purpose
+REFERENCE_MASS_TOLERANCE_PPM = 50.0
 ISOTOPE_ERRORS = (-1, 0, 1, 2)
 
 
@@ -136,10 +136,9 @@ def get_reference_hit_mask(psm_list: PSMList) -> np.ndarray:
 
     A reference PSM must be an original search engine hit (see
     :py:func:`get_original_hit_mask`) whose precursor mass matches the peptidoform's theoretical
-    mass within ``REFERENCE_MASS_TOLERANCE_PPM``, allowing common isotope errors. In an open
-    modification search the original hit of a mass-shifted spectrum is the wrong peptidoform;
-    calibrating DeepLC or IM2Deep on it teaches the model the modified peptide's retention time
-    or CCS for the unmodified sequence. PSMs without precursor m/z or charge are kept.
+    mass within ``REFERENCE_MASS_TOLERANCE_PPM``, allowing the isotope errors in
+    ``ISOTOPE_ERRORS``. Mass-shifted original hits are therefore excluded. PSMs without precursor
+    m/z or charge are kept.
     """
     original = get_original_hit_mask(psm_list)
     mz = np.array(

@@ -65,6 +65,8 @@
     - **One of**
       - *boolean*
       - *null*
+  - **`mumble_matched_ions_threshold`** *(number)*: Mumble candidates whose fraction of matched fragment ions is below this fraction of the original hit's are removed before rescoring. 0 keeps every candidate. Minimum: `0`. Maximum: `1`. Default: `0.5`.
+  - **`rank_sites`** *(boolean)*: After rescoring, rerank the candidate explanations of each spectrum (original hit, mumble candidates at every site) with a model learned from mumble decoy sites as known negatives (requires the mumble PSM generator with `include_mumble_decoys`). The spectrum keeps its FDR status but reports the best-supported candidate; `site_rank`, `site_score`, `site_probability` and `mod_probability` are written to the PSM metadata. Default: `false`.
   - **`write_report`**: Write an HTML report with various QC metrics and charts. Default: `true`.
     - **One of**
       - *boolean*
@@ -101,12 +103,15 @@
       - *integer*
       - *number*
 - <a id="definitions/ms2"></a>**`ms2`** *(object)*: MS2 spectrum-based feature generator configuration. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
+  - **`add_mod_info`** *(boolean)*: Add modification-aware features: intensity fractions of modification-specific neutral-loss ions (backbone fragments and precursor), the hyperscore gain of each modification over its removal, and the matched fraction and intensity of the site-flanking backbone ions. Requires modification names that rustyms can resolve (Unimod names or accessions); numeric mass shifts fall back to backbone-only evidence. Recommended together with the mumble PSM generator. Default: `false`.
 - <a id="definitions/im2deep"></a>**`im2deep`** *(object)*: Ion mobility feature generator configuration using IM2Deep. Can contain additional properties. Refer to *[#/definitions/feature_generator](#definitions/feature_generator)*.
   - **`reference_dataset`**: Path to IM2Deep reference dataset file. Defaults to IM2Deep's own bundled reference dataset if not set. Default: `null`.
     - **One of**
       - *string*
       - *null*
 - <a id="definitions/mumble"></a>**`mumble`** *(object)*: Mumble PSM generator configuration. Mumble proposes candidate Unimod modifications that explain each PSM's precursor mass shift (open-modification-search style). Requires the optional `mumble` dependency (`pip install ms2rescore[mumble]`). Mumble is still under active development (beta): review results and expect occasional errors, especially on unusual input. Can contain additional properties. Refer to *[#/definitions/psm_generator](#definitions/psm_generator)*.
+  - **`include_mumble_decoys`** *(boolean)*: Also generate each single modification on residues it cannot occupy (one decoy site per real site). Decoy-site PSMs are flagged in metadata `mumble_decoy_site` and serve as within-spectrum negatives for site-localisation models. Increases the number of candidate PSMs. Default: `false`.
+  - **`isotope_errors`** *(array of integer)*: Precursor isotope errors (number of 13C spacings) to consider when matching a mass shift to a modification, e.g. `[0, 1]` to also find modifications when the first 13C peak was selected as the monoisotopic precursor. The assigned value is stored in PSM metadata `isotope_error` and corrects the `basic` feature generator's precursor mass error. Default: `[0]`.
   - **`aa_combinations`** *(integer)*: Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low. Default: `0`.
   - **`combination_length`** *(integer)*: Maximum number of modifications to combine per mass shift. Lower combination lengths are always included as well. Default: `1`.
   - **`exclude_mutations`** *(boolean)*: Exclude candidate modifications classified as amino acid substitutions. Default: `false`.

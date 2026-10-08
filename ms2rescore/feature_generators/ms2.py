@@ -30,10 +30,6 @@ ACTIVE_SERIES = {
 CHUNK_SIZE = 5000
 WHOLE_MOD_TOL = 0.01  # Da, loss mass equal to a modification mass = whole-modification loss
 
-# Kept deliberately small. A modification count and a matched-loss count bias the model
-# towards unmodified PSMs, and a hyperscore-minus-spectrum-best delta is learned with
-# inverted sign, because target spectra have one dominant candidate and many far losers
-# while decoy spectra are flat.
 MOD_FEATURE_NAMES = [
     "mod_loss_intensity_ratio",
     "precursor_mod_loss_ratio",
