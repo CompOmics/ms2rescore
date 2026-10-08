@@ -320,6 +320,12 @@
                     "type": "boolean",
                     "default": false
                 },
+                "isotope_errors": {
+                    "description": "Precursor isotope errors (number of 13C spacings) to consider when matching a mass shift to a modification, e.g. `[0, 1]` to also find modifications when the first 13C peak was selected as the monoisotopic precursor. The assigned value is stored in PSM metadata `isotope_error` and corrects the `basic` feature generator's precursor mass error.",
+                    "type": "array",
+                    "items": { "type": "integer" },
+                    "default": [0]
+                },
                 "aa_combinations": {
                     "description": "Number of amino acid combinations to consider as an additional mass-shift explanation, on top of Unimod modifications. Requires `fasta_file`. Increases runtime combinatorially; keep low.",
                     "type": "integer",
