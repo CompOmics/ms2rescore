@@ -96,7 +96,14 @@ class _PartialFeatureGenerator(FeatureGeneratorBase):
 
 def _make_rescore_result(n_rows: int) -> SimpleNamespace:
     return SimpleNamespace(
-        psms=pd.DataFrame({"qvalue": [0.0] * n_rows, "is_decoy": [False] * n_rows}),
+        psms=pd.DataFrame(
+            {
+                "run": ["run"] * n_rows,
+                "spectrum_id": [str(i) for i in range(n_rows)],
+                "qvalue": [0.0] * n_rows,
+                "is_decoy": [False] * n_rows,
+            }
+        ),
         feature_weights=pd.DataFrame(),
         peptidoforms=None,
         proteins=None,

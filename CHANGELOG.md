@@ -5,21 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.1.0b1] - 2026-10-09
 
 ### Added
 
-- `ms2` feature generator: `add_mod_info` option (default `false`) adding modification-aware
-  features: `n_mods`, modification-specific neutral loss and diagnostic ion intensity ratios
-  (`mod_loss_n_matched`, `mod_loss_intensity_ratio`, `precursor_mod_loss_ratio`,
-  `diagnostic_ion_ratio`), the hyperscore gain of the least supported modification over its
-  removal (`delta_hyperscore_unmod`) and the hyperscore difference to the best competing PSM on
-  the same spectrum (`delta_hyperscore_vs_spectrum_best`). With the option enabled, spectra are
-  annotated with modification names instead of numeric mass shifts (per-PSM fallback when
-  rustyms cannot parse a name) so that rustyms can generate modification-specific ions.
-  Requires ms2rescore-rs >= 0.6.0.
+- `ms2` feature generator: `add_mod_info` option (default `false`) adding six
+  modification-aware features: `mod_loss_intensity_ratio` and `precursor_mod_loss_ratio`
+  (intensity fraction of modification-specific neutral-loss ions on backbone fragments and on
+  the precursor, whole-modification losses excluded), `delta_hyperscore_unmod` (hyperscore gain
+  of the least supported modification over its removal), and `mod_site_flank_matched` and
+  `mod_site_flank_intensity_ratio` (the four backbone ions that place the modification on its
+  residue rather than a neighbour: fraction matched and their intensity fraction, minimum over
+  modifications), and `mod_mass_error_offset_ppm` (median fragment mass error of site-containing
+  ions minus that of the other ions; separates near-isobaric identities such as Phospho and
+  Sulfo, 9.5 mDa apart). Unmodified PSMs get 0. With the option enabled, spectra are annotated with
+  modification names instead of numeric mass shifts (per-PSM fallback when rustyms cannot parse
+  a name) so that rustyms can generate modification-specific ions. Requires
+  ms2rescore-rs >= 0.6.0.
+- `rank_sites` option (default `false`): after rescoring, all candidate explanations of a
+  spectrum (original hit and mumble candidates at every site) are reranked with a model learned
+  from mumble decoy sites (`ristretto.rank_within_groups`; requires mumble with
+  `include_mumble_decoys`), so the ranker decides both the modification and its site. The
+  spectrum keeps its FDR status but reports the best-supported candidate. `site_rank`,
+  `site_score`, `site_probability` and `mod_probability` are written to the PSM metadata, a
+  decoy-site based false localisation rate and the strongest site-model weights are logged, and
+  all weights are written to `<output>.site_weights.tsv`. Decoy sites never take part in FDR
+  estimation. Requires ristretto-ms >= 0.4.0 and mumble >= 0.4.0.
+- `basic` feature generator: `isotope_error` feature (absolute number of 13C spacings between the
+  selected precursor peak and the monoisotopic mass). `mass_error` and `abs_ms1_error_ppm` are now
+  taken against that isotope peak. The value comes from mumble's `isotope_errors` option
+  (`metadata["isotope_error"]`), else from the search engine's own isotope error (e.g. Sage), else
+  0. With mumble, `isotope_errors: [0, 1]` lets modifications be matched when a 13C peak was
+  selected as the precursor.
+- `mumble_matched_ions_threshold` option (default `0.5`): mumble candidates whose matched fragment
+  fraction falls below this fraction of the original hit's are removed before rescoring (was a
+  fixed 50%). 0 keeps every candidate.
 
 ### Changed
+
+- DeepLC and IM2Deep are fine-tuned and calibrated only on original search engine hits whose
+  precursor mass matches the peptidoform (isotope errors allowed). Mumble candidates and
+  mass-shifted original hits are excluded. Closed searches are unaffected.
 
 - Neutral-loss fragments (e.g. b3-H2O) are no longer counted as plain backbone ions in the `ms2`
   and `ms2pip` feature generators (ms2rescore-rs 0.6.0 behaviour).
@@ -30,8 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `deeplc` feature generator: support DeepLC's upcoming multi-head calibration API
   (`MultiHeadRidgeCalibration`) when available, falling back to the current private-API path on
-  older DeepLC versions. Keeps this feature generator working across that DeepLC release either
-  way, and adopts the better multi-head combination automatically once installed.
+  older DeepLC versions.
 - Forced UTF-8 encoding on all text file reads/writes, instead of relying on the platform
   default. Fixes `UnicodeDecodeError` on ASCII-locale systems (e.g. bioconda's Linux test
   environment) and mis-encoding on non-UTF-8 Windows locales (e.g. French cp1252).
@@ -40,13 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `deeplc` feature generator: `deeplc_retrain` option renamed to `finetune` (redundant naming,
-  already scoped under `deeplc`). The old name is still accepted but deprecated, and emits a
+- `deeplc` feature generator: `deeplc_retrain` option renamed to `finetune`. The old name is still accepted but deprecated, and emits a
   warning.
 - Docs: Extend docs with migration guide; add more details to CONTRIBUTING.rst; update changelog
   with past releases; consolidate v4.0.0 alpha and stable release changelogs.
-- Dependencies: Bump DeepLC dependency to stable v4.0.0; rely on uv.lock for installer versions
-  instead of explicitly duplicated pins.
+- Dependencies: Bump DeepLC dependency to stable v4.0.0; rely on uv.lock for installer versions.
 
 ### Fixed
 
@@ -85,15 +108,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New MS2 feature generator using Rust-based `ms2rescore_rs` for direct spectrum feature
   extraction (intensity ratios, matched ion counts/percentages, hyperscore).
 - New basic features: `theoretical_mass`, `experimental_mass`, `mass_error`, `pep_len`.
-- `annotate_spectra()`: annotates all PSM spectra once before feature generators run,
-  eliminating redundant per-generator spectrum parsing.
+- `annotate_spectra()`: annotates all PSM spectra once before feature generators run.
 - Top-level configuration options `fragmentation_model`, `tolerance_value`, and `tolerance_mode`
   to control centralized fragment ion annotation (defaults: `cidhcd`, `0.02 Da`).
 - **Mumble** integration (optional, beta): a new PSM generator for exploring alternative peptide
   identifications via candidate mass-shift modifications (`pip install ms2rescore[mumble]`).
-- Intermediate file output on feature-generation or rescoring errors, enabling recovery by
-  rerunning with a modified configuration instead of restarting from scratch.
-- Feature generators are intelligently skipped when all their features are already present in
+- Intermediate file output on feature-generation or rescoring errors, which can be used as input
+  for a new run.
+- Feature generators are skipped when all their features are already present in
   the input PSM file (e.g., on a recovery run).
 - Standalone HTML report regeneration from a PSM TSV file alone -- no config or log file
   required; before/after comparisons are reconstructed from the PSM list's provenance data.
@@ -101,11 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- MS2 and MS2PIP feature calculation migrated to Rust via `ms2rescore_rs` (~5x speed-up).
+- MS2 and MS2PIP feature calculation migrated to Rust via `ms2rescore_rs`.
 - Spectrum files are parsed and annotated once, up front, and shared across all feature
   generators.
 - DeepLC upgraded to its v4 API: dataset-wide processing with per-run calibration or finetuning.
-  New multitask model leads to much improved performance, even without finetuning.
 - IM2Deep upgraded to its v2 API (`im2deep>=2.0.1`): dataset-wide processing with per-run CCS
   calibration using reference peptides.
 - Basic feature generator uses fixed charge encoding (charges 1-6) instead of a dynamic
@@ -218,7 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switched to `uv` for package management, with a lockfile for reproducible installs; the version
   single source of truth now lives in `pyproject.toml`.
 - Docker base image upgraded to `python:3.12-slim`, pinned via the lockfile.
-- Suppressed non-actionable OpenMS data warnings to reduce noise.
+- Suppressed non-actionable OpenMS data warnings.
 
 ### Fixed
 
@@ -257,9 +278,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- GUI: improved user experience with descriptions, opening the report upon finishing, etc.
-- Updated dependency versions; dropped support for Python 3.8 (required for TensorFlow, nearing
-  EOL).
+- GUI: added option descriptions; the report opens when a run finishes.
+- Updated dependency versions; dropped support for Python 3.8.
 
 ### Fixed
 
@@ -296,7 +316,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `metadata` field.
 - `profile` option to write a cProfile report of the rescoring process.
 - Option to pass `train_fdr` to Mokapot (`test_fdr` was already supported).
-- Faster spectrum file reading with the `timsrust` and `mzdata` Rust libraries.
+- Spectrum file reading with the `timsrust` and `mzdata` Rust libraries.
 
 ### Changed
 
@@ -340,7 +360,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Removed PSMs with invalid amino acids to avoid errors in feature generators.
+- PSMs with invalid amino acids are removed before feature generation.
 
 ## [3.0.1] - 2024-02-22
 
@@ -363,14 +383,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for mzML (MGF still supported).
 - HTML output with interactive charts for quality control and result inspection.
 - `ionmob` feature generator for ion mobility CCS predictions.
-- `mokapot` rescoring engine for more efficient rescoring.
+- `mokapot` rescoring engine.
 - New graphical user interface with a one-click installer for Windows.
 - Documentation on ReadTheDocs.
 
 ### Changed
 
-- Major refactor into a modular Python package to facilitate use in other workflows (see
-  preprint: https://doi.org/10.26434/chemrxiv-2023-rvr9n).
+- Refactored into a modular Python package (see preprint:
+  https://doi.org/10.26434/chemrxiv-2023-rvr9n).
 
 ## [2.1.3] - 2022-08-30
 
@@ -395,7 +415,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Ignore Deprecation/Future/UserWarnings in GUI mode.
-- Removed the `importlib_resources` backport (Python 3.6 compatibility no longer needed).
+- Removed the `importlib_resources` backport.
 - GUI can now be started from the terminal with `ms2rescore-gui`, in addition to
   `python -m ms2rescore.gui`.
 - Relaxed the scikit-learn dependency to `<2`.
@@ -428,8 +448,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Retention time predictor now calibrates per raw file independently, resulting in more accurate
-  calibrations.
+- Retention time predictor now calibrates per raw file independently.
 - PIN pipeline: allow mass-shift modification labels with a `+` sign (e.g. `R.IM[+15.99492]MAR.D`).
 - PEAKS and MaxQuant pipelines: precursor charge from the ID file now overwrites `CHARGE` in the
   MGF file.

@@ -465,3 +465,49 @@ def test_write_rescoring_tables_no_peptides_file_when_no_peptide_col(tmp_path):
 
     assert not (tmp_path / "test.proteins.tsv").is_file()
     assert (tmp_path / "test.peptides.tsv").is_file()
+
+
+def test_rank_sites_prefers_evidence_and_drops_decoy_sites():
+    """Synthetic site families: the ranker must promote the candidate with site evidence."""
+    rng = np.random.default_rng(0)
+    scored, decoys = [], []
+    for i in range(40):
+        # candidates: true site (strong evidence, mediocre SVM score), wrong site (no evidence,
+        # best SVM score), two decoy sites (no evidence)
+        for kind, pf, svm, evidence in [
+            ("true", f"PEPS[Phospho]TIDEK{i}/2", 2.0, 1.0),
+            ("wrong", f"PEPST[Phospho]IDEK{i}/2", 3.0, 0.0),
+            ("decoy", f"P[Phospho]EPSTIDEK{i}/2", None, 0.0),
+            ("decoy", f"PEPSTIDE[Phospho]K{i}/2", None, 0.0),
+        ]:
+            psm = PSM(
+                peptidoform=pf.replace(f"K{i}", "K"),
+                spectrum_id=f"s{i}",
+                run="r",
+                score=svm,
+                qvalue=0.001 if svm else None,
+                pep=0.01 if svm else None,
+                metadata={"mumble_decoy_site": str(kind == "decoy")},
+            )
+            psm.rescoring_features = {
+                "evidence": evidence + rng.normal(0, 0.1),
+                "noise": rng.normal(),
+                "spectrum_level": float(i),  # identical within a family, must not matter
+            }
+            (decoys if kind == "decoy" else scored).append(psm)
+    psm_list = rescoring.rank_sites(PSMList(psm_list=scored), PSMList(psm_list=decoys), config={})
+
+    assert len(psm_list) == 80 and not any("P[Phospho]" in str(p.peptidoform) for p in psm_list)
+    best = {p.spectrum_id: p for p in psm_list if p.rank == 1}
+    assert sum("PEPS[Phospho]T" in str(p.peptidoform) for p in best.values()) >= 36
+    # the family keeps its best rescoring outcome, now attached to the best-supported site
+    assert all(p.score == 3.0 and p.qvalue == 0.001 for p in best.values())
+    assert all(p.metadata["site_rank"] == "1" for p in best.values())
+    assert all(
+        {"site_rank", "site_score", "site_probability", "mod_probability"} <= set(p.metadata)
+        for p in psm_list
+    )
+    assert all(float(p.metadata["mod_probability"]) > 0.99 for p in psm_list)  # single mod set
+    # probabilities sum to 1 over the real candidates of a family, best site carries the most
+    probs = [float(p.metadata["site_probability"]) for p in psm_list if p.spectrum_id == "s0"]
+    assert abs(sum(probs) - 1) < 1e-3 and float(best["s0"].metadata["site_probability"]) > 0.5

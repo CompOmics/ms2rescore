@@ -164,9 +164,15 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
         )
     psm_list = psm_list[psms_with_features]
 
+    decoy_site_mask = _utils.get_decoy_site_mask(psm_list)
+    decoy_sites = psm_list[decoy_site_mask]
+    psm_list = psm_list[~decoy_site_mask]
+
     if "mumble" in config["psm_generator"]:
-        # Remove PSMs where matched_ions_pct drops 25% below the original hit
-        psm_list = _utils.filter_mumble_psms(psm_list, threshold=0.50)
+        # Remove candidates whose matched_ions_pct drops below a fraction of the original hit's
+        psm_list = _utils.filter_mumble_psms(
+            psm_list, threshold=config.get("mumble_matched_ions_threshold", 0.50)
+        )
 
         if config["max_psm_rank_output"] == 1:
             logger.warning(
@@ -194,13 +200,14 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
         }
         before_result.psms["spectrum_id"] = [
             usi_by_native_id[(run, spectrum_id)]
-            for run, spectrum_id in zip(before_result.psms["run"], before_result.psms["spectrum_id"])
+            for run, spectrum_id in zip(
+                before_result.psms["run"], before_result.psms["spectrum_id"]
+            )
         ]
-    n_id_before = (
-        (before_result.psms["qvalue"] <= config["report_fdr"]) & ~before_result.psms["is_decoy"]
-    ).sum()
+    n_id_before = _ristretto_utils.count_identified_spectra(before_result, config["report_fdr"])
     logger.info(
-        f"Found {n_id_before} identified PSMs at {config['report_fdr']:.2%} FDR before rescoring."
+        f"Found {n_id_before} identified spectra at {config['report_fdr']:.2%} FDR "
+        "before rescoring."
     )
 
     # Write feature names to file
@@ -209,7 +216,9 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
     # Rename PSMs to USIs if requested, reusing the lookup built above
     if config["rename_to_usi"]:
         logger.debug(f"Creating USIs for {len(psm_list)} PSMs")
-        psm_list["spectrum_id"] = [usi_by_native_id[(psm.run, psm.spectrum_id)] for psm in psm_list]
+        psm_list["spectrum_id"] = [
+            usi_by_native_id[(psm.run, psm.spectrum_id)] for psm in psm_list
+        ]
 
     # Rescore PSMs
     logger.info(f"Rescoring {len(psm_list)} PSMs with ristretto...")
@@ -226,17 +235,16 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
         # Reraise exception
         raise
 
-    # Post-rescoring processing. before_result and after_result were both evaluated on the same
-    # surviving PSM population and trimmed to max_psm_rank_output the same way, so this
-    # comparison stays fair regardless of its value.
-    n_after = (
-        (after_result.psms["qvalue"] <= config["report_fdr"]) & ~after_result.psms["is_decoy"]
-    ).sum()
+    if config.get("rank_sites"):
+        logger.info("Ranking modification-site candidates within spectra...")
+        psm_list = rescoring.rank_sites(psm_list, decoy_sites, config, output_file_root)
+
+    n_after = _ristretto_utils.count_identified_spectra(after_result, config["report_fdr"])
     n_before = n_id_before
     diff = n_after - n_before
     diff_perc = f" ({diff / n_before:.2%})" if n_before > 0 else ""
     logger.info(
-        f"Identified {diff:+d}{diff_perc} PSMs at {config['report_fdr']:.2%} FDR after "
+        f"Identified {diff:+d}{diff_perc} spectra at {config['report_fdr']:.2%} FDR after "
         "rescoring, compared to before."
     )
 

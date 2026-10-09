@@ -12,20 +12,17 @@ what to update in existing configuration files, scripts, and pipelines when upgr
    :class: note
 
    Rescoring now runs on **ristretto** instead of mokapot or Percolator -- both of those
-   engines are gone, along with their configuration options. Feature generation is faster
-   (Rust-based MS2/MS2PIP calculation, centralized spectrum parsing) and DeepLC/IM2Deep were
+   engines are gone, along with their configuration options. Feature generation uses Rust-based
+   MS2/MS2PIP calculation and centralized spectrum parsing, and DeepLC/IM2Deep were
    upgraded to their latest major versions. The main PSM output file and rescoring result
    tables were renamed. See below for the concrete changes to make.
 
-Computational performance
---------------------------
+Memory usage
+------------
 
-Internal benchmarking across several representative datasets shows that 4.0 uses substantially
-less CPU time than 3.2.x, mainly thanks to the reworked feature generation step and the faster
-rescoring engine. Peak memory usage is higher in 4.0, and scales with the size of the raw spectrum
-files. Spectra are now read once into memory instead of separately per worker process, so this is
-worth taking into account on memory-constrained machines or with large acquisitions. Identification
-rates are unchanged between versions.
+Spectra are read once into memory instead of separately per worker process. Peak memory usage
+therefore scales with the size of the raw spectrum files. Take this into account on
+memory-constrained machines or with large acquisitions.
 
 Rescoring engine: mokapot/Percolator → ristretto
 -------------------------------------------------

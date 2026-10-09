@@ -110,6 +110,54 @@ def get_original_hit_mask(psm_list: PSMList) -> np.ndarray:
     return np.array([_is_original_psm(psm) for psm in psm_list], dtype=bool)
 
 
+PROTON_MASS = 1.007276466812
+NEUTRON_MASS = 1.00335483
+REFERENCE_MASS_TOLERANCE_PPM = 50.0
+ISOTOPE_ERRORS = (-1, 0, 1, 2)
+
+
+def get_decoy_site_mask(psm_list: PSMList) -> np.ndarray:
+    """
+    Mask of mumble decoy-site PSMs (``metadata["mumble_decoy_site"]`` true, bool or string).
+
+    Decoy sites carry a real modification on a residue it cannot occupy. They are known-negative
+    site candidates for :py:func:`ms2rescore.rescoring.rank_sites` and must never take part in
+    target-decoy FDR estimation.
+    """
+    return np.array(
+        [str(psm.metadata.get("mumble_decoy_site", False)).lower() == "true" for psm in psm_list],
+        dtype=bool,
+    )
+
+
+def get_reference_hit_mask(psm_list: PSMList) -> np.ndarray:
+    """
+    Mask of PSMs fit to serve as calibration or fine-tuning reference for predictors.
+
+    A reference PSM must be an original search engine hit (see
+    :py:func:`get_original_hit_mask`) whose precursor mass matches the peptidoform's theoretical
+    mass within ``REFERENCE_MASS_TOLERANCE_PPM``, allowing the isotope errors in
+    ``ISOTOPE_ERRORS``. Mass-shifted original hits are therefore excluded. PSMs without precursor
+    m/z or charge are kept.
+    """
+    original = get_original_hit_mask(psm_list)
+    mz = np.array(
+        [psm.precursor_mz if psm.precursor_mz is not None else np.nan for psm in psm_list],
+        dtype=float,
+    )
+    charge = np.array([psm.get_precursor_charge() or 0 for psm in psm_list], dtype=float)
+    theoretical = np.array([psm.peptidoform.theoretical_mass for psm in psm_list], dtype=float)
+    observed = (mz - PROTON_MASS) * charge
+    matched = np.zeros(len(psm_list), dtype=bool)
+    for k in ISOTOPE_ERRORS:
+        matched |= (
+            np.abs(observed - theoretical - k * NEUTRON_MASS) / theoretical * 1e6
+            <= REFERENCE_MASS_TOLERANCE_PPM
+        )
+    unknown = np.isnan(mz) | (charge == 0)
+    return original & (matched | unknown)
+
+
 def filter_mumble_psms(psm_list: PSMList, threshold=1) -> PSMList:
     """
     Filter out mumble PSMs with `matched_ions_pct` lower than the original hit.

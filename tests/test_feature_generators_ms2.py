@@ -1,7 +1,7 @@
 import math
 
 from ms2rescore_rs import AnnotatedMS2Spectrum, FragmentAnnotation, Precursor
-from psm_utils import PSM, PSMList
+from psm_utils import PSM, Peptidoform, PSMList
 
 from ms2rescore.feature_generators.ms2 import MS2FeatureGenerator
 from ms2rescore.parse_spectra import MSDataType
@@ -91,18 +91,18 @@ def test_fragmentation_model_selects_active_ion_series():
 
 
 # ---------------------------------------------------------------- add_mod_info features
-from ms2rescore_rs import MS2Spectrum  # noqa: E402
+from ms2rescore_rs import MS2Spectrum
 
-from ms2rescore.feature_generators.ms2 import (  # noqa: E402
+from ms2rescore.feature_generators.ms2 import (
     MOD_FEATURE_NAMES,
-    _delta_vs_spectrum_best,
     _leave_one_out_proformas,
 )
-from ms2rescore.parse_spectra import annotate_spectra  # noqa: E402
+from ms2rescore.parse_spectra import annotate_spectra
 
-# PEPS[Phospho]TIDE/2: b3 324.1554, b4-H3PO4 393.1769, precursor-H3PO4 435.1980 (2+), y5 644.2175
-PHOSPHO_MZ = [324.1554, 393.1769, 435.1980, 644.2175, 999.0]
-PHOSPHO_INTENSITY = [10.0, 20.0, 30.0, 40.0, 100.0]  # total 200
+# PEPS[Phospho]TIDE/2: b3 324.1554, b4-H3PO4 393.1769, precursor-H3PO4 435.1980 (2+), y5 644.2175,
+# plus b2 227.1026 and y3 376.1714 (no site) and b4 491.1538 (site) for the mass-error offset
+PHOSPHO_MZ = [227.1026, 324.1554, 376.1714, 393.1769, 435.1980, 491.1538, 644.2175, 999.0]
+PHOSPHO_INTENSITY = [10.0, 10.0, 10.0, 20.0, 30.0, 10.0, 40.0, 70.0]  # total 200
 
 
 def _phospho_psm_list() -> PSMList:
@@ -121,43 +121,37 @@ def _phospho_psm_list() -> PSMList:
         psm_list=[
             psm("PEPS[Phospho]TIDE/2", "scan=1"),  # correct, modified
             psm("PEPSTIDE/2", "scan=1"),  # unmodified competitor on same spectrum
-            psm("PEPSTIDE/2", "scan=2"),  # unmodified, alone on its spectrum
+            psm("PEPS[Sulfo]TIDE/2", "scan=1"),  # isobaric wrong identity, 9.5 mDa off
         ]
     )
 
 
-def test_feature_names_mod_flag():
-    assert not set(MOD_FEATURE_NAMES) & set(MS2FeatureGenerator().feature_names)
-    names = MS2FeatureGenerator(add_mod_info=True).feature_names
-    assert names[-len(MOD_FEATURE_NAMES) :] == MOD_FEATURE_NAMES
-    assert len(names) == len(set(names))
-
-
 def test_mod_features_phospho():
     psm_list = _phospho_psm_list()
-    annotate_spectra(psm_list, "cidhcd", 20.0, "ppm", extended=True)
-    generator = MS2FeatureGenerator(add_mod_info=True, tolerance_value=20.0, tolerance_mode="ppm")
+    annotate_spectra(psm_list, "cidhcd", 0.02, "Da", extended=True)
+    generator = MS2FeatureGenerator(add_mod_info=True, tolerance_value=0.02, tolerance_mode="Da")
     generator.add_features(psm_list)
-    mod, unmod, alone = (psm.rescoring_features for psm in psm_list)
+    mod, unmod, sulfo = (psm.rescoring_features for psm in psm_list)
 
-    assert mod["n_mods"] == 1 and unmod["n_mods"] == 0
-    assert mod["mod_loss_n_matched"] == 1
     assert math.isclose(mod["mod_loss_intensity_ratio"], 20 / 200)
     assert math.isclose(mod["precursor_mod_loss_ratio"], 30 / 200)
-    assert mod["diagnostic_ion_ratio"] == 0.0
     assert mod["delta_hyperscore_unmod"] > 0  # y5 carries the phospho, lost when removed
+    # site S4 (0-based 3) of 8: flanking b3, b4, y4, y5; b3, b4 and y5 are present
+    assert mod["mod_site_flank_matched"] == 0.75
+    assert math.isclose(mod["mod_site_flank_intensity_ratio"], 60 / 200)
+    # Phospho fragments sit on their theoretical m/z, Sulfo site fragments are 9.5 mDa off
+    assert mod["mod_mass_error_offset_ppm"] < 2
+    assert 12 < sulfo["mod_mass_error_offset_ppm"] < 22
     for name in MOD_FEATURE_NAMES:
-        if name != "delta_hyperscore_vs_spectrum_best":
-            assert unmod[name] == 0.0, name
-    # Competition on scan=1: modified PSM explains more (y5), unmodified loses by the same amount
-    assert mod["delta_hyperscore_vs_spectrum_best"] > 0
-    assert math.isclose(
-        unmod["delta_hyperscore_vs_spectrum_best"], -mod["delta_hyperscore_vs_spectrum_best"]
-    )
-    assert alone["delta_hyperscore_vs_spectrum_best"] == 0.0
+        assert unmod[name] == 0.0, name
+    # Sulfo -SO3 leaves the plain fragment: excluded as evidence, so no loss features
+    assert sulfo["mod_loss_intensity_ratio"] == 0.0 and sulfo["precursor_mod_loss_ratio"] == 0.0
+    assert math.isclose(sulfo["mod_site_flank_matched"], 0.75)  # same peaks match within 0.02 Da
 
 
 def test_mod_flag_off_adds_nothing():
+    """Without `add_mod_info` no modification feature is declared, computed or annotated."""
+    assert not set(MOD_FEATURE_NAMES) & set(MS2FeatureGenerator().feature_names)
     psm_list = _phospho_psm_list()
     annotate_spectra(psm_list, "cidhcd", 20.0, "ppm")
     MS2FeatureGenerator().add_features(psm_list)
@@ -165,9 +159,7 @@ def test_mod_flag_off_adds_nothing():
     assert psm_list[0].spectrum.extended_annotations == []
 
 
-def test_mod_helpers():
-    from psm_utils import Peptidoform
-
+def test_leave_one_out_proformas():
     variants = list(
         _leave_one_out_proformas(Peptidoform("[Acetyl]-PEPS[Phospho]TIDE-[Amidated]/2"))
     )
@@ -176,10 +168,3 @@ def test_mod_helpers():
         "[+42.0106]-PEPS[+79.9663]TIDE/2",
         "[+42.0106]-PEPSTIDE-[-0.9840]/2",
     ]
-
-    psms = PSMList(
-        psm_list=[PSM(peptidoform="PEPTIDE", spectrum_id="s1", run="r") for _ in range(3)]
-    )
-    for psm, hs in zip(psms, [5.0, 5.0, 2.0]):
-        psm.rescoring_features = {"hyperscore": hs}
-    assert list(_delta_vs_spectrum_best(psms)) == [0.0, 0.0, -3.0]  # tie at the top gives 0

@@ -115,6 +115,15 @@ Configuration options
 - ``all_unimod_modifications`` (default: ``false``): Consider all Unimod modifications instead
   of the restricted default/``modification_file`` list. Substantially increases runtime and
   the risk of false-positive candidate modifications.
+- ``isotope_errors`` (default: ``[0]``): Precursor isotope errors (number of 13C spacings) to
+  consider when matching a mass shift. With ``[0, 1]``, a modification is also found when the
+  instrument selected the first 13C peak as the monoisotopic precursor. Shifted lookups are
+  skipped when the unmodified peptide already fits at one of the isotope errors. The assigned
+  value is stored in PSM metadata ``isotope_error`` and used by the ``basic`` feature generator
+  to correct the precursor mass error.
+- ``include_mumble_decoys`` (default: ``false``): Also place each single modification on
+  residues it cannot occupy (one decoy site per real site). These decoy sites are known
+  negatives for site ranking (see below) and never take part in FDR estimation.
 
 .. caution::
   MS²Rescore always runs Mumble with ``include_original_psm`` and ``include_decoy_psm`` forced
@@ -129,10 +138,10 @@ How Mumble PSMs are filtered
 Adding candidate PSMs for every matching modification can introduce many low-quality
 candidates, especially with a larger ``combination_length`` or ``all_unimod_modifications``
 enabled. To limit this, MS²Rescore removes any Mumble-generated candidate PSM whose fraction of
-matched fragment ions (``matched_ions_pct``) drops more than 50% below that of the original,
-unmodified PSM, *before* rescoring. This keeps the candidate set focused on modifications that
-are actually well-supported by the fragmentation spectrum, without requiring extra
-configuration.
+matched fragment ions (``matched_ions_pct``) is below ``mumble_matched_ions_threshold``
+(top-level option, default ``0.5``) times that of the original, unmodified PSM, *before*
+rescoring. This keeps the candidate set focused on modifications that are well supported by the
+fragmentation spectrum. Set the option to ``0`` to keep every candidate.
 
 Mumble-generated candidates are also excluded from the DeepLC and IM2Deep calibration sets:
 since a candidate is an unconfirmed hypothesis about the peptide's identity (it inherits the
@@ -152,6 +161,56 @@ ion mobility predictions.
   rather than silently pick one, set ``max_psm_rank_output`` to a value greater than 1 and review
   same-spectrum, same-score groups in the output before drawing conclusions from the winning
   peptidoform.
+
+
+Modification-aware features and site ranking
+---------------------------------------------
+
+Two further options help to decide which modification explains a spectrum and where it sits:
+
+.. code-block:: json
+
+  {
+    "ms2rescore": {
+      "feature_generators": {
+        "basic": {},
+        "ms2": { "add_mod_info": true }
+      },
+      "psm_generator": {
+        "mumble": { "include_mumble_decoys": true, "isotope_errors": [0, 1] }
+      },
+      "rank_sites": true
+    }
+  }
+
+- ``add_mod_info`` (``ms2`` feature generator): six modification-aware features, among them the
+  intensity of modification-specific neutral-loss ions and the hyperscore gain of a modification
+  over its removal. Unmodified PSMs get 0.
+- ``rank_sites`` (top-level, requires ``include_mumble_decoys``): after rescoring, all candidates
+  of a spectrum (original hit and Mumble candidates at every site) are reranked by a model
+  learned with the decoy sites as known negatives. The spectrum keeps its FDR status, but the
+  best-supported candidate is reported.
+
+With ``rank_sites`` enabled, four columns are added to the PSM table. Every PSM gets a value;
+candidates without competitors get rank 1 and probability 1.
+
+============================  ==========================================================
+Column                        Meaning
+============================  ==========================================================
+``meta:site_rank``            1 is the best candidate of its spectrum
+``meta:site_score``           Ranker log-odds, comparable within a spectrum only
+``meta:site_probability``     Share of the spectrum's odds held by this candidate
+``meta:mod_probability``      The same, summed over candidates with identical modifications
+============================  ==========================================================
+
+The log reports a false localisation rate (the fraction of spectra whose top candidate is a
+decoy site) and the strongest site-model feature weights. All weights are written to
+``<output>.site_weights.tsv``.
+
+.. caution::
+  ``site_probability`` is over-confident. Decoy sites are placed on residues the modification
+  cannot occupy, which makes them easier to reject than a wrong but possible site. The decoy-based
+  false localisation rate therefore underestimates the real localisation error.
 
 
 Tips and known limitations

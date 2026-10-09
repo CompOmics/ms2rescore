@@ -19,7 +19,7 @@ from im2deep.core import predict
 from im2deep.utils import im2ccs
 from psm_utils import PSMList
 
-from ms2rescore._utils import get_original_hit_mask
+from ms2rescore._utils import get_reference_hit_mask
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
 
@@ -88,9 +88,9 @@ class IM2DeepFeatureGenerator(FeatureGeneratorBase):
 
         logger.info("Adding IM2Deep-derived features to PSMs")
 
-        # Mumble-generated candidate PSMs are unconfirmed mass-shift explanations and must never
-        # be used to calibrate IM2Deep, only the original search engine hits can.
-        original_hit_mask = get_original_hit_mask(psm_list)
+        # Only original search engine hits whose precursor mass matches the peptidoform may
+        # calibrate IM2Deep (see get_reference_hit_mask).
+        original_hit_mask = get_reference_hit_mask(psm_list)
         psm_list_df = psm_list.to_dataframe()
         psm_list_df["original_psm"] = original_hit_mask
         psm_list_df = psm_list_df[
