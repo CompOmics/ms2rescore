@@ -149,6 +149,25 @@ def test_mod_features_phospho():
     assert math.isclose(sulfo["mod_site_flank_matched"], 0.75)  # same peaks match within 0.02 Da
 
 
+def test_substitution_delta_hyperscore_against_original():
+    """A mumble substitution candidate is scored against the original residue."""
+    psm_list = _phospho_psm_list()[:2]
+    original, substituted = psm_list
+    original.peptidoform = Peptidoform("PEPSTIDE/2")
+    original.metadata = {"original_psm": "True"}
+    substituted.peptidoform = Peptidoform("AEPSTIDE/2")
+    substituted.metadata = {"original_psm": "False"}
+    annotate_spectra(psm_list, "cidhcd", 0.02, "Da", extended=True)
+    MS2FeatureGenerator(add_mod_info=True, tolerance_value=0.02, tolerance_mode="Da").add_features(
+        psm_list
+    )
+    orig, sub = (psm.rescoring_features for psm in psm_list)
+
+    assert orig["delta_hyperscore_unmod"] == 0.0
+    assert sub["delta_hyperscore_unmod"] < 0  # b2, b3 shift with P1A
+    assert math.isclose(sub["delta_hyperscore_unmod"], sub["hyperscore"] - orig["hyperscore"])
+
+
 def test_mod_flag_off_adds_nothing():
     """Without `add_mod_info` no modification feature is declared, computed or annotated."""
     assert not set(MOD_FEATURE_NAMES) & set(MS2FeatureGenerator().feature_names)
@@ -168,3 +187,5 @@ def test_leave_one_out_proformas():
         "[+42.0106]-PEPS[+79.9663]TIDE/2",
         "[+42.0106]-PEPSTIDE-[-0.9840]/2",
     ]
+    reverted = list(_leave_one_out_proformas(Peptidoform("PEPS[Phospho]TIDE/2"), "PEPSTIDA"))
+    assert reverted == ["PEPSTIDE/2", "PEPS[+79.9663]TIDA/2"]

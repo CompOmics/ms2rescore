@@ -189,7 +189,23 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         for start in range(0, len(modified), CHUNK_SIZE):
             chunk = modified[start : start + CHUNK_SIZE]
             self._loss_features(psm_list, spectra, chunk, feats)
-            self._leave_one_out_delta(psm_list, spectra, chunk, seq_lens, full_hs, feats)
+
+        # Amino acid substitutions (mumble) count as modifications for the leave-one-out delta:
+        # each substituted residue is reverted to the residue of the original PSM.
+        originals = _original_sequences(psm_list)
+        scored = sorted(
+            set(modified)
+            | {
+                i
+                for i in range(n)
+                if _substituted_positions(psm_list[i].peptidoform.sequence, originals[i])
+            }
+        )
+        for start in range(0, len(scored), CHUNK_SIZE):
+            chunk = scored[start : start + CHUNK_SIZE]
+            self._leave_one_out_delta(
+                psm_list, spectra, chunk, seq_lens, full_hs, feats, originals
+            )
 
         for i, psm in enumerate(psm_list):
             psm.rescoring_features.update(
@@ -232,11 +248,13 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
                 sum(intensity[k] for k in precursor_peaks) / total
             )
 
-    def _leave_one_out_delta(self, psm_list, spectra, chunk, seq_lens, full_hs, feats) -> None:
-        """Hyperscore gain of the least supported modification over its removal."""
+    def _leave_one_out_delta(
+        self, psm_list, spectra, chunk, seq_lens, full_hs, feats, originals
+    ) -> None:
+        """Hyperscore gain of the least supported modification or substitution over its removal."""
         alt_proformas, alt_owner = [], []
         for i in chunk:
-            for proforma in _leave_one_out_proformas(psm_list[i].peptidoform):
+            for proforma in _leave_one_out_proformas(psm_list[i].peptidoform, originals[i]):
                 alt_proformas.append(proforma)
                 alt_owner.append(i)
         if not alt_owner:
@@ -345,8 +363,29 @@ def _raw_spectrum(spectrum) -> MS2Spectrum:
     )
 
 
-def _leave_one_out_proformas(peptidoform: Peptidoform):
-    """Yield mass-shift ProForma strings with one modification removed at a time."""
+def _original_sequences(psm_list: PSMList) -> list:
+    """Sequence of the original PSM (``metadata["original_psm"]`` true) of each PSM's spectrum."""
+    reference = {
+        (psm.run, psm.collection, psm.spectrum_id): psm.peptidoform.sequence
+        for psm in psm_list
+        if str(psm.metadata.get("original_psm", "")).strip().lower() == "true"
+    }
+    return [reference.get((psm.run, psm.collection, psm.spectrum_id)) for psm in psm_list]
+
+
+def _substituted_positions(sequence: str, original_sequence) -> list[int]:
+    """Positions where a sequence differs from its original sequence of the same length."""
+    if not original_sequence or len(sequence) != len(original_sequence):
+        return []
+    return [i for i, (a, b) in enumerate(zip(sequence, original_sequence)) if a != b]
+
+
+def _leave_one_out_proformas(peptidoform: Peptidoform, original_sequence=None):
+    """Yield mass-shift ProForma strings with one modification removed at a time.
+
+    With ``original_sequence``, each substituted residue is also reverted to the original
+    residue, one at a time.
+    """
     for terminus in ("n_term", "c_term"):
         mods = peptidoform.properties.get(terminus) or []
         for k in range(len(mods)):
@@ -358,3 +397,7 @@ def _leave_one_out_proformas(peptidoform: Peptidoform):
             variant = deepcopy(peptidoform)
             variant.parsed_sequence[i] = (aa, mods[:k] + mods[k + 1 :] or None)
             yield proforma_to_mass_shift(variant)
+    for i in _substituted_positions(peptidoform.sequence, original_sequence):
+        variant = deepcopy(peptidoform)
+        variant.parsed_sequence[i] = (original_sequence[i], peptidoform.parsed_sequence[i][1])
+        yield proforma_to_mass_shift(variant)
