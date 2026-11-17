@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from ms2rescore.localisation import _fragments, _residue_masses, localise
 
@@ -12,7 +13,8 @@ def _ions(pf):
     return _fragments(_residue_masses(pf), 2)
 
 
-def test_localise_reports_site_sets_from_peaks():
+@pytest.mark.parametrize("tol, ppm", [(0.02, False), (20.0, True)])
+def test_localise_reports_site_sets_from_peaks(tol, ppm):
     shared = np.intersect1d(np.round(_ions(S4), 4), np.round(_ions(S5), 4))
     s4_only = np.setdiff1d(np.round(_ions(S4), 4), np.round(_ions(S5), 4))
     peaks = {
@@ -38,7 +40,7 @@ def test_localise_reports_site_sets_from_peaks():
     df["modset"] = np.where(df.peptidoform.str.contains("Phospho"), "Phospho", "")
     df["group"] = pd.factorize(df.spectrum_id)[0]
 
-    out = localise(df, peaks)
+    out = localise(df, peaks, tol, ppm)
     out.index = df.groupby("group").spectrum_id.first().reindex(out.index)
 
     assert sorted(out.loc["ambiguous", "site_set"]) == sorted([S4, S5])

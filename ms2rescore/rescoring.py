@@ -322,7 +322,7 @@ def _rank_explanations(rows: pd.DataFrame, feature_cols: list[str], n_folds: int
     return scores, w
 
 
-def _prefer_common_isobars(d: pd.DataFrame, rep: pd.DataFrame, tol: float) -> None:
+def _prefer_common_isobars(d: pd.DataFrame, rep: pd.DataFrame, tol: float, ppm: bool = False) -> None:
     """
     Among explanations with the same fragment masses as the step-1 winner, move the most frequent
     one to the top (in place, ``explanation_score``).
@@ -351,7 +351,8 @@ def _prefer_common_isobars(d: pd.DataFrame, rep: pd.DataFrame, tol: float) -> No
         cand = real.get(top["group"], d.iloc[:0])
         alts = {
             e for e, pf in zip(cand["explanation"], cand["peptidoform"])
-            if e != top["explanation"] and _same_fragments(mass(pf), mass(top["peptidoform"]), tol)
+            if e != top["explanation"]
+            and _same_fragments(mass(pf), mass(top["peptidoform"]), tol, ppm)
         }
         best = max([top["explanation"]] + sorted(alts), key=lambda e: counts.get(e, 0))
         if best != top["explanation"]:
@@ -453,7 +454,9 @@ def rank_sites(
     s1 = dict(zip(zip(rep["group"], rep["explanation"]), s1))
     # an explanation with only decoy sites left (no real candidate) is never chosen
     d["explanation_score"] = [s1.get(k, -1e9) for k in zip(d["group"], d["explanation"])]
-    _prefer_common_isobars(d, rep, float(config.get("tolerance_value", 0.02)))
+    tol = float(config.get("tolerance_value", 0.02))
+    ppm = config.get("tolerance_mode", "Da") == "ppm"
+    _prefer_common_isobars(d, rep, tol, ppm)
 
     # Step 2: which site within each modification set, with the decoy sites as negatives
     mod = d[~d["original"]].assign(site_group=lambda x: x["group"].astype(str) + "|" + x["explanation"])
@@ -502,7 +505,7 @@ def rank_sites(
         charge=[all_psms[i].peptidoform.precursor_charge or 2 for i in d.index],
         hyperscore=d["hyperscore"] if "hyperscore" in d else np.nan,
     )
-    loc = localise(cand, peaks or {}, float(config.get("tolerance_value", 0.02)))
+    loc = localise(cand, peaks or {}, tol, ppm)
     called = loc[~loc["is_decoy"]]["status"].value_counts(normalize=True)
     logger.info(
         "Localisation outcome of target spectra: "

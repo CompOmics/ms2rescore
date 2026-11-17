@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `localisation_confidence`, `localisation_qvalue`; see `ms2rescore.localisation.localise`). The
   site set comes from the observed site-determining fragments; the PEPs from target-decoy
   competition with decoy sites (site) and decoy-peptide spectra (gain over the original hit).
+  Fragments are matched within `tolerance_value` in `tolerance_mode` (Da or ppm).
 
 ### Changed
 

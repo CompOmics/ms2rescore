@@ -46,18 +46,27 @@ def _fragments(masses: np.ndarray, charge: int) -> np.ndarray:
     return np.concatenate([(neutral + z * PROTON) / z for z in range(1, max(1, charge - 1) + 1)])
 
 
-def _unique(a: np.ndarray, b: np.ndarray, tol: float) -> np.ndarray:
+def _tol(mass: np.ndarray, tol: float, ppm: bool) -> np.ndarray:
+    """Tolerance in Da at each mass (``tol`` in ppm when ``ppm``, else in Da)."""
+    return np.asarray(mass, float) * tol * 1e-6 if ppm else np.full(np.shape(mass), tol)
+
+
+def _unique(a: np.ndarray, b: np.ndarray, tol: float, ppm: bool = False) -> np.ndarray:
     """Ions of a without an ion of b within tol."""
-    return a[np.abs(a[:, None] - b[None, :]).min(axis=1) > tol]
+    return a[np.abs(a[:, None] - b[None, :]).min(axis=1) > _tol(a, tol, ppm)]
 
 
-def _n_observed(ions: np.ndarray, mz: np.ndarray, tol: float) -> int:
+def _n_observed(ions: np.ndarray, mz: np.ndarray, tol: float, ppm: bool = False) -> int:
     i = np.clip(np.searchsorted(mz, ions), 1, len(mz) - 1)
-    return int((np.minimum(np.abs(mz[i] - ions), np.abs(mz[i - 1] - ions)) <= tol).sum())
+    diff = np.minimum(np.abs(mz[i] - ions), np.abs(mz[i - 1] - ions))
+    return int((diff <= _tol(ions, tol, ppm)).sum())
 
 
-def _same_fragments(a: np.ndarray, b: np.ndarray, tol: float) -> bool:
-    return len(a) == len(b) and bool(np.all(np.abs(np.cumsum(a) - np.cumsum(b)) <= tol))
+def _same_fragments(a: np.ndarray, b: np.ndarray, tol: float, ppm: bool = False) -> bool:
+    if len(a) != len(b):
+        return False
+    ca, cb = np.cumsum(a), np.cumsum(b)
+    return bool(np.all(np.abs(ca - cb) <= _tol(ca, tol, ppm)))
 
 
 def _pep(target, null, pi0=1.0):
@@ -71,7 +80,7 @@ def _pep(target, null, pi0=1.0):
     return lambda v: np.clip(iso.predict(np.asarray(v, float)) / (1 - iso.predict(np.asarray(v, float))) * ratio, 0, 1)
 
 
-def localise(df: pd.DataFrame, peaks: dict, tol: float = 0.02) -> pd.DataFrame:
+def localise(df: pd.DataFrame, peaks: dict, tol: float = 0.02, ppm: bool = False) -> pd.DataFrame:
     """
     Localisation outcome per group.
 
@@ -85,7 +94,7 @@ def localise(df: pd.DataFrame, peaks: dict, tol: float = 0.02) -> pd.DataFrame:
     peaks
         ``(run, spectrum_id) -> (mz, intensity)``; spectra without peaks get a single-site set.
     tol
-        Fragment tolerance in Da.
+        Fragment tolerance, in Da or, with ``ppm``, in ppm.
 
     Returns
     -------
@@ -107,7 +116,7 @@ def localise(df: pd.DataFrame, peaks: dict, tol: float = 0.02) -> pd.DataFrame:
         same = real[(real["modset"] == top["modset"]) & ~real["original"]]
         decoys = g[g["decoy_site"] & (g["modset"] == top["modset"])]
         decoys = decoys[np.array(
-            [not any(_same_fragments(masses[d], masses[r], tol) for r in same["peptidoform"])
+            [not any(_same_fragments(masses[d], masses[r], tol, ppm) for r in same["peptidoform"])
              for d in decoys["peptidoform"]], dtype=bool
         )]
         site = [True] * len(same)
@@ -118,7 +127,9 @@ def localise(df: pd.DataFrame, peaks: dict, tol: float = 0.02) -> pd.DataFrame:
             t = ions[top["peptidoform"]]
             for i, pf in enumerate(same["peptidoform"].iloc[1:], start=1):
                 b = ions[pf]
-                site[i] = _n_observed(_unique(t, b, tol), mz, tol) <= _n_observed(_unique(b, t, tol), mz, tol)
+                site[i] = _n_observed(_unique(t, b, tol, ppm), mz, tol, ppm) <= _n_observed(
+                    _unique(b, t, tol, ppm), mz, tol, ppm
+                )
         else:
             site = [True] + [False] * (len(same) - 1)
         site = np.asarray(site)
@@ -130,7 +141,7 @@ def localise(df: pd.DataFrame, peaks: dict, tol: float = 0.02) -> pd.DataFrame:
             decoy_margin = decoys["score"].iloc[0] - rest.max()
         alternatives = [
             pf for pf in real.loc[real["modset"] != top["modset"], "peptidoform"]
-            if _same_fragments(masses[pf], masses[top["peptidoform"]], tol)
+            if _same_fragments(masses[pf], masses[top["peptidoform"]], tol, ppm)
         ]
         original = g.loc[g["original"], "hyperscore"]
         gain = top["hyperscore"] - original.iloc[0] if len(original) else np.nan
