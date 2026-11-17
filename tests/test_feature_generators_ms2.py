@@ -189,3 +189,22 @@ def test_leave_one_out_proformas():
     ]
     reverted = list(_leave_one_out_proformas(Peptidoform("PEPS[Phospho]TIDE/2"), "PEPSTIDA"))
     assert reverted == ["PEPSTIDE/2", "PEPS[+79.9663]TIDA/2"]
+
+
+def test_loss_features_ignore_residue_specificity():
+    """A modification outside its residue specificity (a mumble decoy site) gets its losses."""
+    psm_list = _phospho_psm_list()
+    decoy = PSM(peptidoform="P[Phospho]EPSTIDE/2", spectrum_id="scan=1", run="run1")
+    decoy.rescoring_features = {}
+    decoy.spectrum = psm_list[0].spectrum
+    psm_list = PSMList(psm_list=[psm_list[0], decoy])
+    annotate_spectra(psm_list, "cidhcd", 0.02, "Da", extended=True)
+    generator = MS2FeatureGenerator(add_mod_info=True, tolerance_value=0.02, tolerance_mode="Da")
+    generator.add_features(psm_list)
+    real, site = (psm.rescoring_features for psm in psm_list)
+
+    # P1 is covered by b4, so b4-H3PO4 counts for the decoy site as well; same precursor loss
+    assert math.isclose(site["mod_loss_intensity_ratio"], real["mod_loss_intensity_ratio"])
+    assert math.isclose(site["precursor_mod_loss_ratio"], 30 / 200)
+    # only the modification-specific loss is learned, not generic losses such as -H2O
+    assert {round(m) for m in generator._mod_losses["Phospho"]} == {98}

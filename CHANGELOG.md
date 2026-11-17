@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spectrum (`metadata["original_psm"]`), and the least supported change gives the value
   (was 0 for substitution candidates).
 
+### Fixed
+
+- `ms2` feature generator: `mod_loss_intensity_ratio` and `precursor_mod_loss_ratio` match the
+  neutral losses of a modification on any residue it is placed on. The loss masses per
+  modification come from PSMs that carry it on an allowed residue (was 0 for a modification
+  outside its residue specificity, such as a mumble decoy site).
+
 ## [4.1.0b1] - 2026-10-09
 
 ### Added
