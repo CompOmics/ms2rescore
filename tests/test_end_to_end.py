@@ -204,7 +204,7 @@ def test_rescore_counts_only_surviving_psms_in_before_baseline(tmp_path, monkeyp
         before_lengths.append(len(psm_list))
         return _make_rescore_result(len(psm_list))
 
-    def _fake_rescore(psm_list, config, output_file_root):
+    def _fake_rescore(psm_list, config, output_file_root, decoy_sites=None, peaks=None):
         return psm_list, _make_rescore_result(len(psm_list))
 
     monkeypatch.setattr(core._ristretto_utils, "evaluate_before", _fake_evaluate_before)

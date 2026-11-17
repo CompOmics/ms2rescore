@@ -66,7 +66,7 @@
       - *boolean*
       - *null*
   - **`mumble_matched_ions_threshold`** *(number)*: Mumble candidates whose fraction of matched fragment ions is below this fraction of the original hit's are removed before rescoring. 0 keeps every candidate. Minimum: `0`. Maximum: `1`. Default: `0.5`.
-  - **`rank_sites`** *(boolean)*: After rescoring, rerank the candidate explanations of each spectrum (original hit, mumble candidates at every site) with a model learned from mumble decoy sites as known negatives (requires the mumble PSM generator with `include_mumble_decoys`). The spectrum keeps its FDR status but reports the best-supported candidate; `site_rank`, `site_score`, `site_probability` and `mod_probability` are written to the PSM metadata. Default: `false`.
+  - **`rank_sites`** *(boolean)*: After rescoring, rerank the candidate explanations of each spectrum (original hit, mumble candidates at every site) with a model learned from mumble decoy sites as known negatives (requires the mumble PSM generator with `include_mumble_decoys`). The spectrum keeps its FDR status but reports the best-supported candidate; `site_rank`, `site_score` and the localisation outcome of the spectrum (`localisation_status`, `localisation_set`, `localisation_pep`, `modification_pep`, `localisation_confidence`, `localisation_qvalue`) are written to the PSM metadata. Default: `false`.
   - **`write_report`**: Write an HTML report with various QC metrics and charts. Default: `true`.
     - **One of**
       - *boolean*

@@ -142,6 +142,12 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
         if overlap:
             feature_names["psm_file"] = feature_names["psm_file"] - overlap
 
+    # Peaks per spectrum for the site sets of `rank_sites`
+    peaks = {
+        (psm.run, psm.spectrum_id): (psm.spectrum.mz, psm.spectrum.intensity)
+        for psm in psm_list
+        if config.get("rank_sites") and psm.spectrum is not None
+    }
     # Release the annotated MS2 spectra now that all feature generators have consumed them.
     psm_list["spectrum"] = [None] * len(psm_list)
 
@@ -219,11 +225,18 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
         psm_list["spectrum_id"] = [
             usi_by_native_id[(psm.run, psm.spectrum_id)] for psm in psm_list
         ]
+        peaks = {(k[0], usi_by_native_id[k]): v for k, v in peaks.items() if k in usi_by_native_id}
 
     # Rescore PSMs
     logger.info(f"Rescoring {len(psm_list)} PSMs with ristretto...")
     try:
-        psm_list, after_result = rescoring.rescore(psm_list, config, output_file_root)
+        psm_list, after_result = rescoring.rescore(
+            psm_list,
+            config,
+            output_file_root,
+            decoy_sites=decoy_sites if config.get("rank_sites") else None,
+            peaks=peaks,
+        )
     except (
         Exception,
         KeyboardInterrupt,
@@ -234,10 +247,6 @@ def rescore(configuration: dict, psm_list: PSMList | None = None) -> None:
 
         # Reraise exception
         raise
-
-    if config.get("rank_sites"):
-        logger.info("Ranking modification-site candidates within spectra...")
-        psm_list = rescoring.rank_sites(psm_list, decoy_sites, config, output_file_root)
 
     n_after = _ristretto_utils.count_identified_spectra(after_result, config["report_fdr"])
     n_before = n_id_before

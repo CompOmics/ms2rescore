@@ -186,31 +186,45 @@ Two further options help to decide which modification explains a spectrum and wh
 - ``add_mod_info`` (``ms2`` feature generator): six modification-aware features, among them the
   intensity of modification-specific neutral-loss ions and the hyperscore gain of a modification
   over its removal. Unmodified PSMs get 0.
-- ``rank_sites`` (top-level, requires ``include_mumble_decoys``): after rescoring, all candidates
-  of a spectrum (original hit and Mumble candidates at every site) are reranked by a model
-  learned with the decoy sites as known negatives. The spectrum keeps its FDR status, but the
+- ``rank_sites`` (top-level, requires ``include_mumble_decoys``): after rescoring, the candidates
+  of a spectrum are reranked in two steps. First the explanations (original hit and each
+  modification set) are ranked against each other, then the sites within each modification
+  set, with the decoy sites as known negatives. When explanations give the same fragment masses
+  (e.g. Phospho and Sulfo on the same residue), the one that most often wins with a gain over the
+  original hit in the run is put first. The spectrum keeps its FDR status, but the
   best-supported candidate is reported.
 
-With ``rank_sites`` enabled, four columns are added to the PSM table. Every PSM gets a value;
-candidates without competitors get rank 1 and probability 1.
+With ``rank_sites`` enabled, the following columns are added to the PSM table. Every PSM gets
+a value; candidates without competitors get rank 1 and status ``unranked``. The localisation
+columns describe the spectrum and are the same for all its candidates.
 
-============================  ==========================================================
-Column                        Meaning
-============================  ==========================================================
-``meta:site_rank``            1 is the best candidate of its spectrum
-``meta:site_score``           Ranker log-odds, comparable within a spectrum only
-``meta:site_probability``     Share of the spectrum's odds held by this candidate
-``meta:mod_probability``      The same, summed over candidates with identical modifications
-============================  ==========================================================
+==================================  ====================================================================
+Column                              Meaning
+==================================  ====================================================================
+``meta:site_rank``                  1 is the best candidate of its spectrum
+``meta:site_score``                 Ranker log-odds, comparable within a spectrum only
+``meta:localisation_status``        ``confident`` (one site), ``ambiguous`` (a set of sites),
+                                    ``original`` (the unmodified hit wins), ``decoy`` (a decoy site wins),
+                                    ``no_gain`` (no gain over the original hit) or ``low_confidence``
+``meta:localisation_set``           Sites that the observed fragments cannot tell apart from the top site
+``meta:localisation_alternatives``  Other modifications with the same fragment masses as the top site
+``meta:localisation_pep``           Probability that the true site is not in the set (decoy-site competition)
+``meta:modification_pep``           Probability that the modification does not explain the spectrum better
+                                    than the original hit (decoy-peptide spectra as null)
+``meta:localisation_confidence``    (1 - ``modification_pep``) x (1 - ``localisation_pep``)
+``meta:localisation_qvalue``        Expected fraction of wrong localisations among target spectra with at
+                                    least this confidence
+==================================  ====================================================================
 
-The log reports a false localisation rate (the fraction of spectra whose top candidate is a
-decoy site) and the strongest site-model feature weights. All weights are written to
-``<output>.site_weights.tsv``.
+The site set holds every candidate with the same modification for which the observed
+site-determining fragments (b/y ions that differ between the two candidates) give no net support
+to the top candidate. The log reports the share of target spectra per status and the strongest
+feature weights of both steps. All weights are written to ``<output>.explanation_weights.tsv``
+and ``<output>.site_weights.tsv``.
 
 .. caution::
-  ``site_probability`` is over-confident. Decoy sites are placed on residues the modification
-  cannot occupy, which makes them easier to reject than a wrong but possible site. The decoy-based
-  false localisation rate therefore underestimates the real localisation error.
+  The probabilities assume that decoy sites behave like wrong sites. Decoy sites with the same
+  fragment masses as a real site are left out of the competition.
 
 
 Tips and known limitations

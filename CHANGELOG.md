@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `rank_sites`: localisation outcome per spectrum in the PSM metadata (`localisation_status`,
+  `localisation_set`, `localisation_alternatives`, `localisation_pep`, `modification_pep`,
+  `localisation_confidence`, `localisation_qvalue`; see `ms2rescore.localisation.localise`). The
+  site set comes from the observed site-determining fragments; the PEPs from target-decoy
+  competition with decoy sites (site) and decoy-peptide spectra (gain over the original hit).
+
 ### Changed
 
+- `rank_sites`: `site_probability` and `mod_probability` are no longer written; the
+  localisation fields replace them.
+- `rank_sites` ranks in two steps: first the explanation of each spectrum (original hit or
+  modification set, without decoy sites), then the site within each modification set (decoy
+  sites as negatives); candidates are ordered by explanation, then site (was one ranking over
+  all candidates). Feature weights are written to `<output>.explanation_weights.tsv` and
+  `<output>.site_weights.tsv`.
+- `rank_sites`: when explanations have the same fragment masses as the top explanation (e.g.
+  Phospho and Sulfo on the same residue), the one that most often wins with a gain over the
+  original hit in the same run takes the top position. Other explanations are not affected.
 - `ms2` feature generator: `delta_hyperscore_unmod` also covers mumble amino acid
   substitutions. Each substituted residue is reverted to the residue of the original PSM of the
   spectrum (`metadata["original_psm"]`), and the least supported change gives the value
@@ -16,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `rank_sites`: site ranking runs on every candidate of a spectrum, before the
+  `max_psm_rank_output` cut, and that cut follows the site ranker order (was applied first, so
+  the original PSM and other candidates outside the top ranks never reached the site ranker).
 - `ms2` feature generator: `mod_loss_intensity_ratio` and `precursor_mod_loss_ratio` match the
   neutral losses of a modification on any residue it is placed on. The loss masses per
   modification come from PSMs that carry it on an allowed residue (was 0 for a modification
