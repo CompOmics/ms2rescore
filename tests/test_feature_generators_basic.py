@@ -17,6 +17,7 @@ EXPECTED_FEATURE_NAMES = [
     "theoretical_mass",
     "experimental_mass",
     "mass_error",
+    "isotope_error",
     "pep_len",
 ]
 
@@ -85,3 +86,34 @@ def test_missing_mz_and_score_default_to_zero():
     assert features["theoretical_mass"] == 0
     assert features["mass_error"] == 0
     assert features["search_engine_score"] == 0
+
+
+def test_isotope_error_corrects_precursor_error():
+    # Precursor selected on the first 13C peak: mumble flags isotope_error 1.
+    psm = _make_psm(peptidoform="PEPTIDEK/2")
+    psm.precursor_mz = psm.peptidoform.theoretical_mz + 1.0033548 / 2
+    psm.metadata = {"isotope_error": "1"}
+    BasicFeatureGenerator().add_features(PSMList(psm_list=[psm]))
+    features = psm.rescoring_features
+    assert features["isotope_error"] == 1
+    assert abs(features["mass_error"]) < 1e-6
+    assert features["abs_ms1_error_ppm"] < 1e-3
+
+
+def test_isotope_error_feature_is_absolute():
+    psm = _make_psm(peptidoform="PEPTIDEK/2")
+    psm.precursor_mz = psm.peptidoform.theoretical_mz - 1.0033548 / 2
+    psm.metadata = {"isotope_error": "-1"}
+    BasicFeatureGenerator().add_features(PSMList(psm_list=[psm]))
+    assert psm.rescoring_features["isotope_error"] == 1
+    assert psm.rescoring_features["abs_ms1_error_ppm"] < 1e-3
+
+
+def test_isotope_error_falls_back_to_search_engine_feature():
+    # Sage reports its own isotope error as a rescoring feature; no mumble metadata.
+    psm = _make_psm(peptidoform="PEPTIDEK/2")
+    psm.precursor_mz = psm.peptidoform.theoretical_mz + 1.0033548 / 2
+    psm.rescoring_features = {"isotope_error": 1.0}
+    BasicFeatureGenerator().add_features(PSMList(psm_list=[psm]))
+    assert psm.rescoring_features["isotope_error"] == 1
+    assert abs(psm.rescoring_features["mass_error"]) < 1e-6

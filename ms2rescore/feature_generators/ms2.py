@@ -12,6 +12,7 @@ import numpy as np
 from ms2pip._spectrum_processing import proforma_to_mass_shift
 from ms2rescore_rs import MS2Spectrum, annotate_ms2_spectra, score_ms2_spectra
 from psm_utils import Peptidoform, PSMList
+from pyteomics.mass import std_aa_mass
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 from ms2rescore.parse_spectra import MSDataType
@@ -26,15 +27,20 @@ ACTIVE_SERIES = {
     "all": ["a", "b", "c", "x", "y", "z"],
 }
 
+# Modified PSMs per extra annotation pass, to bound the transient annotated spectra.
+CHUNK_SIZE = 5000
+WHOLE_MOD_TOL = 0.01  # Da, loss mass equal to a modification mass = whole-modification loss
+
 MOD_FEATURE_NAMES = [
-    "n_mods",
-    "mod_loss_n_matched",
     "mod_loss_intensity_ratio",
     "precursor_mod_loss_ratio",
-    "diagnostic_ion_ratio",
     "delta_hyperscore_unmod",
-    "delta_hyperscore_vs_spectrum_best",
+    "mod_site_flank_matched",
+    "mod_site_flank_intensity_ratio",
+    "mod_mass_error_offset_ppm",
 ]
+MIN_IONS_FOR_OFFSET = 2
+N_TERM_SERIES = {"a", "b", "c"}
 
 
 class MS2FeatureGenerator(FeatureGeneratorBase):
@@ -60,7 +66,8 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
             Fragmentation model, used to determine active ion series for scoring. Defaults to
             :py:const:`cidhcd` (a, b, and y ions).
         add_mod_info
-            Add modification-aware features (see :py:const:`MOD_FEATURE_NAMES`). Requires
+            Add modification-aware features (see :py:const:`MOD_FEATURE_NAMES`). Unmodified
+            PSMs get 0 for all of them. Requires
             spectra annotated with ``extended=True`` (see
             :py:func:`ms2rescore.parse_spectra.annotate_spectra`).
         tolerance_value, tolerance_mode
@@ -77,6 +84,7 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
 
         self.fragmentation_model = fragmentation_model.lower()
         self.add_mod_info = add_mod_info
+        self._mod_losses: dict[str, set[float]] = {}
         self.tolerance_value = tolerance_value
         self.tolerance_mode = tolerance_mode
 
@@ -164,74 +172,258 @@ class MS2FeatureGenerator(FeatureGeneratorBase):
         n_mods = [_count_mods(psm.peptidoform) for psm in psm_list]
         modified = [i for i in range(n) if n_mods[i] > 0]
         feats = {name: np.zeros(n) for name in MOD_FEATURE_NAMES}
-        feats["n_mods"] = np.asarray(n_mods, dtype=float)
 
-        if modified and not any(spectra[i].extended_annotations for i in modified):
+        if modified and not any(spectra[i].extended for i in modified):
             logger.warning(
                 "Spectra carry no extended annotations; modification-specific ion features "
                 "are all zero. Annotate with extended=True to enable them."
             )
 
-        # Reference pass: same peptidoforms as numeric mass shifts (no modification identity),
-        # so that every extended annotation not present here is modification-specific.
-        raw = [_raw_spectrum(spectra[i]) for i in modified]
-        reference = self._annotate(
-            raw, [proforma_to_mass_shift(psm_list[i].peptidoform) for i in modified], True
-        )
-        for i, ref in zip(modified, reference):
-            spec = spectra[i]
-            total = float(sum(spec.intensity)) or 1.0
-            generic = {
-                (k, a.series, a.position, a.charge, a.neutral_loss)
-                for k, anns in enumerate(ref.extended_annotations)
-                for a in anns
-            }
-            loss_peaks, precursor_peaks, diagnostic_peaks = set(), set(), set()
-            for k, anns in enumerate(spec.extended_annotations):
-                for a in anns:
-                    if (k, a.series, a.position, a.charge, a.neutral_loss) in generic:
-                        continue
-                    if a.ion_type == "backbone" and a.neutral_loss:
-                        loss_peaks.add(k)
-                    elif a.ion_type == "precursor" and a.neutral_loss:
-                        precursor_peaks.add(k)
-                    elif a.ion_type in ("diagnostic", "immonium"):
-                        diagnostic_peaks.add(k)
-            feats["mod_loss_n_matched"][i] = len(loss_peaks)
-            feats["mod_loss_intensity_ratio"][i] = (
-                sum(spec.intensity[k] for k in loss_peaks) / total
-            )
-            feats["precursor_mod_loss_ratio"][i] = (
-                sum(spec.intensity[k] for k in precursor_peaks) / total
-            )
-            feats["diagnostic_ion_ratio"][i] = (
-                sum(spec.intensity[k] for k in diagnostic_peaks) / total
-            )
-
-        # Leave-one-out pass: hyperscore gain of the least supported modification.
-        alt_spectra, alt_proformas, alt_owner = [], [], []
         for i in modified:
-            for proforma in _leave_one_out_proformas(psm_list[i].peptidoform):
-                alt_spectra.append(_raw_spectrum(spectra[i]))
-                alt_proformas.append(proforma)
-                alt_owner.append(i)
-        if alt_owner:
-            alt_hs = self._hyperscores(
-                self._annotate(alt_spectra, alt_proformas, False), [seq_lens[i] for i in alt_owner]
+            matched, intensity = _flank_features(psm_list[i].peptidoform, spectra[i])
+            feats["mod_site_flank_matched"][i] = matched
+            feats["mod_site_flank_intensity_ratio"][i] = intensity
+            feats["mod_mass_error_offset_ppm"][i] = _mass_error_offset(
+                psm_list[i].peptidoform, spectra[i]
             )
-            full_hs = [psm.rescoring_features["hyperscore"] for psm in psm_list]
-            delta = defaultdict(list)
-            for i, hs in zip(alt_owner, alt_hs):
-                delta[i].append(full_hs[i] - hs)
-            for i, deltas in delta.items():
-                feats["delta_hyperscore_unmod"][i] = min(deltas)
 
-        feats["delta_hyperscore_vs_spectrum_best"] = _delta_vs_spectrum_best(psm_list)
+        explained = {}
+        self._mod_losses = defaultdict(set)
+        for start in range(0, len(modified), CHUNK_SIZE):
+            self._reference_pass(psm_list, spectra, modified[start : start + CHUNK_SIZE], explained)
+        for i in modified:
+            self._loss_features(psm_list[i].peptidoform, spectra[i], explained[i], feats, i)
+        full_hs = [psm.rescoring_features["hyperscore"] for psm in psm_list]
+
+        # Amino acid substitutions (mumble) count as modifications for the leave-one-out delta:
+        # each substituted residue is reverted to the residue of the original PSM.
+        originals = _original_sequences(psm_list)
+        scored = sorted(
+            set(modified)
+            | {
+                i
+                for i in range(n)
+                if _substituted_positions(psm_list[i].peptidoform.sequence, originals[i])
+            }
+        )
+        for start in range(0, len(scored), CHUNK_SIZE):
+            chunk = scored[start : start + CHUNK_SIZE]
+            self._leave_one_out_delta(
+                psm_list, spectra, chunk, seq_lens, full_hs, feats, originals
+            )
 
         for i, psm in enumerate(psm_list):
             psm.rescoring_features.update(
                 {name: float(feats[name][i]) for name in MOD_FEATURE_NAMES}
             )
+
+    def _reference_pass(self, psm_list, spectra, chunk, explained) -> None:
+        """Annotate the same peptidoforms as numeric mass shifts (no modification identity).
+
+        Stores, per PSM, the peaks explained without modification identity, and adds the
+        modification-specific neutral-loss masses of single-modification PSMs to
+        ``self._mod_losses`` (losses also found as mass shift, e.g. -H2O, are generic)."""
+        reference = self._annotate(
+            [_raw_spectrum(spectra[i]) for i in chunk],
+            [proforma_to_mass_shift(psm_list[i].peptidoform) for i in chunk],
+            True,
+        )
+        for i, ref in zip(chunk, reference):
+            spec = spectra[i]
+            explained[i] = (
+                {k for k, _ in ref.backbone}
+                | {k for k, _ in ref.extended}
+                | {k for k, _ in spec.backbone}
+            )
+            mods = _named_mods(psm_list[i].peptidoform)
+            if len(mods) != 1:
+                continue
+            generic = {round(a.loss_mass, 4) for _, a in ref.extended if a.neutral_loss}
+            self._mod_losses[mods[0][1]].update(
+                round(a.loss_mass, 4)
+                for _, a in spec.extended
+                if a.neutral_loss
+                and round(a.loss_mass, 4) not in generic
+                and abs(a.loss_mass - mods[0][2]) >= WHOLE_MOD_TOL
+            )
+
+    def _loss_features(self, peptidoform, spec, explained, feats, i) -> None:
+        """Neutral-loss features from the losses of each modification, on any residue.
+
+        The loss masses of a modification come from PSMs that carry it on an allowed residue
+        (``_reference_pass``). They are matched for every PSM carrying that modification,
+        whatever residue it sits on, so a modification outside its residue specificity (e.g. a
+        mumble decoy site) is scored the same way. Peaks explained without modification
+        identity are ignored."""
+        mz = np.asarray(spec.mz, dtype=float)
+        intensity = np.asarray(spec.intensity, dtype=float)
+        total = float(intensity.sum()) or 1.0
+        fragment, precursor = _loss_mz(peptidoform, self._mod_losses, spec.precursor.charge)
+        if self.tolerance_mode == "Da":
+            tol = lambda x: self.tolerance_value  # noqa: E731
+        else:
+            tol = lambda x: x * self.tolerance_value * 1e-6  # noqa: E731
+        for name, theo in (
+            ("mod_loss_intensity_ratio", fragment),
+            ("precursor_mod_loss_ratio", precursor),
+        ):
+            peaks = _match_peaks(mz, theo, tol) - explained
+            feats[name][i] = sum(intensity[k] for k in peaks) / total
+
+    def _leave_one_out_delta(
+        self, psm_list, spectra, chunk, seq_lens, full_hs, feats, originals
+    ) -> None:
+        """Hyperscore gain of the least supported modification or substitution over its removal."""
+        alt_proformas, alt_owner = [], []
+        for i in chunk:
+            for proforma in _leave_one_out_proformas(psm_list[i].peptidoform, originals[i]):
+                alt_proformas.append(proforma)
+                alt_owner.append(i)
+        if not alt_owner:
+            return
+        # One raw copy per PSM, shared by its alternatives: reading mz/intensity converts the
+        # whole peak list out of Rust each time.
+        raw = {i: _raw_spectrum(spectra[i]) for i in set(alt_owner)}
+        alt_hs = self._hyperscores(
+            self._annotate([raw[i] for i in alt_owner], alt_proformas, False),
+            [seq_lens[i] for i in alt_owner],
+        )
+        delta = defaultdict(list)
+        for i, hs in zip(alt_owner, alt_hs):
+            delta[i].append(full_hs[i] - hs)
+        for i, deltas in delta.items():
+            feats["delta_hyperscore_unmod"][i] = min(deltas)
+
+
+def _flank_features(peptidoform: Peptidoform, spectrum) -> tuple[float, float]:
+    """Site-flanking backbone ions for each modification, minimum over modifications.
+
+    For a modification on residue ``s`` (0-based, length ``L``) the flanking ions are the last
+    N-terminal ion without the site (b_s), the first with it (b_s+1), and likewise y_L-s-1 and
+    y_L-s. Terminal modifications have two. Returns (fraction matched, matched intensity over
+    total intensity); a/b/c and x/y/z series are pooled by terminus.
+    """
+    length = len(peptidoform.parsed_sequence)
+    # ``intensity`` and ``backbone`` are Rust-side vectors: read each once, since every attribute
+    # access rebuilds the whole list.
+    intensity = spectrum.intensity
+    peak_intensity: dict[tuple[str, int], float] = {}
+    counted: set[tuple[int, str, int]] = set()
+    for k, a in spectrum.backbone:
+        ion = ("N" if a.series in N_TERM_SERIES else "C", a.position)
+        if (k, *ion) in counted:  # one peak counts once per terminus and position
+            continue
+        counted.add((k, *ion))
+        peak_intensity[ion] = peak_intensity.get(ion, 0.0) + intensity[k]
+    total = float(sum(intensity)) or 1.0
+
+    sites = [s for s, (_, mods) in enumerate(peptidoform.parsed_sequence) if mods]
+    flanks = [[("N", s), ("N", s + 1), ("C", length - s - 1), ("C", length - s)] for s in sites]
+    if peptidoform.properties.get("n_term"):
+        flanks.append([("N", 1), ("C", length - 1)])
+    if peptidoform.properties.get("c_term"):
+        flanks.append([("N", length - 1), ("C", 1)])
+
+    best = (1.0, 1.0)
+    for ions in flanks:
+        possible = [ion for ion in ions if 1 <= ion[1] <= length - 1]
+        hit = [ion for ion in possible if ion in peak_intensity]
+        candidate = (
+            len(hit) / len(possible) if possible else 0.0,
+            sum(peak_intensity[ion] for ion in hit) / total,
+        )
+        best = min(best, candidate)
+    return best if flanks else (0.0, 0.0)
+
+
+def _mass_error_offset(peptidoform: Peptidoform, spectrum) -> float:
+    """|median ppm error of backbone ions containing a modification site - median of the rest|.
+
+    A wrong modification identity of near-identical mass (Phospho vs Sulfo, 9.5 mDa) shifts
+    every site-containing fragment by that mass while the other fragments stay put. 0 when
+    either group has fewer than MIN_IONS_FOR_OFFSET ions.
+    """
+    length = len(peptidoform.parsed_sequence)
+    sites = [s for s, (_, mods) in enumerate(peptidoform.parsed_sequence) if mods]
+    n_min = min(sites) + 1 if sites else length  # first N-terminal ion containing a site
+    c_min = length - max(sites) if sites else length  # first C-terminal ion containing a site
+    if peptidoform.properties.get("n_term"):
+        n_min = 1
+    if peptidoform.properties.get("c_term"):
+        c_min = 1
+    mz = spectrum.mz
+    containing, other = [], []
+    for k, a in spectrum.backbone:
+        ppm = a.mz_error / mz[k] * 1e6
+        has_site = a.position >= (n_min if a.series in N_TERM_SERIES else c_min)
+        (containing if has_site else other).append(ppm)
+    if len(containing) < MIN_IONS_FOR_OFFSET or len(other) < MIN_IONS_FOR_OFFSET:
+        return 0.0
+    return abs(float(np.median(containing) - np.median(other)))
+
+
+PROTON = 1.007276466812
+WATER = 18.010564684
+
+
+def _named_mods(peptidoform: Peptidoform) -> list[tuple[int, str, float]]:
+    """(position, name, mass) of every named modification; termini at the first/last residue."""
+    n = len(peptidoform.parsed_sequence)
+    located = [(i, m) for i, (_, ms) in enumerate(peptidoform.parsed_sequence) if ms for m in ms]
+    located += [(0, m) for m in peptidoform.properties.get("n_term") or []]
+    located += [(n - 1, m) for m in peptidoform.properties.get("c_term") or []]
+    out = []
+    for i, m in located:
+        name = getattr(m, "name", None)
+        if name and not str(name).startswith(("+", "-")):
+            out.append((i, str(name), float(m.mass)))
+    return out
+
+
+def _loss_mz(peptidoform: Peptidoform, mod_losses, precursor_charge) -> tuple[list, list]:
+    """Theoretical m/z of b/y fragments and the precursor after each modification loss.
+
+    A fragment gets the losses of every modification on a residue it covers."""
+    residue = [
+        std_aa_mass.get(aa, 0.0) + sum(float(m.mass) for m in (ms or []))
+        for aa, ms in peptidoform.parsed_sequence
+    ]
+    residue[0] += sum(float(m.mass) for m in peptidoform.properties.get("n_term") or [])
+    residue[-1] += sum(float(m.mass) for m in peptidoform.properties.get("c_term") or [])
+    n = len(residue)
+    cum = np.cumsum(residue)
+    z_max = int(precursor_charge or 2)
+    frag_z = range(1, max(1, z_max - 1) + 1)
+    fragment, precursor = [], []
+    for pos, name, _ in _named_mods(peptidoform):
+        for loss in mod_losses.get(name, ()):
+            for k in range(1, n):
+                b = cum[k - 1]
+                y = cum[-1] - cum[n - k - 1] + WATER
+                covered = [(b, pos < k), (y, pos >= n - k)]
+                for mass, covers in covered:
+                    if covers:
+                        fragment += [(mass - loss + z * PROTON) / z for z in frag_z]
+            precursor += [
+                (cum[-1] + WATER - loss + z * PROTON) / z for z in range(1, z_max + 1)
+            ]
+    return fragment, precursor
+
+
+def _match_peaks(mz: np.ndarray, theoretical, tol) -> set[int]:
+    """Indices of observed peaks within tolerance of any theoretical m/z (mz sorted)."""
+    found = set()
+    for t in theoretical:
+        lo, hi = np.searchsorted(mz, [t - tol(t), t + tol(t)])
+        found.update(range(lo, hi))
+    return found
+
+
+def _mod_masses(peptidoform: Peptidoform) -> list[float]:
+    mods = [m for _, ms in peptidoform.parsed_sequence if ms for m in ms]
+    mods += peptidoform.properties.get("n_term") or []
+    mods += peptidoform.properties.get("c_term") or []
+    return [float(m.mass) for m in mods]
 
 
 def _count_mods(peptidoform: Peptidoform) -> int:
@@ -250,8 +442,29 @@ def _raw_spectrum(spectrum) -> MS2Spectrum:
     )
 
 
-def _leave_one_out_proformas(peptidoform: Peptidoform):
-    """Yield mass-shift ProForma strings with one modification removed at a time."""
+def _original_sequences(psm_list: PSMList) -> list:
+    """Sequence of the original PSM (``metadata["original_psm"]`` true) of each PSM's spectrum."""
+    reference = {
+        (psm.run, psm.collection, psm.spectrum_id): psm.peptidoform.sequence
+        for psm in psm_list
+        if str(psm.metadata.get("original_psm", "")).strip().lower() == "true"
+    }
+    return [reference.get((psm.run, psm.collection, psm.spectrum_id)) for psm in psm_list]
+
+
+def _substituted_positions(sequence: str, original_sequence) -> list[int]:
+    """Positions where a sequence differs from its original sequence of the same length."""
+    if not original_sequence or len(sequence) != len(original_sequence):
+        return []
+    return [i for i, (a, b) in enumerate(zip(sequence, original_sequence)) if a != b]
+
+
+def _leave_one_out_proformas(peptidoform: Peptidoform, original_sequence=None):
+    """Yield mass-shift ProForma strings with one modification removed at a time.
+
+    With ``original_sequence``, each substituted residue is also reverted to the original
+    residue, one at a time.
+    """
     for terminus in ("n_term", "c_term"):
         mods = peptidoform.properties.get(terminus) or []
         for k in range(len(mods)):
@@ -263,23 +476,7 @@ def _leave_one_out_proformas(peptidoform: Peptidoform):
             variant = deepcopy(peptidoform)
             variant.parsed_sequence[i] = (aa, mods[:k] + mods[k + 1 :] or None)
             yield proforma_to_mass_shift(variant)
-
-
-def _delta_vs_spectrum_best(psm_list: PSMList) -> np.ndarray:
-    """Hyperscore minus the best hyperscore of any other PSM on the same spectrum; 0 if alone."""
-    hs = np.asarray([psm.rescoring_features["hyperscore"] for psm in psm_list], dtype=float)
-    groups = defaultdict(list)
-    for i, (run, spectrum_id) in enumerate(zip(psm_list["run"], psm_list["spectrum_id"])):
-        groups[(str(run), str(spectrum_id))].append(i)
-    delta = np.zeros(len(psm_list))
-    for idx in groups.values():
-        if len(idx) < 2:
-            continue
-        values = hs[idx]
-        top = np.sort(values)[::-1]
-        for i, v in zip(idx, values):
-            other_best = (
-                top[0] if (v < top[0] or (top[0] == v and (top == v).sum() > 1)) else top[1]
-            )
-            delta[i] = v - other_best
-    return delta
+    for i in _substituted_positions(peptidoform.sequence, original_sequence):
+        variant = deepcopy(peptidoform)
+        variant.parsed_sequence[i] = (original_sequence[i], peptidoform.parsed_sequence[i][1])
+        yield proforma_to_mass_shift(variant)

@@ -9,6 +9,8 @@ from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase
 
+C13_SPACING = 1.0033548  # 13C - 12C mass difference (Da)
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +50,7 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
             "theoretical_mass",
             "experimental_mass",
             "mass_error",
+            "isotope_error",
             "pep_len",
         ]
 
@@ -71,6 +74,18 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
         precursor_mzs = psm_list["precursor_mz"]
         scores = psm_list["score"]
         peptide_lengths = np.array([len(psm.peptidoform.sequence) for psm in psm_list])
+        # Precursor isotope error (number of 13C spacings): mumble's assignment in metadata, else
+        # the search engine's own (e.g. Sage, idXML, read as a rescoring feature), else 0.
+        isotope_errors = np.array(
+            [
+                float(
+                    (psm.metadata or {}).get("isotope_error")
+                    or (psm.rescoring_features or {}).get("isotope_error")
+                    or 0
+                )
+                for psm in psm_list
+            ]
+        )
 
         has_charge = None not in charge_states
         # precursor_mz and score may come back as object arrays with None or numeric arrays with
@@ -88,10 +103,12 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
 
         if has_mz:  # Charge also required for theoretical m/z
             theo_mz = np.array([psm.peptidoform.theoretical_mz for psm in psm_list])
-            abs_ms1_error_ppm = np.abs((precursor_mzs - theo_mz) / theo_mz * 10**6)
+            # Errors are taken against the isotope peak the instrument selected.
+            isotope_mz = isotope_errors * C13_SPACING / charge_n
+            abs_ms1_error_ppm = np.abs((precursor_mzs - theo_mz - isotope_mz) / theo_mz * 10**6)
             experimental_mass = (precursor_mzs * charge_n) - (charge_n * 1.007276466812)
             theoretical_mass = (theo_mz * charge_n) - (charge_n * 1.007276466812)
-            mass_error = experimental_mass - theoretical_mass
+            mass_error = experimental_mass - theoretical_mass - isotope_errors * C13_SPACING
         else:
             logger.warning("Precursor m/z not available for all PSMs; m/z features will be 0.")
             abs_ms1_error_ppm = np.zeros(n)
@@ -111,6 +128,7 @@ class BasicFeatureGenerator(FeatureGeneratorBase):
                     "theoretical_mass": theoretical_mass[i],
                     "experimental_mass": experimental_mass[i],
                     "mass_error": mass_error[i],
+                    "isotope_error": abs(isotope_errors[i]),
                     "pep_len": peptide_lengths[i],
                 }
             )

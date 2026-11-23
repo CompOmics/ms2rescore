@@ -465,3 +465,127 @@ def test_write_rescoring_tables_no_peptides_file_when_no_peptide_col(tmp_path):
 
     assert not (tmp_path / "test.proteins.tsv").is_file()
     assert (tmp_path / "test.peptides.tsv").is_file()
+
+
+def test_rank_sites_prefers_evidence_and_drops_decoy_sites():
+    """Synthetic site families: the ranker must promote the candidate with site evidence."""
+    rng = np.random.default_rng(0)
+    scored, decoys = [], []
+    for i in range(40):
+        # candidates: true site (strong evidence, mediocre SVM score), wrong site (no evidence,
+        # best SVM score), two decoy sites (no evidence)
+        for kind, pf, svm, evidence in [
+            ("true", f"PEPS[Phospho]TIDEK{i}/2", 2.0, 1.0),
+            ("wrong", f"PEPST[Phospho]IDEK{i}/2", 3.0, 0.0),
+            ("decoy", f"P[Phospho]EPSTIDEK{i}/2", None, 0.0),
+            ("decoy", f"PEPSTIDE[Phospho]K{i}/2", None, 0.0),
+            ("decoy", f"PEPSTID[Sulfo]EK{i}/2", None, 0.0),  # modification with only a decoy site
+        ]:
+            psm = PSM(
+                peptidoform=pf.replace(f"K{i}", "K"),
+                spectrum_id=f"s{i}",
+                run="r",
+                score=svm,
+                qvalue=0.001 if svm else None,
+                pep=0.01 if svm else None,
+                metadata={"mumble_decoy_site": str(kind == "decoy"), "original_psm": "False"},
+            )
+            psm.rescoring_features = {
+                "evidence": evidence + rng.normal(0, 0.1),
+                "noise": rng.normal(),
+                "spectrum_level": float(i),  # identical within a family, must not matter
+            }
+            (decoys if kind == "decoy" else scored).append(psm)
+    lone = PSM(peptidoform="LONEPEPTIDEK/2", spectrum_id="lone", run="r", score=1.0, qvalue=0.001, pep=0.01)
+    lone.rescoring_features = {"evidence": 0.0, "noise": 0.0, "spectrum_level": 0.0}
+    scored.insert(0, lone)  # a spectrum without competitors comes first in the output
+    psm_list = rescoring.rank_sites(PSMList(psm_list=scored), PSMList(psm_list=decoys), config={})
+
+    assert psm_list[0].metadata["localisation_status"] == "unranked"
+    assert len(psm_list) == 81 and not any("P[Phospho]" in str(p.peptidoform) for p in psm_list)
+    best = {p.spectrum_id: p for p in psm_list if p.rank == 1 and p.spectrum_id != "lone"}
+    assert sum("PEPS[Phospho]T" in str(p.peptidoform) for p in best.values()) >= 36
+    # the family keeps its best rescoring outcome, now attached to the best-supported site
+    assert all(p.score == 3.0 and p.qvalue == 0.001 for p in best.values())
+    assert all(p.metadata["site_rank"] == "1" for p in best.values())
+    keys = {"site_rank", "site_score", "localisation_status", "localisation_set", "localisation_pep",
+            "modification_pep", "localisation_confidence", "localisation_qvalue"}
+    assert all(keys <= set(p.metadata) for p in psm_list)  # also the unranked PSM
+    # every candidate of a family carries the outcome of its spectrum
+    assert len({p.metadata["localisation_status"] for p in psm_list if p.spectrum_id == "s0"}) == 1
+
+
+def test_rescore_ranks_sites_on_all_candidates_before_rank_cut():
+    """The site ranker sees every candidate; the max_psm_rank_output cut follows its order."""
+    psm_list = _make_psm_list(n_spectra=30, ranks_per_spectrum=1, mumble_ranks=3, seed=21)
+    config = {**BASE_CONFIG, "max_psm_rank_output": 2}
+    seen = {}
+
+    def promote_lowest(psm_list, decoy_sites, config, output_file_root, peaks=None):
+        # stand-in ranker: the lowest-scoring candidate of each spectrum becomes the best
+        seen["n"] = len(psm_list)
+        score = np.asarray(psm_list["score"], dtype=float)
+        for spec in set(psm_list["spectrum_id"]):
+            idx = np.flatnonzero(psm_list["spectrum_id"] == spec)
+            lowest = idx[np.argmin(score[idx])]
+            seen[spec] = str(psm_list[lowest].peptidoform)
+            score[lowest] = score[idx].max() + 1
+        psm_list["score"] = score
+        return psm_list
+
+    with patch.object(rescoring, "rank_sites", side_effect=promote_lowest):
+        new_psm_list, _ = rescoring.rescore(
+            psm_list, config, "unused-output-root", decoy_sites=PSMList(psm_list=[])
+        )
+
+    assert seen["n"] == 120
+    kept = {(p.spectrum_id, str(p.peptidoform)) for p in new_psm_list}
+    assert all((spec, pf) in kept for spec, pf in seen.items() if spec != "n")
+    assert pd.Series(new_psm_list["spectrum_id"]).value_counts().max() <= 2
+
+
+def test_rank_explanations_follows_evidence_over_initial_score():
+    """Step 1 promotes the explanation with evidence, also where the start score prefers another."""
+    rng = np.random.default_rng(1)
+    rows = []
+    for g in range(60):
+        for e, evidence in enumerate([1.0, 0.0, 0.0]):  # explanation 0 is right
+            start = (1.0 if e == 0 else 0.0) if g >= 15 else (1.0 if e == 1 else 0.0)
+            rows.append(dict(group=g, score=start, is_target=True,
+                             evidence=evidence + rng.normal(0, 0.2), noise=rng.normal()))
+    rows = pd.DataFrame(rows)
+
+    scores, _ = rescoring._rank_explanations(rows, ["evidence", "noise"])
+
+    top = rows.assign(s=scores).sort_values("s", ascending=False).drop_duplicates("group")
+    assert (top.evidence > 0.5).mean() >= 0.95
+
+
+def test_prefer_common_isobars_only_switches_fragment_identical_explanations():
+    """Sulfo and Phospho on the same residue share fragments: the frequent Phospho wins that tie;
+    Methyl on another peptide has its own fragments and keeps the top position."""
+    rows = []
+
+    def add(group, pf, explanation, score, hs, target=True, original=False):
+        rows.append(dict(group=group, peptidoform=pf, explanation=explanation, explanation_score=score,
+                         hyperscore=hs, is_target=target, original=original, decoy_site=False))
+
+    for g in range(30):  # confident Phospho spectra and decoy-peptide spectra without gain
+        add(g, "PEPTIDE", "original", 0.0, 10.0, original=True)
+        add(g, "PEPT[Phospho]IDE", "Phospho", 1.0, 20.0)
+        add(100 + g, "EDITPEP", "original", 0.0, 10.0, target=False, original=True)
+        add(100 + g, "EDIT[Phospho]PEP", "Phospho", 1.0, 9.0, target=False)
+    add(50, "PEPTIDE", "original", 0.0, 10.0, original=True)
+    add(50, "PEPT[Sulfo]IDE", "Sulfo", 2.0, 20.0)
+    add(50, "PEPT[Phospho]IDE", "Phospho", 1.5, 20.0)
+    add(51, "PEPTIDEK", "original", 0.0, 10.0, original=True)
+    add(51, "PEPTIDEK[Methyl]", "Methyl", 2.0, 20.0)
+    add(51, "PEPT[Phospho]IDEK", "Phospho", 1.5, 20.0)
+    d = pd.DataFrame(rows)
+    rep = d[~d["decoy_site"]].copy()
+
+    rescoring._prefer_common_isobars(d, rep, 0.02)
+
+    top = d.sort_values("explanation_score", ascending=False).drop_duplicates("group").set_index("group")
+    assert top.loc[50, "explanation"] == "Phospho"
+    assert top.loc[51, "explanation"] == "Methyl"

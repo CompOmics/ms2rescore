@@ -8,8 +8,9 @@ import warnings
 
 import numpy as np
 import pytest
-from psm_utils import PSM, PSMList
+from psm_utils import PSM, Peptidoform, PSMList
 
+from ms2rescore._utils import get_reference_hit_mask
 from ms2rescore.feature_generators.deeplc import DeepLCFeatureGenerator
 from ms2rescore.parse_spectra import MSDataType
 
@@ -373,3 +374,21 @@ def test_uses_multihead_calibration_when_available(monkeypatch):
 
     preds = np.array([p.rescoring_features["predicted_retention_time"] for p in psm_list])
     assert np.corrcoef(preds, obs)[0, 1] > 0.99
+
+
+def test_reference_hit_mask_excludes_mass_shifted_originals():
+    """Only originals whose precursor mass matches the peptidoform may calibrate the model."""
+    pf = Peptidoform("PEPTIDE/2")
+    mz = (pf.theoretical_mass + 2 * 1.007276) / 2
+    psms = PSMList(
+        psm_list=[
+            PSM(peptidoform=pf, spectrum_id="a", precursor_mz=mz),  # matches
+            PSM(peptidoform=pf, spectrum_id="b", precursor_mz=mz + 1.00335 / 2),  # +1 isotope
+            PSM(peptidoform=pf, spectrum_id="c", precursor_mz=mz + 79.9663 / 2),  # phospho shift
+            PSM(peptidoform=pf, spectrum_id="d", precursor_mz=None),  # unknown, kept
+            PSM(
+                peptidoform=pf, spectrum_id="e", precursor_mz=mz, metadata={"original_psm": "False"}
+            ),
+        ]
+    )
+    assert list(get_reference_hit_mask(psms)) == [True, True, False, True, False]

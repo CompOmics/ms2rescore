@@ -54,7 +54,8 @@ def test_ms2pip_feature_generator_uses_unified_correlate(monkeypatch):
     feature_generator = MS2PIPFeatureGenerator(model="HCD2021", processes=4)
     feature_generator.add_features(psm_list)
 
-    assert captured["psms"] is psm_list
+    # correlate() gets the PSM objects themselves, in chunks, so not the same PSMList
+    assert list(captured["psms"]) == list(psm_list)
     assert "spectrum_file" not in captured["kwargs"]
     assert captured["kwargs"]["compute_correlations"] is False
     assert captured["kwargs"]["model"] == "HCD2021"

@@ -9,7 +9,7 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-from psm_utils import PSM, PSMList
+from psm_utils import PSM, Peptidoform, PSMList
 
 import ms2rescore.feature_generators.im2deep as im2deep_module
 from ms2rescore.feature_generators.im2deep import IM2DeepFeatureGenerator
@@ -40,14 +40,17 @@ _PEPTIDES = [
 def _make_psm_list(is_decoy=False) -> PSMList:
     psms = []
     for i, seq in enumerate(_PEPTIDES):
+        peptidoform = Peptidoform(f"{seq}/2")
         psm = PSM(
-            peptidoform=f"{seq}/2",
+            peptidoform=peptidoform,
             spectrum_id=f"scan={i + 1}",
             run="run1",
             is_decoy=is_decoy,
             qvalue=0.001,
             score=20.0 - i * 0.1,
-            precursor_mz=500.0 + i,
+            # precursor m/z consistent with the peptidoform: mass-shifted originals are no
+            # longer used as calibration reference
+            precursor_mz=(peptidoform.theoretical_mass + 2 * 1.007276) / 2,
             ion_mobility=0.80 + i * 0.02,
         )
         psm.rescoring_features = {}
