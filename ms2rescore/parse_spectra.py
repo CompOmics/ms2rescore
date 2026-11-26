@@ -7,7 +7,9 @@ from enum import Enum
 import numpy as np
 from ms2pip._spectrum_processing import proforma_to_mass_shift
 from ms2rescore_rs import (
+    AnnotatedMS2Spectrum,
     MS2Spectrum,
+    Precursor,
     annotate_ms2_spectra,
     get_ms2_spectra,
     proforma_is_parseable,
@@ -115,7 +117,10 @@ def add_precursor_values(
 
     # Extract precursor values from MS2 spectrum objects in a single pass
     precursor_data = [
-        (ms2.precursor.rt, ms2.precursor.im, ms2.precursor.mz) for ms2 in psm_list["spectrum"]
+        (ms2.precursor.rt, ms2.precursor.im, ms2.precursor.mz)
+        if ms2.precursor is not None
+        else (0.0, 0.0, 0.0)
+        for ms2 in psm_list["spectrum"]
     ]
     rts, ims, mzs = map(np.array, zip(*precursor_data))
 
@@ -224,6 +229,29 @@ def _add_precursor_values(
             ) from e
 
 
+def _ensure_precursor(
+    spectrum: MS2Spectrum | AnnotatedMS2Spectrum,
+) -> MS2Spectrum | AnnotatedMS2Spectrum:
+    """Return ``spectrum`` with an empty ``Precursor()`` when its precursor is ``None``."""
+    if isinstance(spectrum, MS2Spectrum) and spectrum.precursor is None:
+        return MS2Spectrum(
+            identifier=spectrum.identifier,
+            mz=spectrum.mz,
+            intensity=spectrum.intensity,
+            precursor=Precursor(),
+        )
+    if isinstance(spectrum, AnnotatedMS2Spectrum) and spectrum.precursor is None:
+        return AnnotatedMS2Spectrum(
+            identifier=spectrum.identifier,
+            mz=spectrum.mz,
+            intensity=spectrum.intensity,
+            precursor=Precursor(),
+            peak_annotations=spectrum.peak_annotations,
+            extended_annotations=spectrum.extended_annotations,
+        )
+    return spectrum
+
+
 def annotate_spectra(
     psm_list: PSMList,
     fragmentation_model: str = "cidhcd",
@@ -260,7 +288,9 @@ def annotate_spectra(
     """
     LOGGER.info("Annotating MS2 spectra based on search engine identifications...")
 
-    spectra = list(psm_list["spectrum"])
+    # Ensure missing precursors default to an empty Precursor() so annotated spectra remain
+    # directly consumable by downstream tools such as ms2pip.correlate().
+    spectra = [_ensure_precursor(spectrum) for spectrum in psm_list["spectrum"]]
     # Convert modification labels to numeric mass shifts so rustyms can parse them
     # regardless of modification name convention (Unimod name, accession, formula, etc.).
     proformas = [proforma_to_mass_shift(psm.peptidoform) for psm in psm_list]

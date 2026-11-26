@@ -40,7 +40,7 @@ from ms2rescore_rs import (
 from psm_utils import PSMList
 
 from ms2rescore.feature_generators.base import FeatureGeneratorBase, FeatureGeneratorException
-from ms2rescore.parse_spectra import MSDataType
+from ms2rescore.parse_spectra import MSDataType, _ensure_precursor
 
 logger = logging.getLogger(__name__)
 
@@ -179,13 +179,24 @@ class MS2PIPFeatureGenerator(FeatureGeneratorBase):
                 "Parse and attach spectra before calling `MS2PIPFeatureGenerator.add_features()`."
             )
 
-        ms2pip_results = correlate(
-            psm_list,
-            compute_correlations=False,
-            model=self.model,
-            model_dir=self.model_dir,
-            processes=self.processes,
-        )
+        # ms2pip._spectrum_processing._to_observed_spectrum() expects a non-None Precursor.
+        # Temporarily substitute an empty Precursor() when callers omit it (e.g. charge in ProForma).
+        original_spectra: list[MS2Spectrum | AnnotatedMS2Spectrum] | None = None
+        if any(psm.spectrum.precursor is None for psm in psm_list):
+            original_spectra = list(psm_list["spectrum"])
+            psm_list["spectrum"] = [_ensure_precursor(spectrum) for spectrum in original_spectra]
+
+        try:
+            ms2pip_results = correlate(
+                psm_list,
+                compute_correlations=False,
+                model=self.model,
+                model_dir=self.model_dir,
+                processes=self.processes,
+            )
+        finally:
+            if original_spectra is not None:
+                psm_list["spectrum"] = original_spectra
         self._calculate_features(psm_list, ms2pip_results)
 
     def _calculate_features(self, psm_list, ms2pip_results):
